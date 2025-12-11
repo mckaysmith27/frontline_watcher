@@ -4,7 +4,17 @@ import os
 import sys
 import random
 import requests
+from typing import Optional
 from playwright.async_api import async_playwright, TimeoutError as PWTimeout
+
+#loads '.env'
+from dotenv import load_dotenv
+load_dotenv()
+
+print("DEBUG JOB_INCLUDE_WORDS_ANY:", os.getenv("JOB_INCLUDE_WORDS_ANY"))
+print("DEBUG JOB_INCLUDE_WORDS_COUNT:", os.getenv("JOB_INCLUDE_WORDS_COUNT"))
+print("DEBUG JOB_EXCLUDE_WORDS_ANY:", os.getenv("JOB_EXCLUDE_WORDS_ANY"))
+print("DEBUG JOB_EXCLUDE_WORDS_COUNT:", os.getenv("JOB_EXCLUDE_WORDS_COUNT"))
 
 LOGIN_URL = (
     "https://login.frontlineeducation.com/login"
@@ -449,7 +459,8 @@ def apply_job_filters_to_snapshot(
     include_min_matches: int,
     exclude_count_words: list[str],
     exclude_min_matches: int,
-) -> str | None:
+) -> Optional[str]:
+
     """
     Apply all filters to a snapshot string.
 
