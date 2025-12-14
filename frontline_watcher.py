@@ -598,48 +598,82 @@ def extract_unique_words_no_regex(text: str) -> list[str]:
     words = [w for w in cleaned.split(" ") if w]
     return sorted(set(words))
 
-async def try_accept_first_visible_job(page) -> bool:
-    """
-    Click the first visible "Accept" button on the Available Jobs page,
-    then (if a confirmation modal appears) click the modal's "Accept".
-    Returns True if we clicked an Accept button, else False.
-    """
+def pick_job_key_lines(job_block: str, max_lines: int = 3) -> list[str]:
+    lines = [ln.strip() for ln in job_block.splitlines() if ln.strip()]
 
-    # ---- Step 1: click the primary Accept button (not Reject) ----
-    accept_btn = page.locator('button:has-text("Accept")').first
+    def score(line: str) -> int:
+        s = 0
+        if any(w in line for w in WEEKDAY_WORDS):
+            s += 5
+        if (" AM" in line) or (" PM" in line):
+            s += 4
+        if any(tok in line for tok in ["Elementary", "Middle", "High School", "Teacher", "Grade"]):
+            s += 3
+        if len(line) >= 12:
+            s += 1
+        return s
 
-    try:
-        await accept_btn.wait_for(state="visible", timeout=3000)
-        await accept_btn.click()
-        print("[auto-accept] Clicked primary Accept button.")
-    except Exception as e:
-        print(f"[auto-accept] No visible primary Accept button found: {e}")
+    scored = sorted(lines, key=score, reverse=True)
+    picked: list[str] = []
+    for ln in scored:
+        if ln not in picked:
+            picked.append(ln)
+        if len(picked) >= max_lines:
+            break
+
+    if not picked and lines:
+        picked = lines[:1]
+
+    return picked
+
+
+async def try_accept_from_filtered_snapshot(page, filtered_snapshot: str) -> bool:
+    blocks = [b.strip() for b in filtered_snapshot.split("\n\n") if b.strip()]
+    for idx, block in enumerate(blocks):
+        ok = await try_accept_job_block(page, block)
+        if ok:
+            print(f"[auto-accept] Accepted block index {idx}.")
+            return True
+    return False
+
+
+async def try_accept_job_block(page, job_block: str) -> bool:
+    key_lines = pick_job_key_lines(job_block, max_lines=3)
+    if not key_lines:
         return False
 
-    # ---- Step 2: if a confirmation modal appears, click its Accept ----
-    # We try a couple common modal patterns (role="dialog" and bootstrap-ish modals).
-    modal_accept = page.locator(
-        '[role="dialog"] button:has-text("Accept"), '
-        '.modal button:has-text("Accept"), '
-        '.modal-dialog button:has-text("Accept")'
-    ).last
+    container_selectors = ["tr", "div", "section", "article", "li"]
 
-    try:
-        # If it shows up, click it. If not, just move on.
-        await modal_accept.wait_for(state="visible", timeout=2000)
-        await modal_accept.click()
-        print("[auto-accept] Clicked modal Accept confirmation.")
-    except Exception:
-        # Modal didn’t appear (normal case)
-        pass
+    for tag in container_selectors:
+        nodes = page.locator(tag)
+        try:
+            count = await nodes.count()
+        except Exception:
+            count = 0
 
-    # Let the UI settle after accepting
-    try:
-        await page.wait_for_load_state("networkidle", timeout=10000)
-    except Exception:
-        pass
+        for i in range(min(count, 250)):
+            node = nodes.nth(i)
 
-    return True
+            try:
+                txt = await node.inner_text()
+            except Exception:
+                continue
+
+            if not txt or not txt.strip():
+                continue
+
+            # match: all key_lines appear in this container
+            if all(k in txt for k in key_lines):
+                ok = await _try_accept_with_details_fallback(node, tag)
+                if ok:
+                    try:
+                        await page.wait_for_load_state("networkidle", timeout=10000)
+                    except Exception:
+                        pass
+                    print(f"[auto-accept] Matched using keys: {key_lines}")
+                    return True
+
+    return False
 
 async def main() -> None:
     username = os.getenv("FRONTLINE_USERNAME")
