@@ -9,19 +9,7 @@ import requests
 from typing import Optional
 
 from playwright.async_api import async_playwright, TimeoutError as PWTimeout
-from datetime import datetime, timezone, timedelta
-
-#loads '.env'
-from pathlib import Path
-from dotenv import load_dotenv
-
-ENV_PATH = Path(__file__).resolve().with_name(".env")
-loaded = load_dotenv(dotenv_path=ENV_PATH, override=False)
-
-print(f"DEBUG .env loaded={loaded} path={ENV_PATH}")
-
-loaded = load_dotenv()
-print("DEBUG load_dotenv loaded_file:", loaded)
+#from datetime import datetime, timezone, timedelta
 
 print("DEBUG JOB_INCLUDE_WORDS_ANY:", os.getenv("JOB_INCLUDE_WORDS_ANY"))
 print("DEBUG JOB_INCLUDE_WORDS_COUNT:", os.getenv("JOB_INCLUDE_WORDS_COUNT"))
