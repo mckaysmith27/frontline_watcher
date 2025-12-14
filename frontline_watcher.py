@@ -583,6 +583,21 @@ async def ensure_logged_in(page, username: str, password: str) -> bool:
     print(f"[auth] After login attempt, page.url={page.url}")
     return ("login.frontlineeducation.com" not in page.url)
 
+def extract_unique_words_no_regex(text: str) -> list[str]:
+    """
+    Extract unique lowercase words using only basic string operations.
+    Strips common punctuation and splits on whitespace.
+    """
+    # Characters we consider separators / junk
+    punctuation = ",.;:!?()[]{}<>\"'\\/\n\t"
+
+    cleaned = text.lower()
+    for ch in punctuation:
+        cleaned = cleaned.replace(ch, " ")
+
+    words = [w for w in cleaned.split(" ") if w]
+    return sorted(set(words))
+
 async def try_accept_first_visible_job(page) -> bool:
     """
     Click the first visible "Accept" button on the Available Jobs page,
@@ -727,18 +742,31 @@ async def main() -> None:
                             "skipping notification."
                         )
                     else:
-                        message = f"🆕 NEW FRONTLINE JOB:\n{filtered_snapshot}"
+                        all_words: set[str] = set()
+                        for block in filtered_snapshot.split("\n\n"):
+                            for w in extract_unique_words_no_regex(block):
+                                all_words.add(w)
+
+                        word_list = ", ".join(sorted(all_words))
+
+                        message = (
+                            "🆕 NEW FRONTLINE JOB\n\n"
+                            f"{filtered_snapshot}\n\n"
+                            "🔎 WORDS FOUND:\n"
+                            f"{word_list}"
+                        )
+
                         notify(message)
                         print(f"Sent notification: {message}")
 
-                        accepted = await try_accept_first_visible_job(page)
-                        if accepted:
-                            notify("✅ Auto-accept attempted (clicked Accept).")
-                            print("[auto-accept] Accept flow attempted.")
-                        else:
-                            notify("⚠️ Auto-accept failed (no visible Accept button found).")
-                            print("[auto-accept] Accept flow did not run.")
 
+                        accepted = await try_accept_from_filtered_snapshot(page, filtered_snapshot)
+                        if accepted:
+                            notify("✅ Auto-accept succeeded (matched job block and clicked Accept).")
+                            print("[auto-accept] Success.")
+                        else:
+                            notify("⚠️ Auto-accept failed (could not match job block to a container with Accept).")
+                            print("[auto-accept] Failed to match/click Accept for the filtered job.")
 
                 elif change_type == "PREVIOUS JOB HAS EXPIRED":
                     message = (
