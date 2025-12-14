@@ -48,7 +48,6 @@ def notify(message: str) -> None:
             # swallow notification errors so the watcher keeps running
             pass
 
-
 # Phrases we consider "no available jobs"
 NO_JOBS_MARKERS = [
     "I'm sorry. There are no available assignments at the moment.",
@@ -584,6 +583,48 @@ async def ensure_logged_in(page, username: str, password: str) -> bool:
     print(f"[auth] After login attempt, page.url={page.url}")
     return ("login.frontlineeducation.com" not in page.url)
 
+async def try_accept_first_visible_job(page) -> bool:
+    """
+    Click the first visible "Accept" button on the Available Jobs page,
+    then (if a confirmation modal appears) click the modal's "Accept".
+    Returns True if we clicked an Accept button, else False.
+    """
+
+    # ---- Step 1: click the primary Accept button (not Reject) ----
+    accept_btn = page.locator('button:has-text("Accept")').first
+
+    try:
+        await accept_btn.wait_for(state="visible", timeout=3000)
+        await accept_btn.click()
+        print("[auto-accept] Clicked primary Accept button.")
+    except Exception as e:
+        print(f"[auto-accept] No visible primary Accept button found: {e}")
+        return False
+
+    # ---- Step 2: if a confirmation modal appears, click its Accept ----
+    # We try a couple common modal patterns (role="dialog" and bootstrap-ish modals).
+    modal_accept = page.locator(
+        '[role="dialog"] button:has-text("Accept"), '
+        '.modal button:has-text("Accept"), '
+        '.modal-dialog button:has-text("Accept")'
+    ).last
+
+    try:
+        # If it shows up, click it. If not, just move on.
+        await modal_accept.wait_for(state="visible", timeout=2000)
+        await modal_accept.click()
+        print("[auto-accept] Clicked modal Accept confirmation.")
+    except Exception:
+        # Modal didn’t appear (normal case)
+        pass
+
+    # Let the UI settle after accepting
+    try:
+        await page.wait_for_load_state("networkidle", timeout=10000)
+    except Exception:
+        pass
+
+    return True
 
 async def main() -> None:
     username = os.getenv("FRONTLINE_USERNAME")
@@ -690,6 +731,15 @@ async def main() -> None:
                         notify(message)
                         print(f"Sent notification: {message}")
 
+                        accepted = await try_accept_first_visible_job(page)
+                        if accepted:
+                            notify("✅ Auto-accept attempted (clicked Accept).")
+                            print("[auto-accept] Accept flow attempted.")
+                        else:
+                            notify("⚠️ Auto-accept failed (no visible Accept button found).")
+                            print("[auto-accept] Accept flow did not run.")
+
+
                 elif change_type == "PREVIOUS JOB HAS EXPIRED":
                     message = (
                         "⏳ PREVIOUS JOB HAS EXPIRED:\n"
@@ -712,4 +762,3 @@ async def main() -> None:
 
 if __name__ == "__main__":
     asyncio.run(main())
-
