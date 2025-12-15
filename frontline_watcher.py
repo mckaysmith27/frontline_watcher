@@ -1,4 +1,4 @@
-print("🚨 CODE VERSION V3-8 — Auto-accept + Filters + Datetime/Timestamps 🚨")
+print("🚨 CODE VERSION V3-9 — Auto-accept On + Filters + Datetime/Timestamps 🚨")
 
 import asyncio
 import difflib
@@ -12,10 +12,9 @@ from datetime import datetime, timezone, timedelta
 from playwright.async_api import async_playwright, TimeoutError as PWTimeout
 
 def _ts() -> str:
-    """UTC+0 and UTC+7 timestamps for logs."""
-    utc = datetime.now(timezone.utc)
-    utc7 = utc + timedelta(hours=7)
-    return f"[UTC {utc:%Y-%m-%d %H:%M:%S}] [UTC+7 {utc7:%Y-%m-%d %H:%M:%S}]"
+    """Utah local time (MST, UTC-7)"""
+    utah = datetime.now(timezone.utc) - timedelta(hours=7)
+    return f"[UTAH MST {utah:%Y-%m-%d %H:%M:%S}]"
 
 def log(*args, **kwargs) -> None:
     """Print with timestamps prepended (shows in docker logs)."""
@@ -648,36 +647,107 @@ async def try_accept_from_filtered_snapshot(page, filtered_snapshot: str) -> boo
             return True
     return False
 
+async def _try_accept_with_details_fallback(page, container) -> bool:
+    """
+    Try to click Accept within the matched container.
+    If not found, try opening Details then click Accept.
+    """
+    # 1) Try Accept directly inside the container
+    accept = container.locator(
+        'button:has-text("Accept"), a:has-text("Accept"), [role="button"]:has-text("Accept")'
+    ).first
+
+    try:
+        if await accept.count() > 0:
+            await accept.scroll_into_view_if_needed()
+            await accept.click(timeout=3000)
+            try:
+                await page.wait_for_load_state("networkidle", timeout=8000)
+            except Exception:
+                pass
+            return True
+    except Exception:
+        pass
+
+    # 2) Try clicking Details / View Details first
+    details = container.locator(
+        'button:has-text("Details"), a:has-text("Details"), '
+        'button:has-text("View Details"), a:has-text("View Details"), '
+        'button:has-text("More"), a:has-text("More")'
+    ).first
+
+    try:
+        if await details.count() > 0:
+            await details.scroll_into_view_if_needed()
+            await details.click(timeout=3000)
+            try:
+                await page.wait_for_load_state("domcontentloaded", timeout=8000)
+            except Exception:
+                pass
+    except Exception:
+        # If Details click fails, still try global Accept below
+        pass
+
+    # 3) Try global Accept (some sites show Accept in a modal/panel outside container)
+    global_accept = page.locator(
+        'button:has-text("Accept"), a:has-text("Accept"), [role="button"]:has-text("Accept")'
+    ).first
+
+    try:
+        if await global_accept.count() > 0:
+            await global_accept.scroll_into_view_if_needed()
+            await global_accept.click(timeout=3000)
+            try:
+                await page.wait_for_load_state("networkidle", timeout=8000)
+            except Exception:
+                pass
+            return True
+    except Exception:
+        pass
+
+    return False
 
 async def try_accept_job_block(page, job_block: str) -> bool:
     key_lines = pick_job_key_lines(job_block, max_lines=3)
     if not key_lines:
         return False
 
-    container_selectors = ["tr", "div", "section", "article", "li"]
+    # Each job is a <tbody class="job" id="..."> containing both summary+detail
+    jobs = page.locator("#availableJobs tbody.job")
+    try:
+        count = await jobs.count()
+    except Exception:
+        count = 0
 
-    for tag in container_selectors:
-        nodes = page.locator(tag)
+    for i in range(count):
+        job = jobs.nth(i)
         try:
-            count = await nodes.count()
+            txt = await job.inner_text()
         except Exception:
-            count = 0
+            continue
 
-        for i in range(min(count, 250)):
-            node = nodes.nth(i)
+        if not txt or not txt.strip():
+            continue
+
+        # Match: key lines appear somewhere inside this job's tbody (summary+detail)
+        if all(k in txt for k in key_lines):
+            # Click the Accept button INSIDE THIS JOB
+            accept = job.locator("a.acceptButton").first
 
             try:
-                txt = await node.inner_text()
-            except Exception:
-                continue
-
-            if not txt or not txt.strip():
-                continue
-
-            if all(k in txt for k in key_lines):
-                # AUTO-ACCEPT TEMPORARILY DISABLED
-                print(f"[auto-accept] Would have attempted accept with keys: {key_lines}")
+                await accept.scroll_into_view_if_needed()
+                await accept.click(timeout=5000)
+            except Exception as e:
+                log(f"[auto-accept] click failed: {e}")
                 return False
+
+            # Small settle time (Frontline often does DOM updates after click)
+            try:
+                await page.wait_for_load_state("networkidle", timeout=8000)
+            except Exception:
+                pass
+
+            return True
 
     return False
 
@@ -725,6 +795,7 @@ async def main() -> None:
         browser = await p.chromium.launch(headless=True)
         context = await browser.new_context()
         page = await context.new_page()
+        page.on("dialog", lambda d: asyncio.create_task(d.accept()))
 
         await page.goto(JOBS_URL)
         await page.wait_for_load_state("domcontentloaded")
