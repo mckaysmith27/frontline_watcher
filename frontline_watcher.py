@@ -5,12 +5,11 @@ import difflib
 import os
 import sys
 import random
-import requests
 from typing import Optional
+from urllib import request
+from datetime import datetime, timezone, timedelta
 
 from playwright.async_api import async_playwright, TimeoutError as PWTimeout
-from playwright.async_api import async_playwright, TimeoutError as PWTimeout
-from datetime import datetime, timezone, timedelta
 
 def _ts() -> str:
     """UTC+0 and UTC+7 timestamps for logs."""
@@ -46,18 +45,18 @@ def get_random_delay() -> float:
 
 
 def notify(message: str) -> None:
-    """Send a push notification to ntfy if NTFY_TOPIC is set."""
     topic = os.getenv("NTFY_TOPIC")
-    if topic:
-        try:
-            requests.post(
-                f"https://ntfy.sh/{topic}",
-                data=message.encode("utf-8"),
-                timeout=5,
-            )
-        except Exception:
-            # swallow notification errors so the watcher keeps running
-            pass
+    if not topic:
+        return
+    try:
+        req = request.Request(
+            f"https://ntfy.sh/{topic}",
+            data=message.encode("utf-8"),
+            method="POST",
+        )
+        request.urlopen(req, timeout=5).read()
+    except Exception:
+        pass
 
 # Phrases we consider "no available jobs"
 NO_JOBS_MARKERS = [
