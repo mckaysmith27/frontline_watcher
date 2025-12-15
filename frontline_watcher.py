@@ -1,4 +1,4 @@
-print("🚨 CODE VERSION V3-7 — Auto-accept + Filters 🚨")
+print("🚨 CODE VERSION V3-8 — Auto-accept + Filters + Datetime/Timestamps 🚨")
 
 import asyncio
 import difflib
@@ -9,12 +9,23 @@ import requests
 from typing import Optional
 
 from playwright.async_api import async_playwright, TimeoutError as PWTimeout
-#from datetime import datetime, timezone, timedelta
+from playwright.async_api import async_playwright, TimeoutError as PWTimeout
+from datetime import datetime, timezone, timedelta
 
-print("DEBUG JOB_INCLUDE_WORDS_ANY:", os.getenv("JOB_INCLUDE_WORDS_ANY"))
-print("DEBUG JOB_INCLUDE_WORDS_COUNT:", os.getenv("JOB_INCLUDE_WORDS_COUNT"))
-print("DEBUG JOB_EXCLUDE_WORDS_ANY:", os.getenv("JOB_EXCLUDE_WORDS_ANY"))
-print("DEBUG JOB_EXCLUDE_WORDS_COUNT:", os.getenv("JOB_EXCLUDE_WORDS_COUNT"))
+def _ts() -> str:
+    """UTC+0 and UTC+7 timestamps for logs."""
+    utc = datetime.now(timezone.utc)
+    utc7 = utc + timedelta(hours=7)
+    return f"[UTC {utc:%Y-%m-%d %H:%M:%S}] [UTC+7 {utc7:%Y-%m-%d %H:%M:%S}]"
+
+def log(*args, **kwargs) -> None:
+    """Print with timestamps prepended (shows in docker logs)."""
+    print(_ts(), *args, **kwargs)
+
+# log("DEBUG JOB_INCLUDE_WORDS_ANY:", os.getenv("JOB_INCLUDE_WORDS_ANY"))
+# log("DEBUG JOB_INCLUDE_WORDS_COUNT:", os.getenv("JOB_INCLUDE_WORDS_COUNT"))
+# log("DEBUG JOB_EXCLUDE_WORDS_ANY:", os.getenv("JOB_EXCLUDE_WORDS_ANY"))
+# log("DEBUG JOB_EXCLUDE_WORDS_COUNT:", os.getenv("JOB_EXCLUDE_WORDS_COUNT"))
 
 LOGIN_URL = (
     "https://login.frontlineeducation.com/login"
@@ -662,18 +673,13 @@ async def try_accept_job_block(page, job_block: str) -> bool:
             if not txt or not txt.strip():
                 continue
 
-            # match: all key_lines appear in this container
             if all(k in txt for k in key_lines):
-                ok = await _try_accept_with_details_fallback(node, tag)
-                if ok:
-                    try:
-                        await page.wait_for_load_state("networkidle", timeout=10000)
-                    except Exception:
-                        pass
-                    print(f"[auto-accept] Matched using keys: {key_lines}")
-                    return True
+                # AUTO-ACCEPT TEMPORARILY DISABLED
+                print(f"[auto-accept] Would have attempted accept with keys: {key_lines}")
+                return False
 
     return False
+
 
 async def main() -> None:
     username = os.getenv("FRONTLINE_USERNAME")
@@ -710,7 +716,11 @@ async def main() -> None:
         exclude_min_matches,
     )
 
+    relogin_failures = 0
+    MAX_RELOGIN_FAILURES = 5
+
     async with async_playwright() as p:
+
         browser = await p.chromium.launch(headless=True)
         context = await browser.new_context()
         page = await context.new_page()
@@ -729,29 +739,60 @@ async def main() -> None:
         await page.wait_for_load_state("networkidle")
 
         baseline = await get_available_jobs_snapshot(page)
-        print("[*] Monitoring started.")
-        print(f"[available_jobs baseline]:\n{baseline[:500]}")
-        notify("Frontline watcher started")
+        log("[*] Monitoring started.")
+        log(f"[available_jobs baseline]:\n{baseline[:500]}")
+
+
+        # notify("Frontline watcher started")
+        if os.getenv("SENT_STARTUP_NOTIFY") != "1":
+            notify("Frontline watcher started")
+            os.environ["SENT_STARTUP_NOTIFY"] = "1"
 
         while True:
             try:
                 await page.reload(wait_until="networkidle")
             except PWTimeout:
-                print("[!] reload timeout")
+                log("[!] reload timeout")
 
             if "login.frontlineeducation.com" in page.url:
-                print("[auth] Session expired. Re-auth...")
-                await page.goto(LOGIN_URL)
+                relogin_failures += 1
+                print(f"[auth] Session expired. Re-auth... (failures={relogin_failures}/{MAX_RELOGIN_FAILURES})")
+
+                # Go to login page with a longer timeout and lighter wait condition
+                try:
+                    await page.goto(LOGIN_URL, wait_until="domcontentloaded", timeout=60000)
+                except Exception as e:
+                    print(f"[auth] goto(LOGIN_URL) failed: {e}")
+                    if relogin_failures >= MAX_RELOGIN_FAILURES:
+                        notify("🔥 Frontline watcher: login page keeps timing out. Stopping (SSO/network issue).")
+                        raise
+                    await asyncio.sleep(5)
+                    continue
+
                 ok = await ensure_logged_in(page, username, password)
+
                 if ok:
-                    print("[auth] Re-login appears successful, going back to jobs.")
-                    await page.goto(JOBS_URL)
-                    await page.wait_for_load_state("networkidle")
+                    print("[auth] Login attempt looks OK; going back to jobs page.")
+                    try:
+                        await page.goto(JOBS_URL, wait_until="networkidle", timeout=60000)
+                        relogin_failures = 0  # reset on success
+                    except Exception as e:
+                        print(f"[auth] goto(JOBS_URL) failed after login: {e}")
+                        # don't crash immediately; try again next loop
+                        await asyncio.sleep(5)
+                        continue
                 else:
                     print("[auth] Re-login failed / still gated by SSO.")
+                    if relogin_failures >= MAX_RELOGIN_FAILURES:
+                        notify("🔥 Frontline watcher: blocked by SSO/captcha; cannot auto-login. Stopping.")
+                        raise
+                    await asyncio.sleep(10)
+                    continue
+
 
             current = await get_available_jobs_snapshot(page)
-            print(f"[available_jobs now]:\n{current[:500]}")
+            log(f"[available_jobs now]:\n{current[:500]}")
+
 
             if current != baseline:
                 change_type = summarize_change(baseline, current)
@@ -791,16 +832,16 @@ async def main() -> None:
                         )
 
                         notify(message)
-                        print(f"Sent notification: {message}")
+                        log(f"Sent notification: {message}")
 
 
                         accepted = await try_accept_from_filtered_snapshot(page, filtered_snapshot)
                         if accepted:
                             notify("✅ Auto-accept succeeded (matched job block and clicked Accept).")
-                            print("[auto-accept] Success.")
+                            log("[auto-accept] Success.")
                         else:
                             notify("⚠️ Auto-accept failed (could not match job block to a container with Accept).")
-                            print("[auto-accept] Failed to match/click Accept for the filtered job.")
+                            log("[auto-accept] Failed to match/click Accept for the filtered job.")
 
                 elif change_type == "PREVIOUS JOB HAS EXPIRED":
                     message = (
@@ -808,17 +849,18 @@ async def main() -> None:
                         "I'm sorry. There are no available assignments at the moment."
                     )
                     notify(message)
-                    print(f"Sent notification: {message}")
+                    log(f"Sent notification: {message}")
 
                 else:
                     message = f"🔄 UPDATE:\n{current}"
                     notify(message)
-                    print(f"Sent notification: {message}")
+                    log(f"Sent notification: {message}")
 
                 baseline = current
 
             delay = get_random_delay()
-            print(f"(sleeping {delay:.2f}s)")
+            log(f"(sleeping {delay:.2f}s)")
+
             await asyncio.sleep(delay)
 
 
