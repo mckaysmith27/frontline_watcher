@@ -48,15 +48,17 @@ def notify(message: str) -> None:
     topic = os.getenv("NTFY_TOPIC")
     if not topic:
         return
+
     try:
         req = request.Request(
             f"https://ntfy.sh/{topic}",
             data=message.encode("utf-8"),
+            headers={"Content-Type": "text/plain; charset=utf-8"},
             method="POST",
         )
         request.urlopen(req, timeout=5).read()
-    except Exception:
-        pass
+    except Exception as e:
+        log(f"[notify error] {e}")
 
 # Phrases we consider "no available jobs"
 NO_JOBS_MARKERS = [
