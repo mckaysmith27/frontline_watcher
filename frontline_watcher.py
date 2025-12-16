@@ -1,4 +1,4 @@
-print("🚨 CODE VERSION V3-9 — Auto-accept On + Filters + Datetime/Timestamps 🚨")
+print("🚨 CODE VERSION V3-11 — Auto-accept On (+ bug fixes V1) + Filters + Datetime/Timestamps 🚨")
 
 import asyncio
 import difflib
@@ -34,8 +34,11 @@ LOGIN_URL = (
 JOBS_URL = "https://absencesub.frontlineeducation.com/Substitute/Home"
 
 # Randomized poll delay bounds (seconds)
-MIN_DELAY = 16
-MAX_DELAY = 31
+# MIN_DELAY = 16
+# MAX_DELAY = 31
+
+MIN_DELAY = 7
+MAX_DELAY = 16
 
 
 def get_random_delay() -> float:
@@ -275,111 +278,78 @@ def is_definitely_past_job(text_block: str) -> bool:
 # ---------------------------------------------------------------------
 async def try_extract_available_job_blocks(page) -> list[str]:
     """
-    Pull only the 'Available Jobs' block(s):
-
-    - Walk likely containers (<table>, <section>, <div>)
-    - Identify ones that look like the Available Jobs area
-    - Extract rows that look like live offers (not history / not ghost fragments)
-    - Return each job as its own multiline string
+    DOM-based extraction from Frontline's real job containers:
+    #availableJobs tbody.job (each has id=<confirmation_number>)
     """
+    jobs = page.locator("#availableJobs tbody.job")
+    try:
+        count = await jobs.count()
+    except Exception:
+        count = 0
 
-    possible_containers = ["table", "section", "div"]
     job_blocks: list[str] = []
 
-    def looks_like_real_job(job_text: str) -> bool:
-        """Require a weekday/date stamp like 'Mon,' 'Tue,' etc."""
-        return any(word in job_text for word in WEEKDAY_WORDS)
+    for i in range(count):
+        job = jobs.nth(i)
 
-    for tag in possible_containers:
-        nodes = page.locator(tag)
+        # confirmation/job id is literally the tbody id
+        job_id = ""
         try:
-            count = await nodes.count()
+            job_id = (await job.get_attribute("id")) or ""
         except Exception:
-            count = 0
+            job_id = ""
 
-        for i in range(min(count, 200)):
+        async def safe_text(locator_str: str) -> str:
             try:
-                raw = await nodes.nth(i).inner_text()
+                loc = job.locator(locator_str).first
+                if await loc.count() == 0:
+                    return ""
+                t = (await loc.inner_text()).strip()
+                return t
             except Exception:
-                continue
-            if not raw or not raw.strip():
-                continue
+                return ""
 
-            cleaned = normalize_lines(raw)
+        teacher = await safe_text("span.name")
+        title = await safe_text("span.title")
+        conf_num = await safe_text("span.confNum")  # often equals job_id, but grab anyway
+        item_date = await safe_text("span.itemDate")
+        start_time = await safe_text("span.startTime")
+        end_time = await safe_text("span.endTime")
+        duration = await safe_text("span.durationName")
+        location = await safe_text("div.locationName")
 
-            if is_obviously_nav_or_chrome(cleaned):
-                continue
-            if not looks_like_available_jobs_container(cleaned):
-                continue
+        # fallback duration if durationName isn't what the UI shows (sometimes "Full Day")
+        if not duration:
+            try:
+                dur_cell = job.locator("tr.detail td.duration").first
+                if await dur_cell.count() > 0:
+                    duration = " ".join((await dur_cell.inner_text()).split())
+            except Exception:
+                pass
 
-            lines = cleaned.split("\n")
+        block_lines = []
+        if job_id or conf_num:
+            block_lines.append(f"CONFIRMATION #{conf_num or job_id}")
+        if teacher:
+            block_lines.append(f"TEACHER: {teacher}")
+        if title:
+            block_lines.append(f"TITLE: {title}")
+        if item_date:
+            block_lines.append(f"DATE: {item_date}")
+        if start_time or end_time:
+            block_lines.append(f"TIME: {start_time} - {end_time}".strip())
+        if duration:
+            block_lines.append(f"DURATION: {duration}")
+        if location:
+            block_lines.append(f"LOCATION: {location}")
 
-            current_job_lines: list[str] = []
-            current_job_is_past = False
-            parsed_jobs_from_container: list[str] = []
+        block = "\n".join([ln for ln in block_lines if ln.strip()])
 
-            def flush_job() -> None:
-                nonlocal current_job_lines, current_job_is_past
-                if not current_job_lines:
-                    current_job_is_past = False
-                    return
+        # If we got *nothing*, skip
+        if not block.strip():
+            continue
 
-                job_text = "\n".join(current_job_lines).strip()
-
-                # --- FILTERS TO REJECT NON-LIVE JOBS ---
-                if not job_text:
-                    pass
-                elif any(marker in job_text for marker in NO_JOBS_MARKERS):
-                    pass
-                elif (
-                    "Date" in job_text
-                    and "Time" in job_text
-                    and "Duration" in job_text
-                    and "Location" in job_text
-                ):
-                    # just table headers
-                    pass
-                elif "Past Jobs" in job_text:
-                    pass
-                elif current_job_is_past:
-                    pass
-                elif not looks_like_real_job(job_text):
-                    pass
-                else:
-                    parsed_jobs_from_container.append(job_text)
-
-                current_job_lines = []
-                current_job_is_past = False
-
-            for line in lines:
-                line_stripped = line.strip()
-
-                if is_definitely_past_job(line_stripped):
-                    current_job_is_past = True
-
-                looks_like_time = (" AM" in line_stripped) or (" PM" in line_stripped)
-
-                looks_like_schoolish = (
-                    "Elementary" in line_stripped
-                    or "Middle" in line_stripped
-                    or "High School" in line_stripped
-                    or "Teacher" in line_stripped
-                    or "Grade" in line_stripped
-                    or any(subject in line_stripped for subject in SUBJECT_WORDS)
-                )
-
-                is_tab_label = any(word in line_stripped for word in TAB_EXCLUDE_WORDS)
-
-                if (looks_like_time or looks_like_schoolish) and not is_tab_label:
-                    current_job_lines.append(line_stripped)
-                else:
-                    flush_job()
-
-            flush_job()
-
-            for job_text in parsed_jobs_from_container:
-                if job_text not in job_blocks:
-                    job_blocks.append(job_text)
+        job_blocks.append(block)
 
     return job_blocks
 
@@ -638,14 +608,85 @@ def pick_job_key_lines(job_block: str, max_lines: int = 3) -> list[str]:
     return picked
 
 
-async def try_accept_from_filtered_snapshot(page, filtered_snapshot: str) -> bool:
-    blocks = [b.strip() for b in filtered_snapshot.split("\n\n") if b.strip()]
-    for idx, block in enumerate(blocks):
-        ok = await try_accept_job_block(page, block)
-        if ok:
-            print(f"[auto-accept] Accepted block index {idx}.")
+def extract_confirmation_id(job_block: str) -> str:
+    # expects a line like: "CONFIRMATION #742374234"
+    for ln in job_block.splitlines():
+        ln = ln.strip()
+        if ln.upper().startswith("CONFIRMATION #"):
+            return ln.split("#", 1)[1].strip()
+    return ""
+
+
+async def try_accept_job_block(page, job_block: str) -> bool:
+    conf_id = extract_confirmation_id(job_block)
+    log(f"[auto-accept] job_block conf_id='{conf_id}'")
+
+    # Log what jobs exist on the page right now
+    jobs = page.locator("#availableJobs tbody.job")
+    try:
+        count = await jobs.count()
+    except Exception:
+        count = 0
+    log(f"[auto-accept] page currently has {count} tbody.job containers")
+
+    if conf_id:
+        target = page.locator(f'#availableJobs tbody.job#{conf_id}')
+        try:
+            if await target.count() == 0:
+                log(f"[auto-accept] ❌ No tbody.job found with id={conf_id}")
+                return False
+
+            accept = target.locator("a.acceptButton").first
+            if await accept.count() == 0:
+                log(f"[auto-accept] ❌ Found tbody#{conf_id} but no a.acceptButton inside it")
+                # dump a little text to help debug
+                txt = await target.inner_text()
+                log(f"[auto-accept] tbody#{conf_id} text (first 300 chars): {txt[:300]}")
+                return False
+
+            await accept.scroll_into_view_if_needed()
+
+            # Try normal click, then force click
+            try:
+                await accept.click(timeout=5000)
+            except Exception as e1:
+                log(f"[auto-accept] normal click failed: {e1}. Trying force click.")
+                await accept.click(timeout=5000, force=True)
+
+            # wait for DOM to settle
+            try:
+                await page.wait_for_load_state("networkidle", timeout=8000)
+            except Exception:
+                pass
+
+            log(f"[auto-accept] ✅ Clicked Accept for confirmation #{conf_id}")
             return True
+
+        except Exception as e:
+            log(f"[auto-accept] ❌ Exception during accept for #{conf_id}: {e}")
+            return False
+
+    # Fallback: if somehow no conf id, do your old “key line” approach
+    log("[auto-accept] ⚠️ No confirmation id in job_block; falling back to text match.")
+    key_lines = pick_job_key_lines(job_block, max_lines=3)
+    log(f"[auto-accept] fallback key_lines={key_lines}")
+
+    for i in range(min(count, 50)):
+        job = jobs.nth(i)
+        try:
+            txt = await job.inner_text()
+        except Exception:
+            continue
+        if txt and all(k in txt for k in key_lines):
+            accept = job.locator("a.acceptButton").first
+            if await accept.count() == 0:
+                continue
+            await accept.scroll_into_view_if_needed()
+            await accept.click(timeout=5000)
+            return True
+
     return False
+
 
 async def _try_accept_with_details_fallback(page, container) -> bool:
     """
