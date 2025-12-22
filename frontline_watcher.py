@@ -1,4 +1,4 @@
-print("🚨 CODE VERSION V3-11 — Auto-accept On (+ bug fixes V1) + Filters + Datetime/Timestamps 🚨")
+print("🚨 CODE VERSION V3-20 — Auto-accept + Filters + Datetime/Timestamps 🚨")
 
 import asyncio
 import difflib
@@ -11,6 +11,12 @@ from datetime import datetime, timezone, timedelta
 
 from playwright.async_api import async_playwright, TimeoutError as PWTimeout
 
+#init
+SELFTEST_SENTINEL = "/tmp/frontline_selftest_done"
+SELFTEST_ENABLED = os.getenv("SELFTEST_ON_START", "1") == "1"
+DRY_RUN_ACCEPT = os.getenv("DRY_RUN_ACCEPT", "1") == "1"   # default safe
+
+
 def _ts() -> str:
     """Utah local time (MST, UTC-7)"""
     utah = datetime.now(timezone.utc) - timedelta(hours=7)
@@ -19,11 +25,6 @@ def _ts() -> str:
 def log(*args, **kwargs) -> None:
     """Print with timestamps prepended (shows in docker logs)."""
     print(_ts(), *args, **kwargs)
-
-# log("DEBUG JOB_INCLUDE_WORDS_ANY:", os.getenv("JOB_INCLUDE_WORDS_ANY"))
-# log("DEBUG JOB_INCLUDE_WORDS_COUNT:", os.getenv("JOB_INCLUDE_WORDS_COUNT"))
-# log("DEBUG JOB_EXCLUDE_WORDS_ANY:", os.getenv("JOB_EXCLUDE_WORDS_ANY"))
-# log("DEBUG JOB_EXCLUDE_WORDS_COUNT:", os.getenv("JOB_EXCLUDE_WORDS_COUNT"))
 
 LOGIN_URL = (
     "https://login.frontlineeducation.com/login"
@@ -36,15 +37,12 @@ JOBS_URL = "https://absencesub.frontlineeducation.com/Substitute/Home"
 # Randomized poll delay bounds (seconds)
 # MIN_DELAY = 16
 # MAX_DELAY = 31
-
 MIN_DELAY = 7
 MAX_DELAY = 16
-
 
 def get_random_delay() -> float:
     """Return a random delay between MIN_DELAY and MAX_DELAY seconds."""
     return random.uniform(MIN_DELAY, MAX_DELAY)
-
 
 def notify(message: str) -> None:
     topic = os.getenv("NTFY_TOPIC")
@@ -109,7 +107,6 @@ SUBJECT_WORDS = [
 # Weekday signatures used to recognize real job rows/blocks
 WEEKDAY_WORDS = ["Mon,", "Tue,", "Wed,", "Thu,", "Fri,", "Sat,", "Sun,"]
 
-
 # ---------------------------------------------------------------------
 # ENV PARSING HELPERS
 # ---------------------------------------------------------------------
@@ -126,7 +123,6 @@ def parse_word_list_env(env_name: str) -> list[str]:
         return []
     return [part.strip().lower() for part in raw.split(",") if part.strip()]
 
-
 def parse_int_env(env_name: str, default: int = 0) -> int:
     """
     Parse an integer env var. If missing or invalid, return default.
@@ -138,7 +134,6 @@ def parse_int_env(env_name: str, default: int = 0) -> int:
         return int(raw)
     except ValueError:
         return default
-
 
 def get_include_any_words() -> list[str]:
     """
@@ -186,7 +181,6 @@ def get_exclude_count_words() -> tuple[list[str], int]:
     words = parse_word_list_env("JOB_EXCLUDE_WORDS_COUNT")
     min_matches = parse_int_env("JOB_EXCLUDE_MIN_MATCHES", default=0)
     return words, max(min_matches, 0)
-
 
 # ---------------------------------------------------------------------
 # TEXT CLASSIFIERS
@@ -499,6 +493,126 @@ def apply_job_filters_to_snapshot(
 
     return "\n\n".join(kept_blocks)
 
+async def run_startup_selftest(page) -> None:
+    """
+    Runs once per container start.
+    If there are no real jobs, injects a mock job DOM and tests selector/click logic.
+    """
+
+    if not DRY_RUN_ACCEPT:
+        log("[selftest] DRY_RUN_ACCEPT=0 (LIVE). Skipping selftest to avoid real accept.")
+        return
+
+    try:
+        jobs = page.locator("#availableJobs tbody.job")
+        count = await jobs.count()
+        log(f"[selftest] tbody.job count={count}")
+
+        # If a real job exists, test against the first real job id
+        if count > 0:
+            first = jobs.first
+            conf_id = (await first.get_attribute("id")) or ""
+            log(f"[selftest] Real job found. Using id={conf_id!r} for selector test.")
+            job_block = (
+                f"CONFIRMATION #{conf_id}\n"
+                "TEACHER: Selftest, Real\n"
+                "TITLE: Selftest\n"
+                "DATE: Thu, 12/18/2025\n"
+                "TIME: 8:00 AM - 2:45 PM\n"
+                "DURATION: Full Day\n"
+                "LOCATION: Selftest School"
+            )
+            ok = await try_accept_job_block(page, job_block)
+            log(f"[selftest] try_accept_job_block returned {ok}")
+            return
+
+        # Otherwise inject a mock listing DOM
+        log("[selftest] No jobs visible; injecting mock #availableJobs DOM for testing.")
+
+        mock_conf = "999999999"
+        mock_html = f"""
+        <div id="availableJobs">
+          <table class="jobList fullwidth">
+            <tbody class="job" id="{mock_conf}" style="display: table-row-group;">
+              <tr class="summary">
+                <td colspan="5">
+                  <div>
+                    <div class="grid_6 alpha">
+                      <span class="name">Selftest, Teacher</span>
+                      <span class="title">Teacher-English</span>
+                    </div>
+                    <div class="grid_6 omega right floatRight">
+                      <span class="conf">Confirmation #<span class="confNum">{mock_conf}</span></span>
+                      <a class="rejectButton negative button" role="presentation"><span>Reject</span></a>
+                      <a class="acceptButton positiveDefault button"
+                         role="presentation"
+                         data-selftest="accept">
+                        <span>Accept</span>
+                      </a>
+                      <a class="showDetailsButton expand button" role="presentation"><span>See Details</span></a>
+                    </div>
+                  </div>
+                </td>
+              </tr>
+              <tr class="detail">
+                <td class="date"><span class="itemDate">Thu, 12/18/2025</span></td>
+                <td class="times"><span class="startTime">8:00 AM</span> - <span class="endTime">2:45 PM</span></td>
+                <td class="duration"><span class="durationName">Full Day</span></td>
+                <td class="location"><div class="locationName">Mock Middle School</div></td>
+                <td class="more"></td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        """
+
+        # Inject into the existing page WITHOUT navigating away
+        await page.evaluate(
+            """(html) => {
+                const host = document.querySelector("#availableJobs") || document.body;
+                host.insertAdjacentHTML("beforeend", html);
+                window.__accepted = false;
+            }""",
+            mock_html,
+        )
+
+        # Now run the normal accept code against the mock job
+        job_block = (
+            f"CONFIRMATION #{mock_conf}\n"
+            "TEACHER: Selftest, Teacher\n"
+            "TITLE: Teacher-English\n"
+            "DATE: Thu, 12/18/2025\n"
+            "TIME: 8:00 AM - 2:45 PM\n"
+            "DURATION: Full Day\n"
+            "LOCATION: Mock Middle School"
+        )
+
+        ok = await try_accept_job_block(page, job_block)
+        log(f"[selftest] try_accept_job_block returned {ok}")
+
+        # In DRY RUN we do NOT click; success means we located the Accept button safely.
+        if ok:
+            log("[selftest] ✅ DRY RUN selftest passed: Accept button located (no click).")
+        else:
+            log("[selftest] ❌ DRY RUN selftest failed: Accept button not located.")
+
+        # --- CLEAN UP MOCK JOB SO IT DOES NOT POLLUTE BASELINE ---
+        try:
+            await page.evaluate("""() => {
+                const fake = document.querySelector(
+                    '#availableJobs tbody.job[id="999999999"]'
+                );
+                if (fake) {
+                    fake.remove();
+                }
+            }""")
+            log("[selftest] mock job removed from DOM")
+        except Exception as e:
+            log(f"[selftest] failed to remove mock job: {e}")
+
+    except Exception as e:
+        log(f"[selftest] Exception: {e}")
 
 # ---------------------------------------------------------------------
 # AUTH / MAIN LOOP
@@ -607,9 +721,49 @@ def pick_job_key_lines(job_block: str, max_lines: int = 3) -> list[str]:
 
     return picked
 
+async def _handle_dom_confirm_if_present(page) -> bool:
+    """
+    Some confirmations are not JS dialogs; they're DOM modals.
+    We'll look for a visible modal-ish container with Accept/Cancel buttons.
+    """
+    modal = page.locator(
+        '[role="dialog"], .ui-dialog, .modal, .modal-dialog, .dialog'
+    ).filter(has_text="Accept").first
+
+    try:
+        if await modal.count() == 0:
+            return False
+        if not await modal.is_visible():
+            return False
+
+        log("[auto-accept] DOM confirm modal detected; attempting confirm Accept...")
+
+        # Prefer explicit Accept button inside modal
+        accept_btn = modal.locator(
+            'button:has-text("Accept"), a:has-text("Accept"), [role="button"]:has-text("Accept")'
+        ).first
+
+        if await accept_btn.count() > 0 and await accept_btn.is_visible():
+            try:
+                await accept_btn.click(timeout=4000)
+            except Exception:
+                await accept_btn.click(timeout=4000, force=True)
+
+            try:
+                await page.wait_for_load_state("networkidle", timeout=8000)
+            except Exception:
+                pass
+
+            log("[auto-accept] ✅ Confirmed Accept in DOM modal.")
+            return True
+
+    except Exception as e:
+        log(f"[auto-accept] DOM confirm handler error: {e}")
+
+    return False
+
 
 def extract_confirmation_id(job_block: str) -> str:
-    # expects a line like: "CONFIRMATION #742374234"
     for ln in job_block.splitlines():
         ln = ln.strip()
         if ln.upper().startswith("CONFIRMATION #"):
@@ -621,71 +775,142 @@ async def try_accept_job_block(page, job_block: str) -> bool:
     conf_id = extract_confirmation_id(job_block)
     log(f"[auto-accept] job_block conf_id='{conf_id}'")
 
-    # Log what jobs exist on the page right now
     jobs = page.locator("#availableJobs tbody.job")
     try:
         count = await jobs.count()
     except Exception:
         count = 0
-    log(f"[auto-accept] page currently has {count} tbody.job containers")
+    log(f"[auto-accept] page currently has {count} tbody.job containers; url={page.url}")
 
-    if conf_id:
-        target = page.locator(f'#availableJobs tbody.job#{conf_id}')
-        try:
-            if await target.count() == 0:
-                log(f"[auto-accept] ❌ No tbody.job found with id={conf_id}")
-                return False
+    if not conf_id:
+        log("[auto-accept] ❌ No confirmation id in job_block; cannot do reliable accept.")
+        return False
 
-            accept = target.locator("a.acceptButton").first
-            if await accept.count() == 0:
-                log(f"[auto-accept] ❌ Found tbody#{conf_id} but no a.acceptButton inside it")
-                # dump a little text to help debug
-                txt = await target.inner_text()
-                log(f"[auto-accept] tbody#{conf_id} text (first 300 chars): {txt[:300]}")
-                return False
+    # IMPORTANT: numeric id => use attribute selector, NOT #id
+    target = page.locator(f'#availableJobs tbody.job[id="{conf_id}"]')
 
-            await accept.scroll_into_view_if_needed()
+    try:
+        tcount = await target.count()
 
-            # Try normal click, then force click
-            try:
-                await accept.click(timeout=5000)
-            except Exception as e1:
-                log(f"[auto-accept] normal click failed: {e1}. Trying force click.")
-                await accept.click(timeout=5000, force=True)
+        log(
+            "[auto-accept] 🔍 JOB CONTAINER MATCH\n"
+            f"  ├─ confirmation_id             = {conf_id}\n"
+            f"  ├─ selector                    = #availableJobs tbody.job[id=\"{conf_id}\"]\n"
+            f"  ├─ total_tbody.job_on_page      = {count}\n"
+            f"  ├─ matching_tbody.job_for_id    = {tcount}\n"
+            f"  └─ page_url                    = {page.url}"
+        )
 
-            # wait for DOM to settle
-            try:
-                await page.wait_for_load_state("networkidle", timeout=8000)
-            except Exception:
-                pass
+        if tcount == 0:
+            # dump the ids we *do* see, for debugging
+            ids_seen = []
+            for i in range(min(count, 10)):
+                try:
+                    jid = await jobs.nth(i).get_attribute("id")
+                except Exception:
+                    jid = None
+                if jid:
+                    ids_seen.append(jid)
 
-            log(f"[auto-accept] ✅ Clicked Accept for confirmation #{conf_id}")
-            return True
-
-        except Exception as e:
-            log(f"[auto-accept] ❌ Exception during accept for #{conf_id}: {e}")
+            log(
+                "[auto-accept] ❌ NO MATCHING JOB CONTAINER\n"
+                f"  ├─ requested_confirmation_id   = {conf_id}\n"
+                f"  ├─ ids_seen_first10            = {ids_seen}\n"
+                "  └─ next_step                  = verify confirmation id in snapshot matches tbody.job id"
+            )
             return False
 
-    # Fallback: if somehow no conf id, do your old “key line” approach
-    log("[auto-accept] ⚠️ No confirmation id in job_block; falling back to text match.")
-    key_lines = pick_job_key_lines(job_block, max_lines=3)
-    log(f"[auto-accept] fallback key_lines={key_lines}")
+        accept = target.locator("a.acceptButton").first
+        acount = await accept.count()
 
-    for i in range(min(count, 50)):
-        job = jobs.nth(i)
         try:
-            txt = await job.inner_text()
+            accept_text = (await accept.inner_text()).strip() if acount > 0 else ""
         except Exception:
-            continue
-        if txt and all(k in txt for k in key_lines):
-            accept = job.locator("a.acceptButton").first
-            if await accept.count() == 0:
-                continue
-            await accept.scroll_into_view_if_needed()
-            await accept.click(timeout=5000)
+            accept_text = ""
+
+        log(
+            "[auto-accept] 🧩 ACCEPT BUTTON DISCOVERY\n"
+            f"  ├─ accept_locator              = a.acceptButton (scoped to matched tbody.job)\n"
+            f"  ├─ accept_count                = {acount}\n"
+            f"  └─ accept_inner_text           = {accept_text!r}"
+        )
+
+        if acount == 0:
+            # log a snippet of the text in the container
+            try:
+                txt = await target.inner_text()
+                snippet = txt[:400]
+            except Exception:
+                snippet = "(could not read inner_text)"
+
+            log(
+                "[auto-accept] ❌ ACCEPT BUTTON NOT FOUND INSIDE CONTAINER\n"
+                f"  ├─ confirmation_id             = {conf_id}\n"
+                f"  └─ container_text_snippet_400  = {snippet!r}"
+            )
+            return False
+
+        # visibility/enabled info
+        try:
+            vis = await accept.is_visible()
+        except Exception:
+            vis = None
+        try:
+            enabled = await accept.is_enabled()
+        except Exception:
+            enabled = None
+
+        log(
+            "[auto-accept] ✅ ACCEPT BUTTON READY CHECK\n"
+            f"  ├─ visible                     = {vis}\n"
+            f"  ├─ enabled                     = {enabled}\n"
+            f"  └─ dry_run_mode                = {DRY_RUN_ACCEPT}"
+        )
+
+        await accept.scroll_into_view_if_needed()
+
+        log(
+            "[auto-accept] 🎯 ACTION DECISION\n"
+            f"  ├─ confirmation_id             = {conf_id}\n"
+            f"  └─ next_action                 = "
+            + ("DRY RUN (no click)" if DRY_RUN_ACCEPT else "LIVE CLICK")
+        )
+
+        if DRY_RUN_ACCEPT:
+            log(
+                "[auto-accept] 🟡 DRY RUN COMPLETE\n"
+                f"  ├─ confirmed_accept_selector   = True\n"
+                f"  ├─ confirmed_container_match   = True\n"
+                f"  └─ would_click_confirmation    = {conf_id} (but did not click)"
+            )
             return True
 
-    return False
+
+        # LIVE mode click
+        try:
+            await accept.click(timeout=6000)
+
+        except Exception as e1:
+            log(f"[auto-accept] normal click failed: {e1} -> trying force click")
+            await accept.click(timeout=6000, force=True)
+
+        # settle
+        try:
+            await page.wait_for_load_state("networkidle", timeout=8000)
+        except Exception:
+            pass
+
+        # handle DOM confirm if present
+        confirmed = await _handle_dom_confirm_if_present(page)
+        if confirmed:
+            return True
+
+        log(f"[auto-accept] ✅ Clicked Accept for confirmation #{conf_id}")
+        return True
+
+    except Exception as e:
+        log(f"[auto-accept] ❌ Exception during accept for #{conf_id}: {e}")
+        return False
 
 
 async def _try_accept_with_details_fallback(page, container) -> bool:
@@ -748,50 +973,46 @@ async def _try_accept_with_details_fallback(page, container) -> bool:
 
     return False
 
-async def try_accept_job_block(page, job_block: str) -> bool:
-    key_lines = pick_job_key_lines(job_block, max_lines=3)
-    if not key_lines:
+async def try_accept_from_filtered_snapshot(page, filtered_snapshot: str) -> bool:
+    """
+    filtered_snapshot may contain:
+      - "NO_AVAILABLE_JOBS"
+      - one job block
+      - multiple job blocks separated by blank lines
+    Try to accept the first acceptable job block.
+    """
+    if not filtered_snapshot or filtered_snapshot.strip() == "NO_AVAILABLE_JOBS":
         return False
 
-    # Each job is a <tbody class="job" id="..."> containing both summary+detail
-    jobs = page.locator("#availableJobs tbody.job")
-    try:
-        count = await jobs.count()
-    except Exception:
-        count = 0
-
-    for i in range(count):
-        job = jobs.nth(i)
-        try:
-            txt = await job.inner_text()
-        except Exception:
-            continue
-
-        if not txt or not txt.strip():
-            continue
-
-        # Match: key lines appear somewhere inside this job's tbody (summary+detail)
-        if all(k in txt for k in key_lines):
-            # Click the Accept button INSIDE THIS JOB
-            accept = job.locator("a.acceptButton").first
-
-            try:
-                await accept.scroll_into_view_if_needed()
-                await accept.click(timeout=5000)
-            except Exception as e:
-                log(f"[auto-accept] click failed: {e}")
-                return False
-
-            # Small settle time (Frontline often does DOM updates after click)
-            try:
-                await page.wait_for_load_state("networkidle", timeout=8000)
-            except Exception:
-                pass
-
+    blocks = [b.strip() for b in filtered_snapshot.split("\n\n") if b.strip()]
+    for idx, block in enumerate(blocks):
+        log(f"[auto-accept] trying block index {idx}")
+        ok = await try_accept_job_block(page, block)
+        if ok:
+            log(f"[auto-accept] Accepted block index {idx}.")
             return True
 
     return False
 
+
+async def run_startup_selftest_once(page) -> None:
+    if not SELFTEST_ENABLED:
+        log("[selftest] disabled (SELFTEST_ON_START!=1)")
+        return
+
+    if os.path.exists(SELFTEST_SENTINEL):
+        log("[selftest] already ran for this container; skipping")
+        return
+
+    # Mark immediately so we don't loop if something goes wrong mid-test
+    try:
+        with open(SELFTEST_SENTINEL, "w") as f:
+            f.write(datetime.utcnow().isoformat() + "Z")
+    except Exception as e:
+        log(f"[selftest] could not write sentinel: {e}")
+
+    # Run the real injector-based selftest (works even when there are no real jobs)
+    await run_startup_selftest(page)
 
 async def main() -> None:
     username = os.getenv("FRONTLINE_USERNAME")
@@ -831,6 +1052,8 @@ async def main() -> None:
     relogin_failures = 0
     MAX_RELOGIN_FAILURES = 5
 
+    log(f"[auto-accept] DRY_RUN_ACCEPT={DRY_RUN_ACCEPT}")
+
     async with async_playwright() as p:
 
         browser = await p.chromium.launch(headless=True)
@@ -850,6 +1073,8 @@ async def main() -> None:
                 await page.goto(JOBS_URL)
 
         await page.wait_for_load_state("networkidle")
+
+        await run_startup_selftest_once(page)
 
         baseline = await get_available_jobs_snapshot(page)
         log("[*] Monitoring started.")
