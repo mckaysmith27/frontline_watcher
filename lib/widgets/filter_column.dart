@@ -1,0 +1,336 @@
+import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
+import '../providers/filters_provider.dart';
+import 'tag_chip.dart';
+
+class FilterColumn extends StatefulWidget {
+  final String category;
+  final List<String> tags;
+  final bool isPremium;
+  final bool isUnlocked;
+
+  const FilterColumn({
+    super.key,
+    required this.category,
+    required this.tags,
+    this.isPremium = false,
+    this.isUnlocked = false,
+  });
+
+  @override
+  State<FilterColumn> createState() => _FilterColumnState();
+}
+
+class _FilterColumnState extends State<FilterColumn> {
+  final TextEditingController _searchController = TextEditingController();
+  String _searchQuery = '';
+
+  @override
+  void initState() {
+    super.initState();
+    _searchController.addListener(() {
+      setState(() {
+        _searchQuery = _searchController.text.toLowerCase();
+      });
+    });
+  }
+
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
+  }
+
+  String _getTitle() {
+    return widget.category
+        .split('-')
+        .map((word) => word[0].toUpperCase() + word.substring(1))
+        .join(' ');
+  }
+
+  List<String> _getFilteredTags() {
+    if (_searchQuery.isEmpty) {
+      return widget.tags;
+    }
+    return widget.tags
+        .where((tag) => tag.toLowerCase().contains(_searchQuery))
+        .toList();
+  }
+
+  bool _isTagUnique(String tag) {
+    final filtersProvider = Provider.of<FiltersProvider>(context, listen: false);
+    for (var category in filtersProvider.filtersDict.keys) {
+      if (category != widget.category) {
+        if (filtersProvider.filtersDict[category]?.contains(tag.toLowerCase()) ?? false) {
+          return false;
+        }
+      }
+    }
+    return true;
+  }
+
+  Future<void> _handleAddCustomTag() async {
+    if (_searchQuery.isEmpty) return;
+    
+    final tag = _searchQuery.trim();
+    if (widget.tags.contains(tag)) return;
+    
+    if (!_isTagUnique(tag)) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('This keyword already exists in another category'),
+          ),
+        );
+      }
+      return;
+    }
+
+    final filtersProvider = Provider.of<FiltersProvider>(context, listen: false);
+    await filtersProvider.addCustomTag(widget.category, tag);
+    if (mounted) {
+      _searchController.clear();
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final filtersProvider = Provider.of<FiltersProvider>(context);
+    final filteredTags = _getFilteredTags();
+    final isCustomTag = _searchQuery.isNotEmpty &&
+        !widget.tags.contains(_searchQuery) &&
+        _isTagUnique(_searchQuery);
+
+    return Container(
+      decoration: BoxDecoration(
+        color: widget.isPremium && !widget.isUnlocked
+            ? Theme.of(context).colorScheme.surface.withOpacity(0.5)
+            : null,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(
+          color: widget.isPremium && !widget.isUnlocked
+              ? Colors.grey
+              : Colors.transparent,
+        ),
+      ),
+      padding: const EdgeInsets.all(16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              if (widget.isPremium && !widget.isUnlocked)
+                const Icon(Icons.lock, size: 20, color: Colors.grey),
+              if (widget.isPremium && !widget.isUnlocked)
+                const SizedBox(width: 8),
+              Text(
+                _getTitle(),
+                style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                      fontWeight: FontWeight.bold,
+                      color: widget.isPremium && !widget.isUnlocked
+                          ? Colors.grey
+                          : null,
+                    ),
+              ),
+              const Spacer(),
+              if (widget.isPremium && !widget.isUnlocked)
+                TextButton.icon(
+                  onPressed: () {
+                    _showUnlockDialog(context);
+                  },
+                  icon: const Icon(Icons.lock_open, size: 18),
+                  label: const Text('Unlock'),
+                ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          TextField(
+            controller: _searchController,
+            enabled: widget.isUnlocked || !widget.isPremium,
+            decoration: InputDecoration(
+              hintText: 'Search or add keyword...',
+              border: const OutlineInputBorder(),
+              prefixIcon: const Icon(Icons.search),
+              suffixIcon: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  if (_searchQuery.isNotEmpty)
+                    IconButton(
+                      icon: const Icon(Icons.clear),
+                      onPressed: () {
+                        _searchController.clear();
+                      },
+                    ),
+                  if (isCustomTag)
+                    IconButton(
+                      icon: const Icon(Icons.add),
+                      onPressed: _handleAddCustomTag,
+                    ),
+                ],
+              ),
+            ),
+          ),
+          const SizedBox(height: 12),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: filteredTags.map((tag) {
+              final isCustom = filtersProvider.customTags[widget.category]?.contains(tag) ?? false;
+              final state = filtersProvider.tagStates[tag] ?? TagState.gray;
+              
+              return TagChip(
+                tag: tag,
+                state: state,
+                isPremium: widget.isPremium,
+                isUnlocked: widget.isUnlocked,
+                isCustom: isCustom,
+                onTap: () async {
+                  if (widget.isPremium && !widget.isUnlocked) return;
+                  await filtersProvider.toggleTag(widget.category, tag);
+                },
+                onDelete: isCustom
+                    ? () {
+                        filtersProvider.removeCustomTag(widget.category, tag);
+                      }
+                    : null,
+              );
+            }).toList(),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showUnlockDialog(BuildContext context) {
+    showDialog(
+      context: context,
+      builder: (context) => UnlockPremiumDialog(
+        category: widget.category,
+        title: _getTitle(),
+      ),
+    );
+  }
+}
+
+class UnlockPremiumDialog extends StatefulWidget {
+  final String category;
+  final String title;
+
+  const UnlockPremiumDialog({
+    super.key,
+    required this.category,
+    required this.title,
+  });
+
+  @override
+  State<UnlockPremiumDialog> createState() => _UnlockPremiumDialogState();
+}
+
+class _UnlockPremiumDialogState extends State<UnlockPremiumDialog> {
+  final TextEditingController _promoController = TextEditingController();
+  bool _isLoading = false;
+
+  @override
+  void dispose() {
+    _promoController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _handleUnlock() async {
+    final promoCode = _promoController.text.trim();
+    if (promoCode.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Please enter a promo code')),
+      );
+      return;
+    }
+
+    setState(() => _isLoading = true);
+
+    try {
+      final filtersProvider = Provider.of<FiltersProvider>(context, listen: false);
+      await filtersProvider.unlockPremium(widget.category, promoCode);
+      
+      if (mounted) {
+        Navigator.pop(context);
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Premium unlocked!')),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Invalid promo code: $e')),
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _isLoading = false);
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: Text('Unlock ${widget.title}'),
+      content: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const Text('Enter a promo code to unlock this premium feature:'),
+          const SizedBox(height: 16),
+          TextField(
+            controller: _promoController,
+            decoration: const InputDecoration(
+              labelText: 'Promo Code',
+              border: OutlineInputBorder(),
+            ),
+            textCapitalization: TextCapitalization.characters,
+          ),
+          const SizedBox(height: 16),
+          TextButton(
+            onPressed: () {
+              // Show payment options
+              _showPaymentOptions(context);
+            },
+            child: const Text('Or purchase to unlock'),
+          ),
+        ],
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(context),
+          child: const Text('Cancel'),
+        ),
+        ElevatedButton(
+          onPressed: _isLoading ? null : _handleUnlock,
+          child: _isLoading
+              ? const SizedBox(
+                  width: 20,
+                  height: 20,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                )
+              : const Text('Unlock'),
+        ),
+      ],
+    );
+  }
+
+  void _showPaymentOptions(BuildContext context) {
+    // Payment integration would go here
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Purchase Premium'),
+        content: const Text('Payment integration coming soon'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('OK'),
+          ),
+        ],
+      ),
+    );
+  }
+}
+

@@ -1,4 +1,4 @@
-print("🚨 CODE VERSION V3-20 — Auto-accept + Filters + Datetime/Timestamps 🚨")
+print("🚨 CODE VERSION V4 — Auto-accept + Filters + Datetime/Timestamps 🚨")
 
 import asyncio
 import difflib
@@ -10,6 +10,10 @@ from urllib import request
 from datetime import datetime, timezone, timedelta
 
 from playwright.async_api import async_playwright, TimeoutError as PWTimeout
+from dotenv import load_dotenv
+
+# Load environment variables from .env file
+load_dotenv()
 
 #init
 SELFTEST_SENTINEL = "/tmp/frontline_selftest_done"
@@ -671,7 +675,7 @@ async def ensure_logged_in(page, username: str, password: str) -> bool:
         await pass_input.press("Enter")
 
     try:
-        await page.wait_for_load_state("networkidle", timeout=15000)
+        await page.wait_for_load_state("load", timeout=30000)
     except Exception:
         pass
 
@@ -750,7 +754,7 @@ async def _handle_dom_confirm_if_present(page) -> bool:
                 await accept_btn.click(timeout=4000, force=True)
 
             try:
-                await page.wait_for_load_state("networkidle", timeout=8000)
+                await page.wait_for_load_state("load", timeout=30000)
             except Exception:
                 pass
 
@@ -896,7 +900,7 @@ async def try_accept_job_block(page, job_block: str) -> bool:
 
         # settle
         try:
-            await page.wait_for_load_state("networkidle", timeout=8000)
+            await page.wait_for_load_state("load", timeout=30000)
         except Exception:
             pass
 
@@ -928,7 +932,7 @@ async def _try_accept_with_details_fallback(page, container) -> bool:
             await accept.scroll_into_view_if_needed()
             await accept.click(timeout=3000)
             try:
-                await page.wait_for_load_state("networkidle", timeout=8000)
+                await page.wait_for_load_state("load", timeout=30000)
             except Exception:
                 pass
             return True
@@ -964,7 +968,7 @@ async def _try_accept_with_details_fallback(page, container) -> bool:
             await global_accept.scroll_into_view_if_needed()
             await global_accept.click(timeout=3000)
             try:
-                await page.wait_for_load_state("networkidle", timeout=8000)
+                await page.wait_for_load_state("load", timeout=30000)
             except Exception:
                 pass
             return True
@@ -1007,7 +1011,7 @@ async def run_startup_selftest_once(page) -> None:
     # Mark immediately so we don't loop if something goes wrong mid-test
     try:
         with open(SELFTEST_SENTINEL, "w") as f:
-            f.write(datetime.utcnow().isoformat() + "Z")
+            f.write(datetime.now(timezone.utc).isoformat() + "Z")
     except Exception as e:
         log(f"[selftest] could not write sentinel: {e}")
 
@@ -1072,7 +1076,7 @@ async def main() -> None:
                 print("[auth] Login appears successful, returning to jobs page.")
                 await page.goto(JOBS_URL)
 
-        await page.wait_for_load_state("networkidle")
+        await page.wait_for_load_state("load", timeout=60000)
 
         await run_startup_selftest_once(page)
 
@@ -1088,9 +1092,11 @@ async def main() -> None:
 
         while True:
             try:
-                await page.reload(wait_until="networkidle")
-            except PWTimeout:
-                log("[!] reload timeout")
+                await page.reload(wait_until="load")
+            except (PWTimeout, Exception) as e:
+                log(f"[!] reload error: {e}")
+                # Wait a bit before retrying
+                await asyncio.sleep(2)
 
             if "login.frontlineeducation.com" in page.url:
                 relogin_failures += 1
@@ -1112,7 +1118,7 @@ async def main() -> None:
                 if ok:
                     print("[auth] Login attempt looks OK; going back to jobs page.")
                     try:
-                        await page.goto(JOBS_URL, wait_until="networkidle", timeout=60000)
+                        await page.goto(JOBS_URL, wait_until="load", timeout=60000)
                         relogin_failures = 0  # reset on success
                     except Exception as e:
                         print(f"[auth] goto(JOBS_URL) failed after login: {e}")

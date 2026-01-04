@@ -1,0 +1,276 @@
+import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
+import 'package:image_picker/image_picker.dart';
+import '../../providers/auth_provider.dart';
+import '../../providers/theme_provider.dart';
+import 'password_reset_screen.dart';
+import 'agreements_screen.dart';
+import 'help_screen.dart';
+
+class ProfileScreen extends StatelessWidget {
+  const ProfileScreen({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    final authProvider = Provider.of<AuthProvider>(context);
+    final themeProvider = Provider.of<ThemeProvider>(context);
+
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('Profile'),
+        actions: [
+          IconButton(
+            icon: Icon(
+              themeProvider.themeMode == ThemeMode.dark
+                  ? Icons.light_mode
+                  : Icons.dark_mode,
+            ),
+            onPressed: () {
+              themeProvider.toggleTheme();
+            },
+          ),
+        ],
+      ),
+      body: SingleChildScrollView(
+        child: Column(
+          children: [
+            const SizedBox(height: 24),
+            // Profile Photo
+            Stack(
+              children: [
+                CircleAvatar(
+                  radius: 60,
+                  backgroundImage: authProvider.user?.photoURL != null
+                      ? NetworkImage(authProvider.user!.photoURL!)
+                      : null,
+                  child: authProvider.user?.photoURL == null
+                      ? Text(
+                          authProvider.user?.email?[0].toUpperCase() ?? 'U',
+                          style: const TextStyle(fontSize: 40),
+                        )
+                      : null,
+                ),
+                Positioned(
+                  bottom: 0,
+                  right: 0,
+                  child: CircleAvatar(
+                    radius: 20,
+                    backgroundColor: Theme.of(context).colorScheme.primary,
+                    child: IconButton(
+                      icon: const Icon(Icons.camera_alt, size: 20),
+                      color: Colors.white,
+                      onPressed: () => _pickProfilePhoto(context),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 16),
+            Text(
+              authProvider.user?.email ?? 'User',
+              style: Theme.of(context).textTheme.titleLarge,
+            ),
+            const SizedBox(height: 32),
+            // Settings List
+            _buildSettingsItem(
+              context,
+              icon: Icons.person,
+              title: 'Nickname',
+              subtitle: 'Change your display name',
+              onTap: () => _showNicknameDialog(context),
+            ),
+            _buildSettingsItem(
+              context,
+              icon: Icons.verified,
+              title: 'Become a Verified Sub',
+              subtitle: 'Verify your identity',
+              onTap: () => _showVerificationDialog(context),
+            ),
+            _buildSettingsItem(
+              context,
+              icon: Icons.lock,
+              title: 'Reset Password',
+              subtitle: 'Change your password',
+              onTap: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) => const PasswordResetScreen(),
+                  ),
+                );
+              },
+            ),
+            _buildSettingsItem(
+              context,
+              icon: Icons.description,
+              title: 'Agreements',
+              subtitle: 'View terms and conditions',
+              onTap: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) => const AgreementsScreen(),
+                  ),
+                );
+              },
+            ),
+            _buildSettingsItem(
+              context,
+              icon: Icons.help,
+              title: 'Help & Support',
+              subtitle: 'Get help and contact support',
+              onTap: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) => const HelpScreen(),
+                  ),
+                );
+              },
+            ),
+            const Divider(),
+            _buildSettingsItem(
+              context,
+              icon: Icons.logout,
+              title: 'Sign Out',
+              subtitle: 'Sign out of your account',
+              onTap: () async {
+                final confirmed = await showDialog<bool>(
+                  context: context,
+                  builder: (context) => AlertDialog(
+                    title: const Text('Sign Out'),
+                    content: const Text('Are you sure you want to sign out?'),
+                    actions: [
+                      TextButton(
+                        onPressed: () => Navigator.pop(context, false),
+                        child: const Text('Cancel'),
+                      ),
+                      ElevatedButton(
+                        onPressed: () => Navigator.pop(context, true),
+                        child: const Text('Sign Out'),
+                      ),
+                    ],
+                  ),
+                );
+
+                if (confirmed == true) {
+                  await authProvider.signOut();
+                }
+              },
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildSettingsItem(
+    BuildContext context, {
+    required IconData icon,
+    required String title,
+    required String subtitle,
+    required VoidCallback onTap,
+  }) {
+    return ListTile(
+      leading: Icon(icon),
+      title: Text(title),
+      subtitle: Text(subtitle),
+      trailing: const Icon(Icons.chevron_right),
+      onTap: onTap,
+    );
+  }
+
+  Future<void> _pickProfilePhoto(BuildContext context) async {
+    final picker = ImagePicker();
+    final image = await picker.pickImage(source: ImageSource.gallery);
+    if (image != null) {
+      // Upload to Firebase Storage and update user profile
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Profile photo updated')),
+      );
+    }
+  }
+
+  void _showNicknameDialog(BuildContext context) {
+    final controller = TextEditingController();
+    final authProvider = Provider.of<AuthProvider>(context, listen: false);
+
+    showDialog(
+      context: context,
+      builder: (context) => WillPopScope(
+        onWillPop: () async {
+          controller.dispose();
+          return true;
+        },
+        child: AlertDialog(
+          title: const Text('Change Nickname'),
+          content: TextField(
+            controller: controller,
+            decoration: const InputDecoration(
+              labelText: 'Nickname',
+              border: OutlineInputBorder(),
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () {
+                controller.dispose();
+                Navigator.pop(context);
+              },
+              child: const Text('Cancel'),
+            ),
+            ElevatedButton(
+              onPressed: () async {
+                // Update nickname in Firestore
+                controller.dispose();
+                Navigator.pop(context);
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('Nickname updated')),
+                );
+              },
+              child: const Text('Save'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _showVerificationDialog(BuildContext context) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Become a Verified Sub'),
+        content: const Text(
+          'To become verified, please upload a photo of yourself holding your name badge next to your face.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            onPressed: () {
+              Navigator.pop(context);
+              _pickVerificationPhoto(context);
+            },
+            child: const Text('Upload Photo'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _pickVerificationPhoto(BuildContext context) async {
+    final picker = ImagePicker();
+    final image = await picker.pickImage(source: ImageSource.camera);
+    if (image != null) {
+      // Upload verification photo
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Verification photo submitted for review')),
+      );
+    }
+  }
+}
+
+
