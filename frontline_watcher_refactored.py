@@ -155,9 +155,10 @@ def should_run_aggressive() -> bool:
     from datetime import time as dt_time
     import json
     
-    # Default hot windows if not configured
+    # Default hot windows: 4:30am-9:30am and 11:30am-11:00pm
     default_windows = [
-        (dt_time(6, 0), dt_time(20, 0)),  # 6 AM - 8 PM (full day by default)
+        (dt_time(4, 30), dt_time(9, 30)),  # 4:30 AM - 9:30 AM
+        (dt_time(11, 30), dt_time(23, 0)),  # 11:30 AM - 11:00 PM
     ]
     
     # Try to get windows from environment variable (JSON format)
@@ -460,13 +461,17 @@ def publish_job_event(job_block: str) -> bool:
         'jobData': job_data,
     }
     
-    # Write to Firestore
+    # Write to Firestore (critical - must succeed)
     try:
         event_ref.set(job_event)
         log(f"[publish] ✅ Published job event: {event_id[:16]}... (jobId: {job_id})")
-        
-        # Send NTFY notification for new job (raw job data, no filtering)
-        # Format matches original code style for consistency
+    except Exception as e:
+        log(f"[publish] ❌ Error publishing event to Firestore: {e}")
+        return False
+    
+    # Send NTFY notification (non-critical - don't fail if this errors)
+    # This is separate so Firestore write success is independent of notification
+    try:
         message = (
             f"🆕 NEW FRONTLINE JOB\n\n"
             f"{job_block}\n\n"
@@ -475,11 +480,11 @@ def publish_job_event(job_block: str) -> bool:
         )
         notify(message)
         log(f"[notify] Sent NTFY notification for job {job_id} to {get_ntfy_topic()}")
-        
-        return True
     except Exception as e:
-        log(f"[publish] ❌ Error publishing event: {e}")
-        return False
+        # Log but don't fail - job event was already written to Firestore
+        log(f"[notify] Warning: Failed to send NTFY notification (job event still recorded): {e}")
+    
+    return True
 
 # ---------------------------------------------------------------------
 # SCRAPING JOB BLOCKS
@@ -581,17 +586,50 @@ async def get_available_jobs_snapshot(page) -> str:
                 unique_blocks.append(block)
         return "\n\n".join(unique_blocks)
 
-    body_text = ""
+    # No jobs found - check for "no jobs" message using smaller, targeted selectors
+    # Avoid expensive body.inner_text() call
+    no_jobs_text = ""
     try:
-        body_text = await page.inner_text("body")
+        # Try common selectors for "no jobs" messages first
+        no_jobs_selectors = [
+            "#availableJobs .no-jobs",
+            "#availableJobs .empty",
+            "#availableJobs .no-available",
+            ".no-available-jobs",
+            ".empty-jobs",
+            "[class*='no-jobs']",
+            "[class*='no-available']",
+            "[id*='no-jobs']",
+        ]
+        
+        for selector in no_jobs_selectors:
+            try:
+                element = page.locator(selector).first
+                if await element.count() > 0:
+                    no_jobs_text = await element.inner_text()
+                    break
+            except Exception:
+                continue
+        
+        # If no specific selector found, try the availableJobs container (smaller than body)
+        if not no_jobs_text:
+            try:
+                available_jobs_container = page.locator("#availableJobs").first
+                if await available_jobs_container.count() > 0:
+                    no_jobs_text = await available_jobs_container.inner_text()
+            except Exception:
+                pass
     except Exception:
         pass
 
-    body_flat = " ".join(body_text.split())
-    for marker in NO_JOBS_MARKERS:
-        if marker in body_flat:
-            return "NO_AVAILABLE_JOBS"
+    # Check if any "no jobs" markers are in the text
+    if no_jobs_text:
+        no_jobs_flat = " ".join(no_jobs_text.split())
+        for marker in NO_JOBS_MARKERS:
+            if marker in no_jobs_flat:
+                return "NO_AVAILABLE_JOBS"
 
+    # Fallback: if we can't find jobs and can't find "no jobs" message, assume no jobs
     return "NO_AVAILABLE_JOBS"
 
 # ---------------------------------------------------------------------
@@ -652,7 +690,7 @@ async def ensure_logged_in(page, username: str, password: str) -> bool:
         await pass_input.press("Enter")
 
     try:
-        await page.wait_for_load_state("networkidle", timeout=15000)
+        await page.wait_for_load_state("domcontentloaded", timeout=15000)
     except Exception:
         pass
 
@@ -707,7 +745,7 @@ async def main() -> None:
                 print("[auth] Login appears successful, returning to jobs page.")
                 await page.goto(JOBS_URL)
 
-        await page.wait_for_load_state("networkidle")
+        await page.wait_for_load_state("domcontentloaded")
 
         baseline = await get_available_jobs_snapshot(page)
         log("[*] Monitoring started.")
@@ -718,12 +756,15 @@ async def main() -> None:
         notify(startup_message)
         log(f"[notify] Sent startup notification to {get_ntfy_topic()}")
 
-        # Track which jobs we've already published
+        # Track which jobs we've already published in this session (bounded LRU cache)
+        # Firestore already handles deduplication, but this helps avoid redundant checks
+        # Limit to last 100 jobs to prevent unbounded growth
+        MAX_SESSION_CACHE = 100
         published_job_ids = set()
 
         while True:
             try:
-                await page.reload(wait_until="networkidle")
+                await page.reload(wait_until="domcontentloaded")
             except PWTimeout:
                 log("[!] reload timeout")
             except Exception as e:
@@ -749,7 +790,7 @@ async def main() -> None:
                 if ok:
                     print("[auth] Login attempt looks OK; going back to jobs page.")
                     try:
-                        await page.goto(JOBS_URL, wait_until="networkidle", timeout=60000)
+                        await page.goto(JOBS_URL, wait_until="domcontentloaded", timeout=60000)
                         relogin_failures = 0  # reset on success
                     except Exception as e:
                         print(f"[auth] goto(JOBS_URL) failed after login: {e}")
@@ -786,6 +827,11 @@ async def main() -> None:
                         # Try to publish (this will send NTFY notification if it's a new job)
                         published = publish_job_event(block)
                         if published:
+                            # Add to session cache (bounded LRU)
+                            if len(published_job_ids) >= MAX_SESSION_CACHE:
+                                # Remove oldest entry (simple FIFO since we can't track access order easily)
+                                # In practice, Firestore deduplication handles this, so we just clear when full
+                                published_job_ids.clear()
                             published_job_ids.add(job_id)
                             log(f"[publish] ✅ Published and notified for job {job_id}")
                         else:

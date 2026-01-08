@@ -35,9 +35,18 @@ exports.onJobEventCreated = functions.firestore
         continue;
       }
       
+      // Create user-level job event record
+      try {
+        await createUserJobEventRecord(user.uid, eventId, event);
+        console.log(`[Dispatcher] Created user job event record for user ${user.uid}`);
+      } catch (error) {
+        console.error(`[Dispatcher] Error creating user job event record: ${error}`);
+        // Continue even if record creation fails
+      }
+      
       // Send FCM notification
       try {
-        await sendFCMNotification(user, event);
+        await sendFCMNotification(user, event, eventId);
         successCount++;
         
         // Mark as delivered
@@ -51,6 +60,17 @@ exports.onJobEventCreated = functions.firestore
       } catch (error) {
         failureCount++;
         console.error(`[Dispatcher] ❌ Failed to send to user ${user.uid}:`, error);
+      }
+      
+      // Send email notification if enabled
+      if (user.emailNotifications && user.email) {
+        try {
+          await sendEmailNotification(user, event, eventId);
+          console.log(`[Dispatcher] ✅ Sent email notification to user ${user.uid}`);
+        } catch (error) {
+          console.error(`[Dispatcher] ❌ Failed to send email to user ${user.uid}:`, error);
+          // Don't count email failures as critical
+        }
       }
     }
     
@@ -223,9 +243,89 @@ function matchesUserFilters(event, user) {
 }
 
 /**
- * Send FCM notification to a user
+ * Create user-level job event record in users/{uid}/matched_jobs/{eventId}
  */
-async function sendFCMNotification(user, event) {
+async function createUserJobEventRecord(userId, eventId, event) {
+  const db = admin.firestore();
+  const userJobRef = db.collection('users').doc(userId).collection('matched_jobs').doc(eventId);
+  
+  // Extract matched keywords for this user
+  const automationConfig = event.automationConfig || {};
+  const includedWords = automationConfig.includedWords || [];
+  const matchedKeywords = [];
+  
+  const text = (event.snapshotText || '').toLowerCase();
+  const keywords = new Set((event.keywords || []).map(k => k.toLowerCase()));
+  
+  // Find which included keywords matched
+  for (const term of includedWords) {
+    if (matchesKeyword(text, keywords, term)) {
+      matchedKeywords.push(term);
+    }
+  }
+  
+  // Organize keywords by category
+  const organizedKeywords = organizeKeywords(event.keywords || [], matchedKeywords);
+  
+  const userJobEvent = {
+    eventId: eventId,
+    jobId: event.jobId,
+    jobUrl: event.jobUrl,
+    districtId: event.districtId,
+    controllerId: event.controllerId,
+    snapshotText: event.snapshotText,
+    jobData: event.jobData,
+    matchedKeywords: matchedKeywords,
+    organizedKeywords: organizedKeywords,
+    allKeywords: event.keywords || [],
+    createdAt: admin.firestore.FieldValue.serverTimestamp(),
+    notifiedAt: admin.firestore.FieldValue.serverTimestamp(),
+  };
+  
+  await userJobRef.set(userJobEvent);
+  return userJobEvent;
+}
+
+/**
+ * Organize keywords into categories for better presentation
+ */
+function organizeKeywords(allKeywords, matchedKeywords) {
+  const organized = {
+    matched: matchedKeywords,
+    subject: [],
+    duration: [],
+    location: [],
+    date: [],
+    other: [],
+  };
+  
+  const durationKeywords = ['half', 'full', 'full day', 'half day'];
+  const subjectKeywords = ['math', 'science', 'english', 'history', 'art', 'pe', 'sped', 'esl', 'ell'];
+  
+  for (const keyword of allKeywords) {
+    const kw = keyword.toLowerCase();
+    if (matchedKeywords.includes(kw)) {
+      // Already in matched
+      continue;
+    } else if (durationKeywords.some(d => kw.includes(d))) {
+      organized.duration.push(keyword);
+    } else if (subjectKeywords.some(s => kw.includes(s))) {
+      organized.subject.push(keyword);
+    } else if (kw.match(/^\d{1,2}_\d{1,2}_\d{4}$/)) {
+      // Date format: 1_5_2026
+      organized.date.push(keyword);
+    } else if (kw.length > 3) {
+      organized.other.push(keyword);
+    }
+  }
+  
+  return organized;
+}
+
+/**
+ * Send FCM notification to a user with enhanced data
+ */
+async function sendFCMNotification(user, event, eventId) {
   if (!user.fcmTokens || user.fcmTokens.length === 0) {
     console.log(`[Dispatcher] User ${user.uid} has no FCM tokens, skipping`);
     return;
@@ -243,18 +343,67 @@ async function sendFCMNotification(user, event) {
     }
   }
   
+  // Organize keywords for notification
+  const automationConfig = user.automationConfig || {};
+  const includedWords = automationConfig.includedWords || [];
+  const matchedKeywords = [];
+  const text = (event.snapshotText || '').toLowerCase();
+  const keywords = new Set((event.keywords || []).map(k => k.toLowerCase()));
+  
+  for (const term of includedWords) {
+    if (matchesKeyword(text, keywords, term)) {
+      matchedKeywords.push(term);
+    }
+  }
+  
+  const organizedKeywords = organizeKeywords(event.keywords || [], matchedKeywords);
+  
+  // Build notification body with keywords
+  let notificationBody = jobTitle.length > 100 ? jobTitle.substring(0, 100) + '...' : jobTitle;
+  if (matchedKeywords.length > 0) {
+    notificationBody += `\nKeywords: ${matchedKeywords.slice(0, 3).join(', ')}`;
+  }
+  
+  // Deep link to app with job URL
+  const deepLink = `sub67://job/${eventId}?url=${encodeURIComponent(event.jobUrl || '')}`;
+  
   const message = {
     notification: {
       title: 'New Job Available',
-      body: jobTitle.length > 100 ? jobTitle.substring(0, 100) + '...' : jobTitle,
+      body: notificationBody,
     },
     data: {
       jobUrl: event.jobUrl || '',
       jobId: event.jobId || '',
-      eventId: event.id || '',
+      eventId: eventId,
       districtId: event.districtId || '',
+      deepLink: deepLink,
+      matchedKeywords: JSON.stringify(matchedKeywords),
+      organizedKeywords: JSON.stringify(organizedKeywords),
+      type: 'job_match',
     },
     tokens: user.fcmTokens,
+    android: {
+      priority: 'high',
+      notification: {
+        channelId: 'job_notifications',
+        sound: 'default',
+        priority: 'high',
+        clickAction: 'FLUTTER_NOTIFICATION_CLICK',
+      },
+    },
+    apns: {
+      headers: {
+        'apns-priority': '10',
+      },
+      payload: {
+        aps: {
+          sound: 'default',
+          badge: 1,
+          'content-available': 1,
+        },
+      },
+    },
   };
   
   try {
@@ -288,3 +437,58 @@ async function sendFCMNotification(user, event) {
   }
 }
 
+/**
+ * Send email notification to user (optional)
+ */
+async function sendEmailNotification(user, event, eventId) {
+  // This requires a service like SendGrid, Mailgun, or Firebase Extensions
+  // For now, we'll use a placeholder that can be implemented with your email service
+  
+  const automationConfig = user.automationConfig || {};
+  const includedWords = automationConfig.includedWords || [];
+  const matchedKeywords = [];
+  const text = (event.snapshotText || '').toLowerCase();
+  const keywords = new Set((event.keywords || []).map(k => k.toLowerCase()));
+  
+  for (const term of includedWords) {
+    if (matchesKeyword(text, keywords, term)) {
+      matchedKeywords.push(term);
+    }
+  }
+  
+  const organizedKeywords = organizeKeywords(event.keywords || [], matchedKeywords);
+  
+  // Extract job details
+  const jobTitle = event.jobData?.title || 'New Job Available';
+  const jobDate = event.jobData?.date || 'Date TBD';
+  const jobLocation = event.jobData?.location || 'Location TBD';
+  
+  // Deep link to app
+  const appLink = `https://sub67.app/job/${eventId}?url=${encodeURIComponent(event.jobUrl || '')}`;
+  
+  // Email content
+  const emailSubject = `New Job Match: ${jobTitle}`;
+  const emailBody = `
+    <h2>New Job Available!</h2>
+    <p><strong>Title:</strong> ${jobTitle}</p>
+    <p><strong>Date:</strong> ${jobDate}</p>
+    <p><strong>Location:</strong> ${jobLocation}</p>
+    
+    ${matchedKeywords.length > 0 ? `
+    <h3>Matched Keywords:</h3>
+    <ul>
+      ${matchedKeywords.map(kw => `<li>${kw}</li>`).join('')}
+    </ul>
+    ` : ''}
+    
+    <p><a href="${appLink}">View Job in Sub67 App</a></p>
+    <p><small>This job matched your filter preferences. Open the app to accept it quickly!</small></p>
+  `;
+  
+  // TODO: Implement actual email sending using your email service
+  // Example with SendGrid, Mailgun, or Firebase Extensions
+  console.log(`[Email] Would send email to ${user.email} with subject: ${emailSubject}`);
+  
+  // Placeholder - implement with your email service
+  // await sendEmailViaService(user.email, emailSubject, emailBody);
+}

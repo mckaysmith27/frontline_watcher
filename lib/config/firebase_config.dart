@@ -37,23 +37,23 @@ class DefaultFirebaseOptions {
     measurementId: "G-HZ49M6D6RC"
   };
 
-  // TODO: Add Android configuration when needed
+  // Android configuration from google-services.json
   static const FirebaseOptions android = FirebaseOptions(
-    apiKey: 'YOUR_ANDROID_API_KEY',
-    appId: 'YOUR_ANDROID_APP_ID',
-    messagingSenderId: 'YOUR_MESSAGING_SENDER_ID',
-    projectId: 'YOUR_PROJECT_ID',
-    storageBucket: 'YOUR_PROJECT_ID.appspot.com',
+    apiKey: 'AIzaSyD39Pj3E_jtITY0wrIU46IMCYgvETQPmaA',
+    appId: '1:734452992066:android:cb67eeae5f833347db05db',
+    messagingSenderId: '734452992066',
+    projectId: 'sub67-d4648',
+    storageBucket: 'sub67-d4648.firebasestorage.app',
   );
 
-  // TODO: Add iOS configuration when needed
+  // iOS configuration from GoogleService-Info.plist
   static const FirebaseOptions ios = FirebaseOptions(
-    apiKey: 'YOUR_IOS_API_KEY',
-    appId: 'YOUR_IOS_APP_ID',
-    messagingSenderId: 'YOUR_MESSAGING_SENDER_ID',
-    projectId: 'YOUR_PROJECT_ID',
-    storageBucket: 'YOUR_PROJECT_ID.appspot.com',
-    iosBundleId: 'com.example.sub67',
+    apiKey: 'AIzaSyBVkATaBpxWqiCjKMOdUDaR5yOBcN7MtEM',
+    appId: '1:734452992066:ios:6d18f34860b089c7db05db',
+    messagingSenderId: '734452992066',
+    projectId: 'sub67-d4648',
+    storageBucket: 'sub67-d4648.firebasestorage.app',
+    iosBundleId: 'com.sub67.app',
   );
 
   // TODO: Add macOS configuration when needed

@@ -21,6 +21,9 @@ class _JobWebViewScreenState extends State<JobWebViewScreen> {
   bool _hasAttemptedAutoFill = false;
   bool _hasShownAcceptAttempt = false;
   bool _hasShownAcceptSuccess = false;
+  bool _isLoggedIn = false;
+  bool _showAcceptGuidance = false;
+  Map<String, dynamic>? _acceptButtonPosition;
 
   @override
   void initState() {
@@ -31,6 +34,8 @@ class _JobWebViewScreenState extends State<JobWebViewScreen> {
   void _initializeWebView() {
     _controller = WebViewController()
       ..setJavaScriptMode(JavaScriptMode.unrestricted)
+      ..enableZoom(true) // Enable zoom for better button visibility
+      ..setBackgroundColor(Colors.white)
       ..setNavigationDelegate(
         NavigationDelegate(
           onPageStarted: (String url) {
@@ -48,10 +53,16 @@ class _JobWebViewScreenState extends State<JobWebViewScreen> {
             if (url.contains('login.frontlineeducation.com') && !_hasAttemptedAutoFill) {
               await _attemptAutoFillLogin();
               _hasAttemptedAutoFill = true;
+            } else if (!url.contains('login.frontlineeducation.com')) {
+              // User is logged in (not on login page)
+              setState(() {
+                _isLoggedIn = true;
+              });
+              
+              // Set up Accept button detection and guidance
+              await _setupAcceptButtonDetection();
+              await _findAndHighlightAcceptButton();
             }
-            
-            // Set up Accept button click detection
-            await _setupAcceptButtonDetection();
           },
           onWebResourceError: (WebResourceError error) {
             print('WebView error: ${error.description}');
@@ -65,6 +76,56 @@ class _JobWebViewScreenState extends State<JobWebViewScreen> {
         ),
       )
       ..loadRequest(Uri.parse(widget.jobUrl));
+  }
+
+  Future<void> _findAndHighlightAcceptButton() async {
+    // Find Accept button position and show guidance overlay
+    try {
+      final result = await _controller.runJavaScriptReturningResult('''
+        (function() {
+          const acceptButton = document.querySelector('a.acceptButton, button:has-text("Accept"), a:has-text("Accept"), [class*="accept"], [id*="accept"]');
+          if (acceptButton) {
+            const rect = acceptButton.getBoundingClientRect();
+            const scrollX = window.pageXOffset || document.documentElement.scrollLeft;
+            const scrollY = window.pageYOffset || document.documentElement.scrollTop;
+            
+            // Scroll button into view and highlight it
+            acceptButton.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            acceptButton.style.border = '3px solid #4CAF50';
+            acceptButton.style.boxShadow = '0 0 20px rgba(76, 175, 80, 0.5)';
+            acceptButton.style.zIndex = '10000';
+            
+            // Add pulsing animation
+            acceptButton.style.animation = 'pulse 2s infinite';
+            const style = document.createElement('style');
+            style.textContent = '@keyframes pulse { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.05); } }';
+            document.head.appendChild(style);
+            
+            return JSON.stringify({
+              found: true,
+              x: rect.left + scrollX,
+              y: rect.top + scrollY,
+              width: rect.width,
+              height: rect.height
+            });
+          }
+          return JSON.stringify({ found: false });
+        })();
+      ''');
+      
+      if (mounted && result != null) {
+        final data = result.toString();
+        if (data.contains('"found":true')) {
+          // Parse position data (simplified - in production use proper JSON parsing)
+          setState(() {
+            _showAcceptGuidance = true;
+            _acceptButtonPosition = {'found': true};
+          });
+        }
+      }
+    } catch (e) {
+      print('[WebView] Error finding accept button: $e');
+    }
   }
 
   Future<void> _attemptAutoFillLogin() async {
@@ -286,7 +347,73 @@ class _JobWebViewScreenState extends State<JobWebViewScreen> {
           ),
         ],
       ),
-      body: WebViewWidget(controller: _controller),
+      body: Stack(
+        children: [
+          WebViewWidget(controller: _controller),
+          
+          // Accept button guidance overlay
+          if (_showAcceptGuidance && _isLoggedIn)
+            Positioned.fill(
+              child: IgnorePointer(
+                ignoring: false,
+                child: Container(
+                  color: Colors.black.withOpacity(0.3),
+                  child: Center(
+                    child: Container(
+                      padding: const EdgeInsets.all(20),
+                      margin: const EdgeInsets.all(20),
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        borderRadius: BorderRadius.circular(12),
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.black.withOpacity(0.3),
+                            blurRadius: 10,
+                            spreadRadius: 2,
+                          ),
+                        ],
+                      ),
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          const Icon(
+                            Icons.touch_app,
+                            color: Colors.green,
+                            size: 48,
+                          ),
+                          const SizedBox(height: 16),
+                          const Text(
+                            'Tap the highlighted "Accept" button',
+                            style: TextStyle(
+                              fontSize: 18,
+                              fontWeight: FontWeight.bold,
+                            ),
+                            textAlign: TextAlign.center,
+                          ),
+                          const SizedBox(height: 8),
+                          const Text(
+                            'The Accept button is highlighted in green on the page',
+                            style: TextStyle(fontSize: 14),
+                            textAlign: TextAlign.center,
+                          ),
+                          const SizedBox(height: 16),
+                          ElevatedButton(
+                            onPressed: () {
+                              setState(() {
+                                _showAcceptGuidance = false;
+                              });
+                            },
+                            child: const Text('Got it'),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+        ],
+      ),
     );
   }
 }

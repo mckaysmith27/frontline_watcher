@@ -23,7 +23,7 @@ async function createTestJobEvent() {
   
   const jobEvent = {
     source: 'frontline',
-    controllerId: 'controller-1',
+    controllerId: 'controller_1',
     districtId: 'alpine_school_district',
     jobId: 'TEST123',
     jobUrl: 'https://absencesub.frontlineeducation.com/Substitute/Home#/job/TEST123',

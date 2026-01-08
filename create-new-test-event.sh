@@ -27,7 +27,7 @@ DOC_JSON=$(cat <<EOF
 {
   "fields": {
     "source": {"stringValue": "frontline"},
-    "controllerId": {"stringValue": "controller-1"},
+    "controllerId": {"stringValue": "controller_1"},
     "districtId": {"stringValue": "alpine_school_district"},
     "jobId": {"stringValue": "TEST${TIMESTAMP}"},
     "jobUrl": {"stringValue": "https://absencesub.frontlineeducation.com/Substitute/Home#/job/TEST${TIMESTAMP}"},
