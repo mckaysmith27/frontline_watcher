@@ -129,17 +129,31 @@ EOL
     echo "Created \$ENV_FILE"
 done
 
-# Install services
+# Install services (SKIP controller_2)
 for i in \$(seq 1 $NUM_CONTROLLERS); do
+    # SKIP controller_2 - never install or start it
+    if [ "\$i" = "2" ]; then
+        echo "⏭️  Skipping controller_2 (disabled)"
+        continue
+    fi
     sudo ./ec2/install-service.sh controller_\${i}
 done
 
-# Start services
+# Start services (SKIP controller_2)
 for i in \$(seq 1 $NUM_CONTROLLERS); do
+    # SKIP controller_2 - never start it
+    if [ "\$i" = "2" ]; then
+        continue
+    fi
     sudo systemctl start frontline-watcher-controller_\${i}
     sudo systemctl enable frontline-watcher-controller_\${i}
     echo "Started controller_\${i}"
 done
+
+# Ensure controller_2 is explicitly disabled (in case it was created)
+sudo systemctl stop frontline-watcher-controller_2 2>/dev/null || true
+sudo systemctl disable frontline-watcher-controller_2 2>/dev/null || true
+echo "✅ Controller_2 explicitly disabled"
 
 # Cleanup
 rm -rf /tmp/deploy.tar.gz /tmp/ec2

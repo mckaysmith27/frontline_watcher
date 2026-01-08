@@ -23,8 +23,8 @@ if [ -n "$CONTROLLER_ID" ]; then
     echo "Controller: $CONTROLLER_ID"
     CONTROLLERS=("$CONTROLLER_ID")
 else
-    echo "Controllers: All (1-5)"
-    CONTROLLERS=("controller_1" "controller_2" "controller_3" "controller_4" "controller_5")
+    echo "Controllers: All (1, 3-5) - SKIPPING controller_2"
+    CONTROLLERS=("controller_1" "controller_3" "controller_4" "controller_5")
 fi
 echo ""
 

@@ -11,6 +11,11 @@ case "$ACTION" in
         echo "📊 Service Status:"
         echo "=================="
         for i in $(seq 1 $NUM_CONTROLLERS); do
+            # SKIP controller_2
+            if [ "$i" = "2" ]; then
+                echo "  frontline-watcher-controller_2: ⏭️  DISABLED (skipped)"
+                continue
+            fi
             SERVICE="frontline-watcher-controller_${i}"
             if systemctl is-active --quiet $SERVICE; then
                 STATUS="✅ RUNNING"
@@ -28,8 +33,12 @@ case "$ACTION" in
         sudo journalctl -u $SERVICE -f
         ;;
     restart)
-        echo "🔄 Restarting all services..."
+        echo "🔄 Restarting all services (SKIP controller_2)..."
         for i in $(seq 1 $NUM_CONTROLLERS); do
+            # SKIP controller_2
+            if [ "$i" = "2" ]; then
+                continue
+            fi
             SERVICE="frontline-watcher-controller_${i}"
             echo "  Restarting $SERVICE..."
             sudo systemctl restart $SERVICE
@@ -37,8 +46,12 @@ case "$ACTION" in
         echo "✅ All services restarted"
         ;;
     stop)
-        echo "🛑 Stopping all services..."
+        echo "🛑 Stopping all services (SKIP controller_2)..."
         for i in $(seq 1 $NUM_CONTROLLERS); do
+            # SKIP controller_2
+            if [ "$i" = "2" ]; then
+                continue
+            fi
             SERVICE="frontline-watcher-controller_${i}"
             echo "  Stopping $SERVICE..."
             sudo systemctl stop $SERVICE
@@ -46,8 +59,12 @@ case "$ACTION" in
         echo "✅ All services stopped"
         ;;
     start)
-        echo "▶️  Starting all services..."
+        echo "▶️  Starting all services (SKIP controller_2)..."
         for i in $(seq 1 $NUM_CONTROLLERS); do
+            # SKIP controller_2
+            if [ "$i" = "2" ]; then
+                continue
+            fi
             SERVICE="frontline-watcher-controller_${i}"
             echo "  Starting $SERVICE..."
             sudo systemctl start $SERVICE

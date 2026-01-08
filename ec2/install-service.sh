@@ -8,6 +8,14 @@ set -e
 APP_DIR="/opt/frontline-watcher"
 CONTROLLER_ID="${1:-controller_1}"
 
+# BLOCK controller_2 from ever being installed
+if [ "$CONTROLLER_ID" = "controller_2" ]; then
+    echo "❌ ERROR: Controller_2 is DISABLED and cannot be installed"
+    echo "   Controller_2 has been permanently disabled to prevent rate limiting issues"
+    echo "   Only controller_1 should be used"
+    exit 1
+fi
+
 if [ ! -d "$APP_DIR" ]; then
     echo "❌ Error: Application directory $APP_DIR not found"
     echo "   Run setup-ec2.sh first"

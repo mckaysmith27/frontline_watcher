@@ -18,9 +18,16 @@ if [ ! -f "$APP_DIR/.env.template" ]; then
     exit 1
 fi
 
-# Create .env files for each controller
+# Create .env files for each controller (SKIP controller_2)
 echo "📝 Creating .env files for each controller..."
+echo "⚠️  NOTE: Controller_2 is SKIPPED - only controller_1 will be set up"
 for i in $(seq 1 $NUM_CONTROLLERS); do
+    # SKIP controller_2 - never set it up
+    if [ "$i" = "2" ]; then
+        echo "  ⏭️  Skipping controller_2 (disabled)"
+        continue
+    fi
+    
     CONTROLLER_ID="controller_${i}"
     ENV_FILE="${APP_DIR}/.env.${CONTROLLER_ID}"
     
@@ -35,8 +42,14 @@ for i in $(seq 1 $NUM_CONTROLLERS); do
 done
 
 echo ""
-echo "🔧 Installing systemd services..."
+echo "🔧 Installing systemd services (SKIP controller_2)..."
 for i in $(seq 1 $NUM_CONTROLLERS); do
+    # SKIP controller_2 - never install it
+    if [ "$i" = "2" ]; then
+        echo "  ⏭️  Skipping controller_2 installation (disabled)"
+        continue
+    fi
+    
     CONTROLLER_ID="controller_${i}"
     echo ""
     echo "Installing service for $CONTROLLER_ID..."
