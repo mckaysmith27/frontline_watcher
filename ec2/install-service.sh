@@ -36,7 +36,7 @@ After=network.target
 
 [Service]
 Type=simple
-User=$USER
+User=ubuntu
 WorkingDirectory=${APP_DIR}
 Environment="PATH=${APP_DIR}/venv/bin:/usr/local/bin:/usr/bin:/bin"
 ExecStart=${APP_DIR}/venv/bin/python ${APP_DIR}/frontline_watcher_refactored.py
