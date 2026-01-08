@@ -741,9 +741,22 @@ async def main() -> None:
         await asyncio.sleep(offset)
 
     async with async_playwright() as p:
-        # Use same simple approach as original - just username/password
+        # Try to load saved browser context (cookies from manual auth)
+        # This allows us to bypass SSO by using a pre-authenticated session
+        storage_state_path = os.getenv("STORAGE_STATE_PATH", f"/opt/frontline-watcher/storage_state_{CONTROLLER_ID}.json")
+        context_options = {}
+        
+        if os.path.exists(storage_state_path):
+            try:
+                context_options["storage_state"] = storage_state_path
+                log(f"[auth] Loading saved browser context from {storage_state_path}")
+            except Exception as e:
+                log(f"[auth] Warning: Could not load saved context: {e}")
+        else:
+            log(f"[auth] No saved browser context found at {storage_state_path}, will use username/password")
+        
         browser = await p.chromium.launch(headless=True)
-        context = await browser.new_context()
+        context = await browser.new_context(**context_options)
         page = await context.new_page()
         page.on("dialog", lambda d: asyncio.create_task(d.accept()))
 
