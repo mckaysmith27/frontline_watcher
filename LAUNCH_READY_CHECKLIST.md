@@ -3,7 +3,8 @@
 ## ✅ Completed
 
 1. **Infrastructure**
-   - ✅ 5 Cloud Run Jobs deployed
+   - ✅ 2 EC2 scrapers deployed (controllers 1 & 2)
+   - ❌ Cloud Run Jobs removed (migrated to EC2)
    - ✅ Docker image built and pushed
    - ✅ Secrets configured (5 secrets in Secret Manager)
    - ✅ APIs enabled
@@ -86,7 +87,7 @@ gcloud secrets add-iam-policy-binding frontline-browser-context \
 
 **For Testing**: Can run jobs manually:
 ```bash
-gcloud run jobs execute frontline-scraper-controller-1 --region us-central1
+ssh sub67-watcher 'sudo systemctl status frontline-watcher-controller_1'
 ```
 
 ### 5. Verify Firestore Schema (5 minutes)
@@ -126,7 +127,7 @@ gcloud run jobs execute frontline-scraper-controller-1 --region us-central1
 
 3. **Run Scraper Manually**:
    ```bash
-   gcloud run jobs execute frontline-scraper-controller-1 --region us-central1
+   ssh sub67-watcher 'sudo systemctl status frontline-watcher-controller_1'
    ```
 
 4. **Check Firestore**:
@@ -157,7 +158,7 @@ gcloud run jobs execute frontline-scraper-controller-1 --region us-central1
 echo -n "alpine_school_district" | gcloud secrets versions add district-id --data-file=- --project sub67-d4648
 
 # 3. Test scraper (manual run)
-gcloud run jobs execute frontline-scraper-controller-1 --region us-central1
+ssh sub67-watcher 'sudo systemctl status frontline-watcher-controller_1'
 
 # 4. Check logs
 firebase functions:log --limit 20

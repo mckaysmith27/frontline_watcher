@@ -236,7 +236,9 @@ if __name__ == '__main__':
 
 ## Deployment Options
 
-1. **Cloud Run** (Google Cloud): Serverless containers
+1. **EC2** (AWS): Virtual machines running scrapers (current)
+   - 2 controllers active
+   - Cost: ~$8-10/month
 2. **AWS Lambda**: Serverless functions
 3. **Heroku**: Traditional hosting
 4. **Docker**: Containerized deployment

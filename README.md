@@ -44,27 +44,17 @@ flutter run
    - iOS: `ios/Runner/GoogleService-Info.plist`
    - Web: Follow Firebase web setup instructions
 
-### 3. Backend API Setup
+### 3. Backend Architecture
 
-The app requires a backend API to interact with the Python automation script. You'll need to:
+**Current Setup:**
+- **Scrapers**: Running on AWS EC2 (2 controllers)
+- **Cloud Functions**: Processes job events, sends FCM notifications
+- **Firestore**: Stores job events and user data
+- **FCM**: Push notifications to mobile devices
 
-1. Set up a server (Node.js, Python Flask/FastAPI, etc.)
-2. Create API endpoints:
-   - `/api/start-automation` - Start the automation script
-   - `/api/stop-automation` - Stop the automation script
-   - `/api/sync-jobs` - Sync jobs from ESS
-   - `/api/cancel-job` - Cancel a job
-   - `/api/remove-excluded-date` - Remove excluded date from ESS
-
-3. Update the `_backendUrl` in `lib/services/automation_service.dart` with your API URL
-
-### 4. Python Script Integration
-
-The existing `frontline_watcher.py` script needs to be integrated with the backend API. The script should:
-
-- Accept configuration from the API (filters, dates, credentials)
-- Report job bookings back to the API
-- Handle authentication securely
+**Deployment:**
+- EC2 scrapers: See `ec2/` directory for setup and deployment
+- Cloud Functions: Deploy with `firebase deploy --only functions`
 
 ### 5. Environment Variables
 

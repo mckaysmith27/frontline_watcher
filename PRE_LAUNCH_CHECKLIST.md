@@ -2,11 +2,12 @@
 
 ## ✅ Completed
 
-1. **Cloud Run Infrastructure**
-   - ✅ 5 Cloud Run Jobs created
-   - ✅ Docker image built and pushed
+1. **EC2 Infrastructure** ✅
+   - ✅ 2 EC2 scrapers deployed (controllers 1 & 2)
+   - ✅ Systemd services configured
    - ✅ Secrets configured in Secret Manager
-   - ✅ APIs enabled (Cloud Run, Secret Manager, Cloud Build)
+   - ✅ APIs enabled (Cloud Functions, Secret Manager)
+   - ❌ Cloud Run removed (migrated to EC2)
 
 2. **Scraper Code**
    - ✅ Refactored to publish job events only
@@ -56,14 +57,14 @@ echo -n "alpine_school_district" | gcloud secrets versions add district-id --dat
 - Run `python save-auth-context.py` locally
 - Manually authenticate with one of the 5 controller accounts
 - Upload saved context to Secret Manager
-- Update Cloud Run Jobs to use saved context
+- Update EC2 scrapers (already configured via .env files)
 
 ### 4. Cloud Scheduler (For Scheduled Execution)
 
 **Status**: ❌ Not set up yet
 
 **What it does**:
-- Runs Cloud Run Jobs on a schedule (every 15 seconds with offsets)
+- EC2 scrapers run continuously (no scheduler needed)
 - Much cheaper than always-on services
 
 **Action**: Set up Cloud Scheduler jobs for each controller
@@ -180,7 +181,7 @@ See `CLOUD_RUN_DEPLOYMENT.md` for Cloud Scheduler setup
 
 ### Step 6: Test
 
-1. Manually run a Cloud Run Job: `gcloud run jobs execute frontline-scraper-controller-1 --region us-central1`
+1. Check EC2 scraper status: `ssh sub67-watcher 'sudo systemctl status frontline-watcher-controller_1'`
 2. Check Firestore for `job_events` collection
 3. Verify Cloud Function triggers
 4. Check FCM notifications are sent

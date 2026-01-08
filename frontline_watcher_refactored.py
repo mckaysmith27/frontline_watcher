@@ -21,12 +21,12 @@ load_dotenv()
 # Initialize Firebase
 FIREBASE_PROJECT_ID = os.getenv("FIREBASE_PROJECT_ID", "sub67-d4648")
 
-# Support both file path (local/EC2) and JSON string (Cloud Run secrets)
+# Support both file path (EC2/local) and JSON string (for flexibility)
 FIREBASE_CREDENTIALS_JSON = os.getenv("FIREBASE_CREDENTIALS")
 FIREBASE_CREDENTIALS_PATH = os.getenv("FIREBASE_CREDENTIALS_PATH")
 
 if FIREBASE_CREDENTIALS_JSON:
-    # Cloud Run: credentials provided as JSON string via secret
+    # Credentials provided as JSON string (for containerized deployments)
     try:
         import json
         cred_info = json.loads(FIREBASE_CREDENTIALS_JSON)
@@ -39,7 +39,7 @@ if FIREBASE_CREDENTIALS_JSON:
         print(f"[firebase] ERROR: Failed to parse credentials: {e}")
         sys.exit(1)
 elif FIREBASE_CREDENTIALS_PATH and os.path.exists(FIREBASE_CREDENTIALS_PATH):
-    # Local/EC2: credentials provided as file path
+    # EC2/Local: credentials provided as file path
     try:
         cred = credentials.Certificate(FIREBASE_CREDENTIALS_PATH)
         print(f"[firebase] Using credentials from file: {FIREBASE_CREDENTIALS_PATH}")

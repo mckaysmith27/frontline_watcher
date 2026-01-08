@@ -175,7 +175,7 @@ class _AutomationBottomSheetState extends State<AutomationBottomSheet> {
     }
 
     // Navigate to payment screen
-    // Note: No credentials are sent to backend - automation uses Cloud Run scrapers
+    // Note: No credentials are sent to backend - automation uses EC2 scrapers
     // User credentials stay on device for job acceptance only
     if (mounted) {
       Navigator.push(

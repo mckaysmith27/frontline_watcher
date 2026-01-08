@@ -1,46 +1,39 @@
 # Deployment Status
 
-## Current Issue: Billing Account
+## Current Architecture
 
-Both Cloud Function and Cloud Run deployments are currently blocked because:
-- **Billing account is disabled/closed** for project `sub67-d4648`
-- Error: "The billing account for the owning project is disabled in state closed"
+✅ **EC2 Scrapers**: Running on AWS EC2 (2 controllers)
+- Controller 1: Active on EC2
+- Controller 2: Active on EC2
+- Controllers 3-5: Disabled (not needed)
 
-## What Needs to Be Done
+✅ **Cloud Functions**: Active
+- `onJobEventCreated`: Processes job events, sends FCM notifications
+- Cost: ~$0.01/month (essentially free)
 
-### 1. Enable Billing Account
-1. Go to: https://console.cloud.google.com/billing?project=sub67-d4648
-2. Enable billing for the project
-3. Ensure billing account is active (not closed)
+❌ **Cloud Run**: Removed (migrated to EC2)
+- All Cloud Run Jobs deleted
+- All Cloud Schedulers deleted
+- Cost saved: ~$5-10/day
 
-### 2. Deploy Updated Code
+## Deployment Commands
 
-Once billing is enabled, run:
-```bash
-./deploy-updated-code.sh
-```
-
-Or deploy manually:
-
-#### Deploy Cloud Function:
+### Update Cloud Function:
 ```bash
 cd functions
 firebase deploy --only functions --project sub67-d4648
-cd ..
 ```
 
-#### Deploy Python Scraper:
+### Update EC2 Scrapers:
 ```bash
-# Build Docker image
-gcloud builds submit --tag gcr.io/sub67-d4648/frontline-scraper:latest --project sub67-d4648
+./ec2/quick-deploy.sh sub67-watcher
+```
 
-# Update all 5 Cloud Run Jobs
-for i in {1..5}; do
-  gcloud run jobs update frontline-scraper-controller-${i} \
-    --image gcr.io/sub67-d4648/frontline-scraper:latest \
-    --region us-central1 \
-    --project sub67-d4648
-done
+### Check EC2 Status:
+```bash
+./QUICK_STATUS_CHECK.sh
+# Or manually:
+ssh sub67-watcher 'cd /opt/frontline-watcher && ./ec2/monitor-services.sh status'
 ```
 
 ## What Was Updated
@@ -58,6 +51,7 @@ done
   - 11:30 AM - 11:00 PM
 - ✅ Fixed job event recording (separated from NTFY notifications)
 - ✅ Fixed controller ID format (controller_1, controller_2, etc.)
+- ✅ Optimized for EC2 deployment
 
 ### Flutter App (`lib/screens/job/job_webview_screen.dart`)
 - ✅ Enhanced WebView with accept button guidance overlay
@@ -65,7 +59,7 @@ done
 - ✅ Cookie persistence for session management
 - ✅ Visual highlighting of Accept button
 
-## Testing After Deployment
+## Testing
 
 1. **Test Cloud Function:**
    ```bash
@@ -76,13 +70,13 @@ done
    firebase functions:log --project sub67-d4648
    ```
 
-2. **Test Python Scraper:**
+2. **Test EC2 Scrapers:**
    ```bash
-   # Run a controller manually
-   gcloud run jobs execute frontline-scraper-controller-1 --region us-central1
+   # Check status
+   ssh sub67-watcher 'sudo systemctl status frontline-watcher-controller_1'
    
-   # Check logs
-   gcloud run jobs logs read frontline-scraper-controller-1 --region us-central1 --limit 50
+   # View logs
+   ssh sub67-watcher 'sudo journalctl -u frontline-watcher-controller_1 -f'
    ```
 
 3. **Verify User-Level Records:**
@@ -98,7 +92,14 @@ done
 
 ## Cost Estimate
 
-- **Cloud Functions**: ~$0.40 per million invocations (very low cost)
-- **Cloud Run Jobs**: Pay per execution (~$0.00001 per job run)
+- **EC2 t3.micro**: ~$7.50/month (2 controllers on 1 instance)
+- **Cloud Functions**: ~$0.01/month (very low cost, only runs when job events created)
 - **Firestore**: ~$0.06 per 100K reads/writes
-- **Total**: Likely < $5/month for normal usage
+- **Total**: ~$8-10/month (down from ~$150-300/month with Cloud Run)
+
+## Migration Complete
+
+✅ All Cloud Run services removed
+✅ EC2 scrapers running
+✅ Cloud Functions active (needed for notifications)
+✅ Cost reduced by ~95%

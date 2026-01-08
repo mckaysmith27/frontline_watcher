@@ -1,4 +1,10 @@
-# Cloud Run Deployment Checklist
+# ⚠️ DEPRECATED: Cloud Run Deployment Checklist
+
+**Note**: This file is deprecated. Scrapers now run on EC2. See `ec2/EC2_MIGRATION_GUIDE.md` for current deployment.
+
+---
+
+# Cloud Run Deployment Checklist (Historical Reference Only)
 
 ## Pre-Deployment
 

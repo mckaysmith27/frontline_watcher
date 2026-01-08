@@ -50,12 +50,12 @@ else
         --project="$PROJECT_ID"
 fi
 
-# Grant Cloud Run access
+# Grant Cloud Functions access (for future use if needed)
 PROJECT_NUMBER=$(gcloud projects describe "$PROJECT_ID" --format="value(projectNumber)")
 SERVICE_ACCOUNT="${PROJECT_NUMBER}-compute@developer.gserviceaccount.com"
 
 echo ""
-echo "Granting Cloud Run access to secrets..."
+echo "Granting Cloud Functions access to secrets..."
 gcloud secrets add-iam-policy-binding "$SECRET_USERNAME" \
     --member="serviceAccount:${SERVICE_ACCOUNT}" \
     --role="roles/secretmanager.secretAccessor" \
@@ -69,6 +69,6 @@ gcloud secrets add-iam-policy-binding "$SECRET_PASSWORD" \
 echo ""
 echo "✅ Credentials set up for Controller ${CONTROLLER_NUM}!"
 echo ""
-echo "Next: Update the Cloud Run Job to use these secrets:"
-echo "  ./setup-scrapers-configurable.sh"
+echo "Note: Scrapers now run on EC2. To update EC2 with new credentials:"
+echo "  ssh sub67-watcher 'cd /opt/frontline-watcher && sudo systemctl restart frontline-watcher-controller_${CONTROLLER_NUM}'"
 

@@ -39,9 +39,9 @@ class AutomationService {
     });
 
     // No backend API call needed for automation
-    // The 5 Cloud Run scrapers handle job discovery
+    // EC2 scrapers handle job discovery
     // Users accept jobs directly in-app using their local credentials
-    print('[AutomationService] Automation preferences saved. Job discovery handled by Cloud Run scrapers.');
+    print('[AutomationService] Automation preferences saved. Job discovery handled by EC2 scrapers.');
   }
 
   Future<void> stopAutomation() async {

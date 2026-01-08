@@ -15,7 +15,7 @@ COPY frontline_watcher_refactored.py /app/frontline_watcher.py
 
 ENV PYTHONUNBUFFERED=1
 
-# Cloud Run expects the container to listen on PORT, but we don't need HTTP
-# We'll use a long-running process instead
+# Dockerfile for containerized deployments (EC2 or other container platforms)
+# Long-running process (no HTTP server needed)
 CMD ["python", "frontline_watcher.py"]
 
