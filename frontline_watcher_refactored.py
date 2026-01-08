@@ -667,6 +667,13 @@ async def ensure_logged_in(page, username: str, password: str) -> bool:
         await user_input.fill(username)
         await pass_input.fill(password)
         print("[auth] Filled username/password.")
+        
+        # Dispatch input/change events to ensure form validation triggers (like old code)
+        try:
+            await user_input.evaluate("el => { el.dispatchEvent(new Event('input', {bubbles: true})); el.dispatchEvent(new Event('change', {bubbles: true})); }")
+            await pass_input.evaluate("el => { el.dispatchEvent(new Event('input', {bubbles: true})); el.dispatchEvent(new Event('change', {bubbles: true})); }")
+        except Exception:
+            pass  # Events are optional, don't fail if they don't work
     except Exception as e:
         print(f"[auth] Could not fill login fields: {e}")
         return False
