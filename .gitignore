@@ -66,3 +66,4 @@ ENV/
 credentials.json
 *.pem
 *.key
+firebase-service-account.json

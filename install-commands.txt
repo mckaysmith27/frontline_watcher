@@ -1,0 +1,26 @@
+# Copy and paste these commands one by one into your terminal
+
+# 1. Install CocoaPods (will ask for your password)
+sudo gem install cocoapods
+
+# 2. Install iOS dependencies
+cd /Users/mckay/Sub67/frontline_watcher/ios
+pod install
+cd ..
+
+# 3. After installing Xcode, accept license
+sudo xcodebuild -license accept
+sudo xcode-select --switch /Applications/Xcode.app/Contents/Developer
+
+# 4. After installing Android Studio, accept licenses
+flutter doctor --android-licenses
+
+# 5. Check setup
+flutter doctor
+
+# 6. See available devices
+flutter devices
+
+# 7. Run on device
+# flutter run -d android
+# flutter run -d ios
