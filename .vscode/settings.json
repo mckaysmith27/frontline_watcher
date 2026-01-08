@@ -8,5 +8,6 @@
     }
   ],
   "gradle.nestedProjects": false,
-  "gradle.autoDetect": "off"
+  "gradle.autoDetect": "off",
+  "git.enableSmartCommit": true
 }
