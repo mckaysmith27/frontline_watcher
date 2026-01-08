@@ -780,7 +780,7 @@ async def main() -> None:
                 except Exception as e:
                     log(f"[auth] Warning: Could not save context: {e}")
                 
-                await page.goto(JOBS_URL, wait_until="networkidle", timeout=60000)
+                await page.goto(JOBS_URL, wait_until="load", timeout=60000)
             else:
                 log("[auth] ❌ Login failed - SSO/captcha may be blocking. Cannot proceed.")
                 raise Exception("Login failed - SSO/captcha blocking automated login")
@@ -840,7 +840,7 @@ async def main() -> None:
                 if ok:
                     print("[auth] Login attempt looks OK; going back to jobs page.")
                     try:
-                        await page.goto(JOBS_URL, wait_until="networkidle", timeout=60000)
+                        await page.goto(JOBS_URL, wait_until="load", timeout=60000)
                         relogin_failures = 0  # reset on success
                         log("[auth] ✅ Successfully re-authenticated")
                     except Exception as e:
