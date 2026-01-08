@@ -750,8 +750,9 @@ async def main() -> None:
             if ok:
                 print("[auth] Login appears successful, returning to jobs page.")
                 await page.goto(JOBS_URL)
+                await page.wait_for_load_state("networkidle")
 
-        await page.wait_for_load_state("domcontentloaded")
+        await page.wait_for_load_state("networkidle")
 
         baseline = await get_available_jobs_snapshot(page)
         log("[*] Monitoring started.")
