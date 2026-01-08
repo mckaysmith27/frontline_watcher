@@ -1,0 +1,6 @@
+# EC2 deployment files that shouldn't be committed
+*.pem
+*.key
+.env
+firebase-credentials.json
+deploy.tar.gz
