@@ -797,7 +797,7 @@ async def main() -> None:
                 if ok:
                     print("[auth] Login attempt looks OK; going back to jobs page.")
                     try:
-                        await page.goto(JOBS_URL, wait_until="domcontentloaded", timeout=60000)
+                        await page.goto(JOBS_URL, wait_until="networkidle", timeout=60000)
                         relogin_failures = 0  # reset on success
                     except Exception as e:
                         print(f"[auth] goto(JOBS_URL) failed after login: {e}")
@@ -808,8 +808,9 @@ async def main() -> None:
                     print("[auth] Re-login failed / still gated by SSO.")
                     if relogin_failures >= MAX_RELOGIN_FAILURES:
                         log("🔥 Frontline watcher: blocked by SSO/captcha; cannot auto-login. Stopping.")
+                        notify("🔥 Frontline watcher: blocked by SSO/captcha; cannot auto-login. Stopping.")
                         raise Exception("Max relogin failures reached - SSO/captcha blocking login")
-                    await asyncio.sleep(5)
+                    await asyncio.sleep(10)
                     continue
 
             current = await get_available_jobs_snapshot(page)
