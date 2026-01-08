@@ -31,7 +31,7 @@ Type=simple
 User=$USER
 WorkingDirectory=${APP_DIR}
 Environment="PATH=${APP_DIR}/venv/bin:/usr/local/bin:/usr/bin:/bin"
-ExecStart=${APP_DIR}/venv/bin/python ${APP_DIR}/frontline_watcher.py
+ExecStart=${APP_DIR}/venv/bin/python ${APP_DIR}/frontline_watcher_refactored.py
 Restart=always
 RestartSec=10
 StandardOutput=append:/var/log/frontline-watcher/${CONTROLLER_ID}.log
