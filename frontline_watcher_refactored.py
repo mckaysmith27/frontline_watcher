@@ -787,7 +787,7 @@ async def main() -> None:
         else:
             log("[auth] ✅ Already logged in (using saved context or existing session)")
 
-        await page.wait_for_load_state("networkidle")
+        await page.wait_for_load_state("load", timeout=60000)
 
         baseline = await get_available_jobs_snapshot(page)
         log("[*] Monitoring started.")
