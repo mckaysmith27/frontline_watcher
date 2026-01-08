@@ -765,12 +765,27 @@ async def main() -> None:
 
         if "login.frontlineeducation.com" in page.url:
             print("[auth] Not logged in at start, attempting login...")
-            await page.goto(LOGIN_URL)
+            # If we have saved context but still on login page, it may have expired
+            if os.path.exists(storage_state_path):
+                log(f"[auth] Saved context expired, attempting fresh login...")
+            
+            await page.goto(LOGIN_URL, wait_until="domcontentloaded", timeout=60000)
             ok = await ensure_logged_in(page, username, password)
             if ok:
                 print("[auth] Login appears successful, returning to jobs page.")
-                await page.goto(JOBS_URL)
-                await page.wait_for_load_state("networkidle")
+                # Save the authenticated context for next time
+                try:
+                    await context.storage_state(path=storage_state_path)
+                    log(f"[auth] Saved authenticated context to {storage_state_path}")
+                except Exception as e:
+                    log(f"[auth] Warning: Could not save context: {e}")
+                
+                await page.goto(JOBS_URL, wait_until="networkidle", timeout=60000)
+            else:
+                log("[auth] ❌ Login failed - SSO/captcha may be blocking. Cannot proceed.")
+                raise Exception("Login failed - SSO/captcha blocking automated login")
+        else:
+            log("[auth] ✅ Already logged in (using saved context or existing session)")
 
         await page.wait_for_load_state("networkidle")
 
