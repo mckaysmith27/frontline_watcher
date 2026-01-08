@@ -696,12 +696,12 @@ async def ensure_logged_in(page, username: str, password: str) -> bool:
         print("[auth] No submit button; pressing Enter on password.")
         await pass_input.press("Enter")
 
-    # Wait for network to settle (like old working code)
-    # This gives time for redirect after login
+    # Wait for page load - use "load" like old working code (more conservative)
+    # "networkidle" can be too aggressive and trigger rate limits
     try:
-        await page.wait_for_load_state("networkidle", timeout=15000)
+        await page.wait_for_load_state("load", timeout=30000)
     except Exception:
-        # If networkidle times out, at least wait for DOM
+        # If load times out, at least wait for DOM
         try:
             await page.wait_for_load_state("domcontentloaded", timeout=5000)
         except Exception:
@@ -816,15 +816,23 @@ async def main() -> None:
             if "login.frontlineeducation.com" in page.url:
                 relogin_failures += 1
                 print(f"[auth] Session expired. Re-auth... (failures={relogin_failures}/{MAX_RELOGIN_FAILURES})")
+                
+                # Exponential backoff: wait longer with each failure to avoid hammering the site
+                # This prevents triggering rate limits when blocked
+                backoff_delay = min(60 * (2 ** (relogin_failures - 1)), 300)  # 1min, 2min, 4min, 8min, max 5min
+                if relogin_failures > 1:
+                    log(f"[auth] Backing off for {backoff_delay}s before retry (exponential backoff)")
+                    await asyncio.sleep(backoff_delay)
 
                 try:
                     await page.goto(LOGIN_URL, wait_until="domcontentloaded", timeout=60000)
                 except Exception as e:
                     print(f"[auth] goto(LOGIN_URL) failed: {e}")
                     if relogin_failures >= MAX_RELOGIN_FAILURES:
-                        log("🔥 Frontline watcher: login page keeps timing out. Stopping.")
-                        raise
-                    await asyncio.sleep(5)
+                        log("🔥 Frontline watcher: login page keeps timing out. Stopping to avoid rate limiting.")
+                        notify("🔥 Frontline watcher: login page keeps timing out. Stopping to avoid rate limiting.")
+                        raise Exception("Max relogin failures reached - stopping to avoid rate limiting")
+                    # Already waited with backoff above, just continue
                     continue
 
                 ok = await ensure_logged_in(page, username, password)
@@ -834,18 +842,20 @@ async def main() -> None:
                     try:
                         await page.goto(JOBS_URL, wait_until="networkidle", timeout=60000)
                         relogin_failures = 0  # reset on success
+                        log("[auth] ✅ Successfully re-authenticated")
                     except Exception as e:
                         print(f"[auth] goto(JOBS_URL) failed after login: {e}")
-                        # don't crash immediately; try again next loop
-                        await asyncio.sleep(5)
+                        # Don't increment failure count here - login succeeded, just navigation failed
+                        # Wait a bit before retrying
+                        await asyncio.sleep(10)
                         continue
                 else:
                     print("[auth] Re-login failed / still gated by SSO.")
                     if relogin_failures >= MAX_RELOGIN_FAILURES:
-                        log("🔥 Frontline watcher: blocked by SSO/captcha; cannot auto-login. Stopping.")
-                        notify("🔥 Frontline watcher: blocked by SSO/captcha; cannot auto-login. Stopping.")
-                        raise Exception("Max relogin failures reached - SSO/captcha blocking login")
-                    await asyncio.sleep(10)
+                        log("🔥 Frontline watcher: blocked by SSO/captcha after multiple attempts. Stopping to avoid rate limiting.")
+                        notify("🔥 Frontline watcher: blocked by SSO/captcha. Stopping to avoid rate limiting.")
+                        raise Exception("Max relogin failures reached - SSO/captcha blocking login, stopping to avoid rate limiting")
+                    # Backoff already handled above, just continue
                     continue
 
             current = await get_available_jobs_snapshot(page)
