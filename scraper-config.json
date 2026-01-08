@@ -1,0 +1,24 @@
+{
+  "numScrapers": 2,
+  "scrapeIntervalSeconds": 16,
+  "activeTimeWindows": [
+    {
+      "start": "06:00",
+      "end": "20:00",
+      "timezone": "America/Denver"
+    }
+  ],
+  "controllers": [
+    {
+      "id": 1,
+      "name": "controller_1",
+      "enabled": true
+    },
+    {
+      "id": 2,
+      "name": "controller_2",
+      "enabled": true
+    }
+  ]
+}
+

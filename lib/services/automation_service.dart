@@ -16,13 +16,13 @@ class AutomationService {
     required List<String> includedWords,
     required List<String> excludedWords,
     required List<String> committedDates,
-    required String essUsername,
-    required String essPassword,
   }) async {
     final user = _auth.currentUser;
     if (user == null) return;
 
-    // Store automation configuration
+    // Store automation configuration (NO credentials - they stay on device)
+    // User's Frontline credentials are stored locally in FlutterSecureStorage
+    // and used only for job acceptance in-app, never sent to backend
     await _firestore.collection('users').doc(user.uid).update({
       'automationActive': true,
       'automationConfig': {
@@ -31,31 +31,17 @@ class AutomationService {
         'committedDates': committedDates,
         'startedAt': FieldValue.serverTimestamp(),
       },
+      // Required for Cloud Functions Dispatcher
+      'districtIds': FieldValue.arrayUnion(['alpine_school_district']), // Add district ID
+      'notifyEnabled': true, // Enable notifications
+      // Note: essUsername and essPassword are NOT stored here
+      // They remain in device keychain (FlutterSecureStorage) only
     });
 
-    // Call backend API to start Python script
-    // In production, this would be a secure API call
-    try {
-      final response = await http.post(
-        Uri.parse('$_backendUrl/api/start-automation'),
-        headers: {'Content-Type': 'application/json'},
-        body: jsonEncode({
-          'userId': user.uid,
-          'essUsername': essUsername,
-          'essPassword': essPassword, // In production, use secure token
-          'includedWords': includedWords,
-          'excludedWords': excludedWords,
-          'committedDates': committedDates,
-        }),
-      );
-
-      if (response.statusCode != 200) {
-        throw Exception('Failed to start automation: ${response.body}');
-      }
-    } catch (e) {
-      print('Error starting automation: $e');
-      rethrow;
-    }
+    // No backend API call needed for automation
+    // The 5 Cloud Run scrapers handle job discovery
+    // Users accept jobs directly in-app using their local credentials
+    print('[AutomationService] Automation preferences saved. Job discovery handled by Cloud Run scrapers.');
   }
 
   Future<void> stopAutomation() async {
@@ -64,18 +50,12 @@ class AutomationService {
 
     await _firestore.collection('users').doc(user.uid).update({
       'automationActive': false,
+      'notifyEnabled': false, // Disable notifications when automation stops
     });
 
-    // Call backend API to stop Python script
-    try {
-      await http.post(
-        Uri.parse('$_backendUrl/api/stop-automation'),
-        headers: {'Content-Type': 'application/json'},
-        body: jsonEncode({'userId': user.uid}),
-      );
-    } catch (e) {
-      print('Error stopping automation: $e');
-    }
+    // No backend API call needed - Cloud Functions will stop sending notifications
+    // when automationActive is false
+    print('[AutomationService] Automation stopped. Notifications disabled.');
   }
 
   Future<void> syncJobs() async {

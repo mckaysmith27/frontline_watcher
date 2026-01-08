@@ -13,6 +13,13 @@ class FeedTab extends StatelessWidget {
     return StreamBuilder<List<Post>>(
       stream: socialService.getFeedPosts(),
       builder: (context, snapshot) {
+        // Track views when posts are displayed
+        if (snapshot.hasData) {
+          for (var post in snapshot.data!) {
+            // Track view asynchronously (don't await to avoid blocking UI)
+            socialService.viewPost(post.id);
+          }
+        }
         if (snapshot.connectionState == ConnectionState.waiting) {
           return const Center(child: CircularProgressIndicator());
         }

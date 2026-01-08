@@ -157,17 +157,26 @@ class _AutomationBottomSheetState extends State<AutomationBottomSheet> {
   Future<void> _handleAutomate() async {
     if (_selectedTier == null) return;
 
-    // Check if user has ESS credentials
+    // Check if user has ESS credentials stored locally (device keychain)
     final authProvider = Provider.of<AuthProvider>(context, listen: false);
     final essCreds = await authProvider.getEssCredentials();
 
     if (essCreds['username'] == null || essCreds['password'] == null) {
-      // Show ESS login dialog
+      // Show ESS login dialog - credentials saved to device keychain only
       final result = await _showEssLoginDialog();
       if (result == null) return;
+      
+      // Save credentials to device keychain (FlutterSecureStorage)
+      // These are NEVER sent to backend - used only for in-app job acceptance
+      await authProvider.saveEssCredentials(
+        username: result['username']!,
+        password: result['password']!,
+      );
     }
 
     // Navigate to payment screen
+    // Note: No credentials are sent to backend - automation uses Cloud Run scrapers
+    // User credentials stay on device for job acceptance only
     if (mounted) {
       Navigator.push(
         context,

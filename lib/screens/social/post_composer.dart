@@ -4,7 +4,9 @@ import 'package:image_picker/image_picker.dart';
 import '../../services/social_service.dart';
 
 class PostComposer extends StatefulWidget {
-  const PostComposer({super.key});
+  final String? initialTag;
+  
+  const PostComposer({super.key, this.initialTag});
 
   @override
   State<PostComposer> createState() => _PostComposerState();
@@ -15,6 +17,24 @@ class _PostComposerState extends State<PostComposer> {
   final List<String> _imageUrls = [];
   final ImagePicker _picker = ImagePicker();
   bool _isPosting = false;
+  String? _selectedCategoryTag; // happy, funny, random-thought, heart-warming, sad
+  
+  // Category tags with emojis
+  static const Map<String, String> categoryTags = {
+    'happy': '😊',
+    'funny': '😂',
+    'random-thought': '🤔',
+    'heart-warming': '😄',
+    'sad': '😢',
+  };
+
+  @override
+  void initState() {
+    super.initState();
+    if (widget.initialTag != null) {
+      _selectedCategoryTag = widget.initialTag;
+    }
+  }
 
   @override
   void dispose() {
@@ -42,6 +62,7 @@ class _PostComposerState extends State<PostComposer> {
       await socialService.createPost(
         content: _controller.text.trim(),
         imageUrls: _imageUrls,
+        categoryTag: _selectedCategoryTag,
       );
 
       if (mounted) {
@@ -112,6 +133,42 @@ class _PostComposerState extends State<PostComposer> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
+                      // Show selected tag if one is selected
+                      if (_selectedCategoryTag != null) ...[
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                          margin: const EdgeInsets.only(bottom: 12),
+                          decoration: BoxDecoration(
+                            color: Theme.of(context).colorScheme.primaryContainer,
+                            borderRadius: BorderRadius.circular(20),
+                          ),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Text(
+                                '${categoryTags[_selectedCategoryTag]} ${_selectedCategoryTag!.replaceAll('-', ' ')}',
+                                style: TextStyle(
+                                  color: Theme.of(context).colorScheme.onPrimaryContainer,
+                                  fontWeight: FontWeight.w500,
+                                ),
+                              ),
+                              const SizedBox(width: 8),
+                              GestureDetector(
+                                onTap: () {
+                                  setState(() {
+                                    _selectedCategoryTag = null;
+                                  });
+                                },
+                                child: Icon(
+                                  Icons.close,
+                                  size: 18,
+                                  color: Theme.of(context).colorScheme.onPrimaryContainer,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
                       TextField(
                         controller: _controller,
                         maxLines: null,
@@ -185,6 +242,33 @@ class _PostComposerState extends State<PostComposer> {
                 ),
               ),
               Divider(),
+              // Category tag selection buttons
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                child: SingleChildScrollView(
+                  scrollDirection: Axis.horizontal,
+                  child: Row(
+                    children: [
+                      // ALL button
+                      _buildCategoryButton('ALL', null, isSelected: _selectedCategoryTag == null),
+                      const SizedBox(width: 8),
+                      // Category buttons
+                      ...categoryTags.entries.map((entry) {
+                        final tag = entry.key;
+                        final emoji = entry.value;
+                        return Padding(
+                          padding: const EdgeInsets.only(right: 8),
+                          child: _buildCategoryButton(
+                            '$emoji ${tag.replaceAll('-', ' ')}',
+                            tag,
+                            isSelected: _selectedCategoryTag == tag,
+                          ),
+                        );
+                      }),
+                    ],
+                  ),
+                ),
+              ),
               Padding(
                 padding: const EdgeInsets.all(16),
                 child: Row(
@@ -210,6 +294,18 @@ class _PostComposerState extends State<PostComposer> {
             ],
           ),
         );
+      },
+    );
+  }
+
+  Widget _buildCategoryButton(String label, String? tag, {required bool isSelected}) {
+    return ChoiceChip(
+      label: Text(label),
+      selected: isSelected,
+      onSelected: (selected) {
+        setState(() {
+          _selectedCategoryTag = selected ? tag : null;
+        });
       },
     );
   }

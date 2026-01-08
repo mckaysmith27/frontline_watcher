@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 import 'package:image_picker/image_picker.dart';
 import '../../providers/auth_provider.dart';
 import '../../providers/theme_provider.dart';
+import '../../widgets/profile_app_bar.dart';
 import 'password_reset_screen.dart';
 import 'agreements_screen.dart';
 import 'help_screen.dart';
@@ -16,8 +17,7 @@ class ProfileScreen extends StatelessWidget {
     final themeProvider = Provider.of<ThemeProvider>(context);
 
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Profile'),
+      appBar: ProfileAppBar(
         actions: [
           IconButton(
             icon: Icon(
@@ -79,6 +79,7 @@ class ProfileScreen extends StatelessWidget {
               subtitle: 'Change your display name',
               onTap: () => _showNicknameDialog(context),
             ),
+            _buildThemeSettingsItem(context),
             _buildSettingsItem(
               context,
               icon: Icons.verified,
@@ -177,6 +178,59 @@ class ProfileScreen extends StatelessWidget {
       subtitle: Text(subtitle),
       trailing: const Icon(Icons.chevron_right),
       onTap: onTap,
+    );
+  }
+
+  Widget _buildThemeSettingsItem(BuildContext context) {
+    final themeProvider = Provider.of<ThemeProvider>(context);
+    
+    return ListTile(
+      leading: Icon(
+        themeProvider.themeMode == ThemeMode.dark
+            ? Icons.dark_mode
+            : themeProvider.themeMode == ThemeMode.light
+                ? Icons.light_mode
+                : Icons.brightness_auto,
+      ),
+      title: const Text('Theme'),
+      subtitle: Text(
+        themeProvider.themeMode == ThemeMode.dark
+            ? 'Dark Mode'
+            : themeProvider.themeMode == ThemeMode.light
+                ? 'Light Mode'
+                : 'System Default',
+      ),
+      trailing: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          // Light mode button
+          IconButton(
+            icon: Icon(
+              Icons.light_mode,
+              color: themeProvider.themeMode == ThemeMode.light
+                  ? Theme.of(context).colorScheme.primary
+                  : null,
+            ),
+            tooltip: 'Light Mode',
+            onPressed: () {
+              themeProvider.setThemeMode(ThemeMode.light);
+            },
+          ),
+          // Dark mode button
+          IconButton(
+            icon: Icon(
+              Icons.dark_mode,
+              color: themeProvider.themeMode == ThemeMode.dark
+                  ? Theme.of(context).colorScheme.primary
+                  : null,
+            ),
+            tooltip: 'Dark Mode',
+            onPressed: () {
+              themeProvider.setThemeMode(ThemeMode.dark);
+            },
+          ),
+        ],
+      ),
     );
   }
 

@@ -13,13 +13,27 @@ class MainNavigation extends StatefulWidget {
 
 class _MainNavigationState extends State<MainNavigation> {
   int _currentIndex = 0;
+  final GlobalKey<NavigatorState> _socialNavigatorKey = GlobalKey<NavigatorState>();
 
-  final List<Widget> _screens = [
-    const FiltersScreen(),
-    const ScheduleScreen(),
-    const SocialScreen(),
-    const ProfileScreen(),
-  ];
+  late final List<Widget> _screens;
+
+  @override
+  void initState() {
+    super.initState();
+    _screens = [
+      const FiltersScreen(),
+      const ScheduleScreen(),
+      SocialScreen(
+        onNavigateToMyPage: () {
+          // Switch to Social tab and My Page
+          setState(() {
+            _currentIndex = 2;
+          });
+        },
+      ),
+      const ProfileScreen(),
+    ];
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -46,11 +60,11 @@ class _MainNavigationState extends State<MainNavigation> {
           ),
           NavigationDestination(
             icon: Icon(Icons.people),
-            label: 'Social',
+            label: 'Community',
           ),
           NavigationDestination(
-            icon: Icon(Icons.person),
-            label: 'Profile',
+            icon: Icon(Icons.settings),
+            label: 'Settings',
           ),
         ],
       ),

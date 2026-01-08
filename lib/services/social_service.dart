@@ -1,6 +1,8 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import '../models/post.dart';
+import '../models/comment.dart';
+import '../models/social_link.dart';
 
 class SocialService {
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
@@ -9,6 +11,7 @@ class SocialService {
   Future<void> createPost({
     required String content,
     List<String> imageUrls = const [],
+    String? categoryTag,
   }) async {
     final user = _auth.currentUser;
     if (user == null) return;
@@ -28,6 +31,7 @@ class SocialService {
       'views': 0,
       'isPinned': false,
       'pinOrder': 0,
+      'categoryTag': categoryTag,
     });
   }
 
@@ -59,7 +63,8 @@ class SocialService {
     return _firestore
         .collection('posts')
         .where('userId', isEqualTo: userId)
-        .orderBy('createdAt', descending: true)
+        // Removed orderBy to avoid requiring composite index
+        // Sorting is done in memory below
         .snapshots()
         .map((snapshot) {
       final posts = snapshot.docs
@@ -75,7 +80,7 @@ class SocialService {
           .cast<Post>()
           .toList();
       
-      // Sort: pinned posts first, then by creation date
+      // Sort: pinned posts first, then by creation date (descending)
       posts.sort((a, b) {
         if (a.isPinned && !b.isPinned) return -1;
         if (!a.isPinned && b.isPinned) return 1;
@@ -95,9 +100,32 @@ class SocialService {
 
     final postRef = _firestore.collection('posts').doc(postId);
     final postDoc = await postRef.get();
+    final postData = postDoc.data();
     
-    if (postDoc.data()?['userId'] == user.uid) return; // Can't upvote own post
-
+    if (postData == null) return;
+    
+    final isOwnPost = postData['userId'] == user.uid;
+    
+    // Check if user already upvoted today (or once for own posts)
+    final today = DateTime.now().toIso8601String().split('T')[0];
+    final upvotesRef = postRef.collection('upvotes').doc(user.uid);
+    final upvoteDoc = await upvotesRef.get();
+    
+    if (upvoteDoc.exists) {
+      final lastUpvoteDate = upvoteDoc.data()?['date'] as String?;
+      if (isOwnPost) {
+        // Own posts: only once total
+        return;
+      } else {
+        // Other posts: once per day
+        if (lastUpvoteDate == today) {
+          return; // Already upvoted today
+        }
+      }
+    }
+    
+    // Record the upvote
+    await upvotesRef.set({'date': today});
     await postRef.update({
       'upvotes': FieldValue.increment(1),
     });
@@ -109,9 +137,22 @@ class SocialService {
 
     final postRef = _firestore.collection('posts').doc(postId);
     final postDoc = await postRef.get();
+    final postData = postDoc.data();
     
-    if (postDoc.data()?['userId'] == user.uid) return; // Can't downvote own post
+    if (postData == null) return;
+    
+    if (postData['userId'] == user.uid) return; // Can't downvote own post
 
+    // Check if user already downvoted (one per post, doesn't renew)
+    final downvotesRef = postRef.collection('downvotes').doc(user.uid);
+    final downvoteDoc = await downvotesRef.get();
+    
+    if (downvoteDoc.exists) {
+      return; // Already downvoted
+    }
+    
+    // Record the downvote
+    await downvotesRef.set({'date': DateTime.now().toIso8601String()});
     await postRef.update({
       'downvotes': FieldValue.increment(1),
     });
@@ -121,10 +162,19 @@ class SocialService {
     final user = _auth.currentUser;
     if (user == null) return;
 
-    // Track views per user (simplified - would need a subcollection in production)
-    await _firestore.collection('posts').doc(postId).update({
-      'views': FieldValue.increment(1),
-    });
+    final postRef = _firestore.collection('posts').doc(postId);
+    
+    // Check if user already viewed this post (one per user per post)
+    final viewsRef = postRef.collection('views').doc(user.uid);
+    final viewDoc = await viewsRef.get();
+    
+    if (!viewDoc.exists) {
+      // First time viewing - increment count and record
+      await viewsRef.set({'date': DateTime.now().toIso8601String()});
+      await postRef.update({
+        'views': FieldValue.increment(1),
+      });
+    }
   }
 
   Future<void> deletePost(String postId) async {
@@ -144,10 +194,213 @@ class SocialService {
     final postDoc = await _firestore.collection('posts').doc(postId).get();
     if (postDoc.data()?['userId'] != user.uid) return;
 
+    // Use timestamp for pinOrder so latest pinned comes first
+    final order = isPinned ? DateTime.now().millisecondsSinceEpoch : 0;
+
     await _firestore.collection('posts').doc(postId).update({
       'isPinned': isPinned,
-      'pinOrder': pinOrder,
+      'pinOrder': order,
     });
+  }
+
+  Stream<List<Post>> getTopPosts({String? categoryTag}) {
+    return _firestore
+        .collection('posts')
+        .snapshots()
+        .map((snapshot) {
+      final posts = snapshot.docs
+          .map((doc) {
+            try {
+              return Post.fromMap(doc.data(), doc.id);
+            } catch (e) {
+              print('Error parsing post ${doc.id}: $e');
+              return null;
+            }
+          })
+          .where((post) => post != null)
+          .cast<Post>()
+          .toList();
+      
+      // Filter by category if specified
+      if (categoryTag != null && categoryTag != 'ALL') {
+        posts.removeWhere((post) => post.categoryTag != categoryTag);
+      }
+      
+      // Sort by (upvotes - downvotes) descending
+      posts.sort((a, b) {
+        final scoreA = a.upvotes - a.downvotes;
+        final scoreB = b.upvotes - b.downvotes;
+        return scoreB.compareTo(scoreA);
+      });
+      
+      return posts;
+    });
+  }
+
+  // Social Links Management
+  Future<void> saveSocialLinks(String userId, List<SocialLink> links) async {
+    final user = _auth.currentUser;
+    if (user == null || user.uid != userId) return;
+
+    await _firestore.collection('users').doc(userId).update({
+      'socialLinks': links.map((link) => link.toMap()).toList(),
+    });
+  }
+
+  Future<List<SocialLink>> getSocialLinks(String userId) async {
+    final doc = await _firestore.collection('users').doc(userId).get();
+    if (!doc.exists) return [];
+
+    final data = doc.data();
+    final linksData = data?['socialLinks'] as List<dynamic>?;
+    if (linksData == null) return [];
+
+    return linksData
+        .map((linkMap) => SocialLink.fromMap(Map<String, dynamic>.from(linkMap)))
+        .toList();
+  }
+
+  Stream<List<SocialLink>> getSocialLinksStream(String userId) {
+    return _firestore
+        .collection('users')
+        .doc(userId)
+        .snapshots()
+        .map((snapshot) {
+      if (!snapshot.exists) return <SocialLink>[];
+      final data = snapshot.data();
+      final linksData = data?['socialLinks'] as List<dynamic>?;
+      if (linksData == null) return <SocialLink>[];
+
+      return linksData
+          .map((linkMap) => SocialLink.fromMap(Map<String, dynamic>.from(linkMap)))
+          .toList();
+    });
+  }
+
+  // Comments Management
+  Future<void> createComment({
+    required String postId,
+    required String content,
+    String? parentCommentId,
+  }) async {
+    final user = _auth.currentUser;
+    if (user == null) return;
+
+    final userDoc = await _firestore.collection('users').doc(user.uid).get();
+    final nickname = userDoc.data()?['nickname'] ?? user.email?.split('@')[0] ?? 'User';
+
+    await _firestore.collection('posts').doc(postId).collection('comments').add({
+      'postId': postId,
+      'userId': user.uid,
+      'userNickname': nickname,
+      'userPhotoUrl': userDoc.data()?['photoUrl'],
+      'content': content,
+      'createdAt': FieldValue.serverTimestamp(),
+      'upvotes': 0,
+      'downvotes': 0,
+      'views': 0,
+      'parentCommentId': parentCommentId,
+    });
+  }
+
+  Stream<List<Comment>> getComments(String postId) {
+    return _firestore
+        .collection('posts')
+        .doc(postId)
+        .collection('comments')
+        .orderBy('createdAt', descending: false)
+        .snapshots()
+        .map((snapshot) {
+      return snapshot.docs
+          .map((doc) {
+            try {
+              return Comment.fromMap(doc.data(), doc.id);
+            } catch (e) {
+              print('Error parsing comment ${doc.id}: $e');
+              return null;
+            }
+          })
+          .where((comment) => comment != null)
+          .cast<Comment>()
+          .toList();
+    });
+  }
+
+  Future<void> upvoteComment(String postId, String commentId) async {
+    final user = _auth.currentUser;
+    if (user == null) return;
+
+    final commentRef = _firestore
+        .collection('posts')
+        .doc(postId)
+        .collection('comments')
+        .doc(commentId);
+    final commentDoc = await commentRef.get();
+    
+    if (commentDoc.data()?['userId'] == user.uid) return; // Can't upvote own comment
+
+    final today = DateTime.now().toIso8601String().split('T')[0];
+    final upvotesRef = commentRef.collection('upvotes').doc(user.uid);
+    final upvoteDoc = await upvotesRef.get();
+    
+    if (upvoteDoc.exists) {
+      final lastUpvoteDate = upvoteDoc.data()?['date'] as String?;
+      if (lastUpvoteDate == today) {
+        return; // Already upvoted today
+      }
+    }
+    
+    await upvotesRef.set({'date': today});
+    await commentRef.update({
+      'upvotes': FieldValue.increment(1),
+    });
+  }
+
+  Future<void> downvoteComment(String postId, String commentId) async {
+    final user = _auth.currentUser;
+    if (user == null) return;
+
+    final commentRef = _firestore
+        .collection('posts')
+        .doc(postId)
+        .collection('comments')
+        .doc(commentId);
+    final commentDoc = await commentRef.get();
+    
+    if (commentDoc.data()?['userId'] == user.uid) return; // Can't downvote own comment
+
+    final downvotesRef = commentRef.collection('downvotes').doc(user.uid);
+    final downvoteDoc = await downvotesRef.get();
+    
+    if (downvoteDoc.exists) {
+      return; // Already downvoted
+    }
+    
+    await downvotesRef.set({'date': DateTime.now().toIso8601String()});
+    await commentRef.update({
+      'downvotes': FieldValue.increment(1),
+    });
+  }
+
+  Future<void> viewComment(String postId, String commentId) async {
+    final user = _auth.currentUser;
+    if (user == null) return;
+
+    final commentRef = _firestore
+        .collection('posts')
+        .doc(postId)
+        .collection('comments')
+        .doc(commentId);
+    
+    final viewsRef = commentRef.collection('views').doc(user.uid);
+    final viewDoc = await viewsRef.get();
+    
+    if (!viewDoc.exists) {
+      await viewsRef.set({'date': DateTime.now().toIso8601String()});
+      await commentRef.update({
+        'views': FieldValue.increment(1),
+      });
+    }
   }
 }
 

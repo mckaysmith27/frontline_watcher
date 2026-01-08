@@ -8,6 +8,7 @@ class FilterColumn extends StatefulWidget {
   final List<String> tags;
   final bool isPremium;
   final bool isUnlocked;
+  final String? dateStr; // If provided, filters are date-specific
 
   const FilterColumn({
     super.key,
@@ -15,6 +16,7 @@ class FilterColumn extends StatefulWidget {
     required this.tags,
     this.isPremium = false,
     this.isUnlocked = false,
+    this.dateStr,
   });
 
   @override
@@ -133,14 +135,6 @@ class _FilterColumnState extends State<FilterColumn> {
                     ),
               ),
               const Spacer(),
-              if (widget.isPremium && !widget.isUnlocked)
-                TextButton.icon(
-                  onPressed: () {
-                    _showUnlockDialog(context);
-                  },
-                  icon: const Icon(Icons.lock_open, size: 18),
-                  label: const Text('Unlock'),
-                ),
             ],
           ),
           const SizedBox(height: 12),
@@ -176,7 +170,10 @@ class _FilterColumnState extends State<FilterColumn> {
             runSpacing: 8,
             children: filteredTags.map((tag) {
               final isCustom = filtersProvider.customTags[widget.category]?.contains(tag) ?? false;
-              final state = filtersProvider.tagStates[tag] ?? TagState.gray;
+              // Use date-specific state if dateStr is provided
+              final state = widget.dateStr != null
+                  ? filtersProvider.getTagStateForDate(tag, widget.dateStr)
+                  : (filtersProvider.tagStates[tag] ?? TagState.gray);
               
               return TagChip(
                 tag: tag,
@@ -186,7 +183,11 @@ class _FilterColumnState extends State<FilterColumn> {
                 isCustom: isCustom,
                 onTap: () async {
                   if (widget.isPremium && !widget.isUnlocked) return;
-                  await filtersProvider.toggleTag(widget.category, tag);
+                  if (widget.dateStr != null) {
+                    await filtersProvider.toggleTagForDate(widget.category, tag, widget.dateStr!);
+                  } else {
+                    await filtersProvider.toggleTag(widget.category, tag);
+                  }
                 },
                 onDelete: isCustom
                     ? () {
@@ -201,136 +202,5 @@ class _FilterColumnState extends State<FilterColumn> {
     );
   }
 
-  void _showUnlockDialog(BuildContext context) {
-    showDialog(
-      context: context,
-      builder: (context) => UnlockPremiumDialog(
-        category: widget.category,
-        title: _getTitle(),
-      ),
-    );
-  }
-}
-
-class UnlockPremiumDialog extends StatefulWidget {
-  final String category;
-  final String title;
-
-  const UnlockPremiumDialog({
-    super.key,
-    required this.category,
-    required this.title,
-  });
-
-  @override
-  State<UnlockPremiumDialog> createState() => _UnlockPremiumDialogState();
-}
-
-class _UnlockPremiumDialogState extends State<UnlockPremiumDialog> {
-  final TextEditingController _promoController = TextEditingController();
-  bool _isLoading = false;
-
-  @override
-  void dispose() {
-    _promoController.dispose();
-    super.dispose();
-  }
-
-  Future<void> _handleUnlock() async {
-    final promoCode = _promoController.text.trim();
-    if (promoCode.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Please enter a promo code')),
-      );
-      return;
-    }
-
-    setState(() => _isLoading = true);
-
-    try {
-      final filtersProvider = Provider.of<FiltersProvider>(context, listen: false);
-      await filtersProvider.unlockPremium(widget.category, promoCode);
-      
-      if (mounted) {
-        Navigator.pop(context);
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Premium unlocked!')),
-        );
-      }
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Invalid promo code: $e')),
-        );
-      }
-    } finally {
-      if (mounted) {
-        setState(() => _isLoading = false);
-      }
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return AlertDialog(
-      title: Text('Unlock ${widget.title}'),
-      content: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          const Text('Enter a promo code to unlock this premium feature:'),
-          const SizedBox(height: 16),
-          TextField(
-            controller: _promoController,
-            decoration: const InputDecoration(
-              labelText: 'Promo Code',
-              border: OutlineInputBorder(),
-            ),
-            textCapitalization: TextCapitalization.characters,
-          ),
-          const SizedBox(height: 16),
-          TextButton(
-            onPressed: () {
-              // Show payment options
-              _showPaymentOptions(context);
-            },
-            child: const Text('Or purchase to unlock'),
-          ),
-        ],
-      ),
-      actions: [
-        TextButton(
-          onPressed: () => Navigator.pop(context),
-          child: const Text('Cancel'),
-        ),
-        ElevatedButton(
-          onPressed: _isLoading ? null : _handleUnlock,
-          child: _isLoading
-              ? const SizedBox(
-                  width: 20,
-                  height: 20,
-                  child: CircularProgressIndicator(strokeWidth: 2),
-                )
-              : const Text('Unlock'),
-        ),
-      ],
-    );
-  }
-
-  void _showPaymentOptions(BuildContext context) {
-    // Payment integration would go here
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Purchase Premium'),
-        content: const Text('Payment integration coming soon'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('OK'),
-          ),
-        ],
-      ),
-    );
-  }
 }
 

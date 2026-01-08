@@ -1,8 +1,14 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 import '../../models/post.dart';
+import '../../models/comment.dart';
+import '../../providers/auth_provider.dart';
 import '../../services/social_service.dart';
+import 'comment_card.dart';
+import 'comment_composer.dart';
+import 'user_page_viewer.dart';
 
-class PostCard extends StatelessWidget {
+class PostCard extends StatefulWidget {
   final Post post;
   final bool isOwnPost;
   final bool isTopPost;
@@ -15,12 +21,18 @@ class PostCard extends StatelessWidget {
   });
 
   @override
-  Widget build(BuildContext context) {
-    final socialService = SocialService();
+  State<PostCard> createState() => _PostCardState();
+}
 
+class _PostCardState extends State<PostCard> {
+  final SocialService _socialService = SocialService();
+  bool _showComments = false;
+
+  @override
+  Widget build(BuildContext context) {
     return Card(
       margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-      color: isTopPost ? Colors.amber[50] : null,
+      color: widget.isTopPost ? Colors.amber[50] : null,
       child: Padding(
         padding: const EdgeInsets.all(16),
         child: Column(
@@ -28,13 +40,27 @@ class PostCard extends StatelessWidget {
           children: [
             Row(
               children: [
-                CircleAvatar(
-                  backgroundImage: post.userPhotoUrl != null
-                      ? NetworkImage(post.userPhotoUrl!)
-                      : null,
-                  child: post.userPhotoUrl == null
-                      ? Text(post.userNickname[0].toUpperCase())
-                      : null,
+                GestureDetector(
+                  onTap: () {
+                    // Show user's page in modal
+                    showModalBottomSheet(
+                      context: context,
+                      isScrollControlled: true,
+                      useSafeArea: true,
+                      builder: (_) => UserPageViewer(
+                        userId: widget.post.userId,
+                        isOwnPage: widget.post.userId == Provider.of<AuthProvider>(context, listen: false).user?.uid,
+                      ),
+                    );
+                  },
+                  child: CircleAvatar(
+                    backgroundImage: widget.post.userPhotoUrl != null
+                        ? NetworkImage(widget.post.userPhotoUrl!)
+                        : null,
+                    child: widget.post.userPhotoUrl == null
+                        ? Text(widget.post.userNickname[0].toUpperCase())
+                        : null,
+                  ),
                 ),
                 const SizedBox(width: 12),
                 Expanded(
@@ -42,11 +68,11 @@ class PostCard extends StatelessWidget {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        post.userNickname,
+                        widget.post.userNickname,
                         style: const TextStyle(fontWeight: FontWeight.bold),
                       ),
                       Text(
-                        _formatDate(post.createdAt),
+                        _formatDate(widget.post.createdAt),
                         style: TextStyle(
                           fontSize: 12,
                           color: Colors.grey[600],
@@ -55,21 +81,21 @@ class PostCard extends StatelessWidget {
                     ],
                   ),
                 ),
-                if (isOwnPost)
+                if (widget.isOwnPost)
                   Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
                       IconButton(
                         icon: Icon(
-                          post.isPinned ? Icons.push_pin : Icons.push_pin_outlined,
-                          color: post.isPinned ? Colors.amber : null,
+                          widget.post.isPinned ? Icons.push_pin : Icons.push_pin_outlined,
+                          color: widget.post.isPinned ? Colors.amber : null,
                         ),
                         onPressed: () {
-                          // Toggle pin
-                          socialService.togglePinPost(
-                            post.id,
-                            !post.isPinned,
-                            post.isPinned ? 0 : 1,
+                          // Toggle pin - only affects order on My Page
+                          _socialService.togglePinPost(
+                            widget.post.id,
+                            !widget.post.isPinned,
+                            0, // Order is calculated in service
                           );
                         },
                       ),
@@ -97,7 +123,7 @@ class PostCard extends StatelessWidget {
                           );
 
                           if (confirmed == true) {
-                            await socialService.deletePost(post.id);
+                            await _socialService.deletePost(widget.post.id);
                           }
                         },
                       ),
@@ -106,10 +132,39 @@ class PostCard extends StatelessWidget {
               ],
             ),
             const SizedBox(height: 12),
-            Text(post.content),
-            if (post.imageUrls.isNotEmpty) ...[
+            // Show category tag if present
+            if (widget.post.categoryTag != null) ...[
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                margin: const EdgeInsets.only(bottom: 8),
+                decoration: BoxDecoration(
+                  color: Theme.of(context).colorScheme.primaryContainer,
+                  borderRadius: BorderRadius.circular(20),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      _getCategoryEmoji(widget.post.categoryTag!),
+                      style: const TextStyle(fontSize: 16),
+                    ),
+                    const SizedBox(width: 4),
+                    Text(
+                      widget.post.categoryTag!.replaceAll('-', ' '),
+                      style: TextStyle(
+                        color: Theme.of(context).colorScheme.onPrimaryContainer,
+                        fontWeight: FontWeight.w500,
+                        fontSize: 12,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+            Text(widget.post.content),
+            if (widget.post.imageUrls.isNotEmpty) ...[
               const SizedBox(height: 12),
-              ...post.imageUrls.map((url) {
+              ...widget.post.imageUrls.map((url) {
                 return Padding(
                   padding: const EdgeInsets.only(bottom: 8),
                   child: Image.network(url),
@@ -117,48 +172,88 @@ class PostCard extends StatelessWidget {
               }),
             ],
             const Divider(),
-            if (post.isPinned || isTopPost)
-              Row(
-                children: [
-                  Icon(Icons.arrow_upward, size: 20, color: Colors.green),
-                  const SizedBox(width: 4),
-                  Text('${post.upvotes}'),
-                  const SizedBox(width: 16),
-                  Icon(Icons.arrow_downward, size: 20, color: Colors.red),
-                  const SizedBox(width: 4),
-                  Text('${post.downvotes}'),
-                  const SizedBox(width: 16),
-                  Icon(Icons.visibility, size: 20),
-                  const SizedBox(width: 4),
-                  Text('${post.views}'),
-                ],
-              )
-            else
-              Row(
-                children: [
-                  IconButton(
-                    icon: const Icon(Icons.arrow_upward),
-                    onPressed: isOwnPost
-                        ? null
-                        : () => socialService.upvotePost(post.id),
-                  ),
-                  Text('${post.upvotes}'),
-                  IconButton(
-                    icon: const Icon(Icons.arrow_downward),
-                    onPressed: isOwnPost
-                        ? null
-                        : () => socialService.downvotePost(post.id),
-                  ),
-                  Text('${post.downvotes}'),
-                  const Spacer(),
-                  Icon(Icons.visibility, size: 20),
-                  Text('${post.views}'),
-                ],
+            Row(
+              children: [
+                IconButton(
+                  icon: const Icon(Icons.arrow_upward),
+                  onPressed: widget.isOwnPost
+                      ? null
+                      : () => _socialService.upvotePost(widget.post.id),
+                ),
+                Text('${widget.post.upvotes}'),
+                IconButton(
+                  icon: const Icon(Icons.arrow_downward),
+                  onPressed: widget.isOwnPost
+                      ? null
+                      : () => _socialService.downvotePost(widget.post.id),
+                ),
+                Text('${widget.post.downvotes}'),
+                IconButton(
+                  icon: Icon(_showComments ? Icons.comment : Icons.comment_outlined),
+                  onPressed: () {
+                    setState(() {
+                      _showComments = !_showComments;
+                    });
+                  },
+                ),
+                const Spacer(),
+                Icon(Icons.visibility, size: 20),
+                Text('${widget.post.views}'),
+              ],
+            ),
+            // Comments Section
+            if (_showComments) ...[
+              const Divider(),
+              CommentComposer(
+                postId: widget.post.id,
+                onCommentAdded: () {
+                  setState(() {}); // Refresh to show new comment
+                },
               ),
+              const SizedBox(height: 8),
+              StreamBuilder<List<Comment>>(
+                stream: _socialService.getComments(widget.post.id),
+                builder: (context, snapshot) {
+                  if (snapshot.connectionState == ConnectionState.waiting) {
+                    return const Center(child: CircularProgressIndicator());
+                  }
+                  
+                  if (!snapshot.hasData || snapshot.data!.isEmpty) {
+                    return const Padding(
+                      padding: EdgeInsets.all(16),
+                      child: Text('No comments yet'),
+                    );
+                  }
+                  
+                  final comments = snapshot.data!;
+                  return Column(
+                    children: comments.map((comment) {
+                      // Track view when comment is displayed
+                      _socialService.viewComment(widget.post.id, comment.id);
+                      return CommentCard(
+                        comment: comment,
+                        postId: widget.post.id,
+                      );
+                    }).toList(),
+                  );
+                },
+              ),
+            ],
           ],
         ),
       ),
     );
+  }
+
+  String _getCategoryEmoji(String categoryTag) {
+    const emojis = {
+      'happy': '😊',
+      'funny': '😂',
+      'random-thought': '🤔',
+      'heart-warming': '😄',
+      'sad': '😢',
+    };
+    return emojis[categoryTag] ?? '';
   }
 
   String _formatDate(DateTime date) {

@@ -2,6 +2,7 @@ import 'package:flutter/foundation.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
+import '../services/push_notification_service.dart';
 
 class AuthProvider extends ChangeNotifier {
   final FirebaseAuth _auth = FirebaseAuth.instance;
@@ -20,11 +21,34 @@ class AuthProvider extends ChangeNotifier {
   }
 
   Future<void> _init() async {
-    _auth.authStateChanges().listen((User? user) {
+    _auth.authStateChanges().listen((User? user) async {
       _user = user;
       _isLoading = false;
+      
+      // Initialize push notifications when user signs in
+      if (user != null) {
+        final pushService = PushNotificationService();
+        await pushService.initialize();
+        // Save token if it exists
+        if (pushService.currentToken != null) {
+          await _saveFcmToken(pushService.currentToken!);
+        }
+      }
+      
       notifyListeners();
     });
+  }
+
+  Future<void> _saveFcmToken(String token) async {
+    if (_user == null) return;
+    
+    try {
+      await _firestore.collection('users').doc(_user!.uid).update({
+        'fcmTokens': FieldValue.arrayUnion([token]),
+      });
+    } catch (e) {
+      print('Error saving FCM token: $e');
+    }
   }
 
   Future<String?> signUp({

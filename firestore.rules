@@ -1,0 +1,63 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Users can read/write their own user document
+    match /users/{userId} {
+      allow read, write: if request.auth != null && request.auth.uid == userId;
+    }
+    
+    // Job events are read-only for users, writable by service accounts
+    match /job_events/{eventId} {
+      allow read: if request.auth != null;
+      allow write: if false; // Only Cloud Run scrapers can write (via service account)
+    }
+    
+    // Delivery tracking is read-only for users
+    match /job_events/{eventId}/deliveries/{deliveryId} {
+      allow read: if request.auth != null;
+      allow write: if false; // Only Cloud Functions can write
+    }
+    
+    // Posts collection
+    match /posts/{postId} {
+      allow read: if request.auth != null;
+      allow create: if request.auth != null && request.resource.data.userId == request.auth.uid;
+      allow update, delete: if request.auth != null && resource.data.userId == request.auth.uid;
+      
+      // Comments subcollection
+      match /comments/{commentId} {
+        allow read: if request.auth != null;
+        allow create: if request.auth != null && request.resource.data.userId == request.auth.uid;
+        allow update, delete: if request.auth != null && resource.data.userId == request.auth.uid;
+        
+        // Comment votes/views subcollections
+        match /upvotes/{userId} {
+          allow read, write: if request.auth != null && request.auth.uid == userId;
+        }
+        match /downvotes/{userId} {
+          allow read, write: if request.auth != null && request.auth.uid == userId;
+        }
+        match /views/{userId} {
+          allow read, write: if request.auth != null && request.auth.uid == userId;
+        }
+      }
+      
+      // Post votes/views subcollections
+      match /upvotes/{userId} {
+        allow read, write: if request.auth != null && request.auth.uid == userId;
+      }
+      match /downvotes/{userId} {
+        allow read, write: if request.auth != null && request.auth.uid == userId;
+      }
+      match /views/{userId} {
+        allow read, write: if request.auth != null && request.auth.uid == userId;
+      }
+    }
+    
+    // Message logs (for debugging)
+    match /messageLogs/{logId} {
+      allow read, write: if false; // Internal only
+    }
+  }
+}
+

@@ -2,8 +2,13 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../providers/filters_provider.dart';
 import '../../providers/credits_provider.dart';
+import '../../services/automation_service.dart';
+import '../../utils/keyword_mapper.dart';
 import '../../widgets/filter_column.dart';
+import '../../widgets/nested_filter_column.dart';
+import '../../widgets/profile_app_bar.dart';
 import 'automation_bottom_sheet.dart';
+import 'payment_screen.dart';
 
 class FiltersScreen extends StatelessWidget {
   const FiltersScreen({super.key});
@@ -14,21 +19,23 @@ class FiltersScreen extends StatelessWidget {
     final creditsProvider = Provider.of<CreditsProvider>(context);
 
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Filters'),
+      appBar: ProfileAppBar(
         actions: [
-          Padding(
-            padding: const EdgeInsets.all(16.0),
-            child: Center(
-              child: Row(
-                children: [
-                  const Icon(Icons.stars, size: 20),
-                  const SizedBox(width: 4),
-                  Text(
-                    '${creditsProvider.credits}',
-                    style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-                  ),
-                ],
+          GestureDetector(
+            onTap: () => _showPurchaseOptions(context),
+            child: Padding(
+              padding: const EdgeInsets.all(16.0),
+              child: Center(
+                child: Row(
+                  children: [
+                    const Icon(Icons.stars, size: 20),
+                    const SizedBox(width: 4),
+                    Text(
+                      '${creditsProvider.credits}',
+                      style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                    ),
+                  ],
+                ),
               ),
             ),
           ),
@@ -43,26 +50,36 @@ class FiltersScreen extends StatelessWidget {
               'Select your job preferences',
               style: Theme.of(context).textTheme.titleLarge,
             ),
+            const SizedBox(height: 16),
+            // Filter Legend with Tooltips
+            _buildFilterLegend(context),
             const SizedBox(height: 24),
             ...filtersProvider.filtersDict.entries.map((entry) {
-              final isPremium = entry.key == 'premium-classes' ||
-                  entry.key == 'premium-workdays';
-              final isUnlocked = entry.key == 'premium-classes'
-                  ? filtersProvider.premiumClassesUnlocked
-                  : filtersProvider.premiumWorkdaysUnlocked;
-
-              return Padding(
-                padding: const EdgeInsets.only(bottom: 24.0),
-                child: FilterColumn(
-                  category: entry.key,
-                  tags: [
-                    ...entry.value,
-                    ...(filtersProvider.customTags[entry.key] ?? []),
-                  ],
-                  isPremium: isPremium,
-                  isUnlocked: isUnlocked,
-                ),
-              );
+              // Handle nested dictionaries (like "schools-by-city")
+              if (entry.value is Map) {
+                return Padding(
+                  padding: const EdgeInsets.only(bottom: 24.0),
+                  child: NestedFilterColumn(
+                    category: entry.key,
+                    nestedData: entry.value as Map<String, dynamic>,
+                    customTags: filtersProvider.customTags[entry.key] ?? [],
+                  ),
+                );
+              } else {
+                // Regular list of tags
+                return Padding(
+                  padding: const EdgeInsets.only(bottom: 24.0),
+                  child: FilterColumn(
+                    category: entry.key,
+                    tags: [
+                      ...(entry.value as List<String>),
+                      ...(filtersProvider.customTags[entry.key] ?? []),
+                    ],
+                    isPremium: false,
+                    isUnlocked: true,
+                  ),
+                );
+              }
             }),
           ],
         ),
@@ -80,20 +97,214 @@ class FiltersScreen extends StatelessWidget {
           ],
         ),
         child: SafeArea(
-          child: ElevatedButton.icon(
-            onPressed: () {
-              showModalBottomSheet(
-                context: context,
-                isScrollControlled: true,
-                builder: (_) => const AutomationBottomSheet(),
+          child: Consumer<CreditsProvider>(
+            builder: (context, creditsProvider, _) {
+              // Unlocked condition: user has credits OR has notification days (green days)
+              // If they have green days, they've paid for filter services for those days
+              final unlockedCondition = creditsProvider.credits > 0 || 
+                                       creditsProvider.committedDates.isNotEmpty;
+              
+              return ElevatedButton.icon(
+                onPressed: unlockedCondition ? () => _applyFilters(context) : null,
+                icon: Icon(unlockedCondition ? Icons.lock_open : Icons.lock),
+                label: Text(unlockedCondition ? 'Apply Filters' : 'Apply Filters (Locked)'),
+                style: ElevatedButton.styleFrom(
+                  padding: const EdgeInsets.symmetric(vertical: 16),
+                  backgroundColor: unlockedCondition 
+                      ? Theme.of(context).colorScheme.primary
+                      : Colors.grey,
+                  foregroundColor: unlockedCondition
+                      ? Theme.of(context).colorScheme.onPrimary
+                      : Colors.grey[300],
+                ),
               );
             },
-            icon: const Icon(Icons.auto_awesome),
-            label: const Text('Automate'),
-            style: ElevatedButton.styleFrom(
-              padding: const EdgeInsets.symmetric(vertical: 16),
-            ),
           ),
+        ),
+      ),
+    );
+  }
+
+  void _showPurchaseOptions(BuildContext context) {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      builder: (_) => const AutomationBottomSheet(),
+    );
+  }
+
+  Future<void> _applyFilters(BuildContext context) async {
+    final filtersProvider = Provider.of<FiltersProvider>(context, listen: false);
+    final creditsProvider = Provider.of<CreditsProvider>(context, listen: false);
+    final automationService = AutomationService();
+    
+    // Collect included and excluded words from filters
+    final includedWords = filtersProvider.includedLs.toList();
+    final excludedWords = filtersProvider.excludeLs.toList();
+    
+    // Convert committed dates to date keywords (format: 2_5_2026)
+    // Dates are stored as "2024-01-15", convert to "1_15_2024" (no leading zeros)
+    final dateKeywords = creditsProvider.committedDates.map((dateStr) {
+      final parts = dateStr.split('-');
+      if (parts.length == 3) {
+        final year = parts[0];
+        final month = int.parse(parts[1]); // Remove leading zero
+        final day = int.parse(parts[2]); // Remove leading zero
+        return '${month}_${day}_${year}';
+      }
+      return KeywordMapper.dateToKeyword(dateStr);
+    }).toList();
+    
+    // Add date keywords to included words
+    includedWords.addAll(dateKeywords);
+    
+    try {
+      await automationService.startAutomation(
+        includedWords: includedWords,
+        excludedWords: excludedWords,
+        committedDates: creditsProvider.committedDates,
+      );
+      
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Filters applied successfully!'),
+            backgroundColor: Colors.green,
+          ),
+        );
+      }
+    } catch (e) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error applying filters: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
+  }
+
+  Widget _buildFilterLegend(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Theme.of(context).colorScheme.surfaceContainerHighest,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(
+          color: Theme.of(context).colorScheme.outline.withOpacity(0.2),
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(
+                Icons.info_outline,
+                size: 18,
+                color: Theme.of(context).colorScheme.primary,
+              ),
+              const SizedBox(width: 8),
+              Text(
+                'How Filters Work',
+                style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                      fontWeight: FontWeight.bold,
+                    ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          Text(
+            'Tap tags to cycle: Green (include) → Gray (ignore) → Red (exclude)',
+            style: Theme.of(context).textTheme.bodySmall,
+          ),
+          const SizedBox(height: 12),
+          Wrap(
+            spacing: 16,
+            runSpacing: 12,
+            children: [
+              _buildLegendItemWithTooltip(
+                context,
+                'Green',
+                Colors.green,
+                'Include: Show jobs with ANY of these tags\nExample: "elementary" + "middle school" = jobs with either one',
+                Icons.check_circle_outline,
+              ),
+              _buildLegendItemWithTooltip(
+                context,
+                'Red',
+                Colors.red,
+                'Exclude: Hide jobs with ANY of these tags\nExample: "kindergarten" = blocks all kindergarten jobs',
+                Icons.cancel_outlined,
+              ),
+              _buildLegendItemWithTooltip(
+                context,
+                'Gray',
+                Colors.grey,
+                'Ignore: These tags don\'t affect filtering\nExample: Unselected tags are ignored',
+                Icons.radio_button_unchecked,
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildLegendItemWithTooltip(
+    BuildContext context,
+    String label,
+    Color color,
+    String tooltipText,
+    IconData icon,
+  ) {
+    return Tooltip(
+      message: tooltipText,
+      preferBelow: false,
+      waitDuration: const Duration(milliseconds: 300),
+      child: InkWell(
+        onTap: () {
+          // Show tooltip on tap as well
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(tooltipText),
+              duration: const Duration(seconds: 3),
+              behavior: SnackBarBehavior.floating,
+            ),
+          );
+        },
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              width: 24,
+              height: 24,
+              decoration: BoxDecoration(
+                color: color.withOpacity(0.3),
+                shape: BoxShape.circle,
+                border: Border.all(color: color, width: 2),
+              ),
+              child: Icon(
+                icon,
+                size: 14,
+                color: color,
+              ),
+            ),
+            const SizedBox(width: 6),
+            Text(
+              label,
+              style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                    fontWeight: FontWeight.w500,
+                  ),
+            ),
+            const SizedBox(width: 4),
+            Icon(
+              Icons.help_outline,
+              size: 14,
+              color: Theme.of(context).colorScheme.primary,
+            ),
+          ],
         ),
       ),
     );

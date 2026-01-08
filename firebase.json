@@ -1,1 +1,9 @@
-{"flutter":{"platforms":{"dart":{"lib/firebase_options.dart":{"projectId":"sub67-d4648","configurations":{"android":"1:734452992066:android:cb67eeae5f833347db05db","ios":"1:734452992066:ios:6d18f34860b089c7db05db","web":"1:734452992066:web:529bd344cbbbfd3adb05db"}}}}}}
+{
+  "functions": {
+    "source": "functions"
+  },
+  "firestore": {
+    "rules": "firestore.rules",
+    "indexes": "firestore.indexes.json"
+  }
+}

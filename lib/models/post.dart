@@ -13,6 +13,7 @@ class Post {
   final int views;
   final bool isPinned;
   final int pinOrder;
+  final String? categoryTag; // happy, funny, random-thought, heart-warming, sad
 
   Post({
     required this.id,
@@ -27,6 +28,7 @@ class Post {
     this.views = 0,
     this.isPinned = false,
     this.pinOrder = 0,
+    this.categoryTag,
   });
 
   factory Post.fromMap(Map<String, dynamic> map, String id) {
@@ -45,6 +47,7 @@ class Post {
       views: map['views'] ?? 0,
       isPinned: map['isPinned'] ?? false,
       pinOrder: map['pinOrder'] ?? 0,
+      categoryTag: map['categoryTag'],
     );
   }
 
@@ -61,6 +64,7 @@ class Post {
       'views': views,
       'isPinned': isPinned,
       'pinOrder': pinOrder,
+      'categoryTag': categoryTag,
     };
   }
 }
