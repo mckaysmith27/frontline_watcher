@@ -114,9 +114,9 @@ else
     echo "✅ Updated firebase-project-id"
 fi
 
-# Grant Cloud Run access to secrets
+# Grant Cloud Functions/EC2 access to secrets
 echo ""
-echo "🔑 Granting Cloud Run service account access to secrets..."
+echo "🔑 Granting service account access to secrets (for Cloud Functions and EC2)..."
 
 for SECRET in frontline-username frontline-password firebase-credentials district-id firebase-project-id; do
     gcloud secrets add-iam-policy-binding ${SECRET} \
@@ -130,6 +130,6 @@ done
 echo ""
 echo "🎉 All secrets configured!"
 echo ""
-echo "You can now deploy with:"
-echo "  ./deploy-all.sh"
+echo "Note: Scrapers now run on EC2. To update EC2 with new credentials:"
+echo "  ssh sub67-watcher 'cd /opt/frontline-watcher && sudo systemctl restart frontline-watcher-controller_*'"
 
