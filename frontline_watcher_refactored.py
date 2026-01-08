@@ -689,10 +689,16 @@ async def ensure_logged_in(page, username: str, password: str) -> bool:
         print("[auth] No submit button; pressing Enter on password.")
         await pass_input.press("Enter")
 
+    # Wait for network to settle (like old working code)
+    # This gives time for redirect after login
     try:
-        await page.wait_for_load_state("domcontentloaded", timeout=15000)
+        await page.wait_for_load_state("networkidle", timeout=15000)
     except Exception:
-        pass
+        # If networkidle times out, at least wait for DOM
+        try:
+            await page.wait_for_load_state("domcontentloaded", timeout=5000)
+        except Exception:
+            pass
 
     print(f"[auth] After login attempt, page.url={page.url}")
     return ("login.frontlineeducation.com" not in page.url)
