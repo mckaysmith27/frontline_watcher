@@ -45,10 +45,16 @@ APP_DIR="/opt/frontline-watcher"
 sudo mkdir -p $APP_DIR
 sudo chown $USER:$USER $APP_DIR
 
-# Copy application files (assuming script is run from project root)
+# Copy application files (if not already present from deployment)
 echo "📋 Copying application files..."
-cp frontline_watcher_refactored.py $APP_DIR/frontline_watcher.py
-cp requirements_raw.txt $APP_DIR/
+if [ -f "frontline_watcher_refactored.py" ]; then
+    cp frontline_watcher_refactored.py $APP_DIR/frontline_watcher.py
+    cp requirements_raw.txt $APP_DIR/
+elif [ -f "$APP_DIR/frontline_watcher.py" ]; then
+    echo "  Files already present, skipping copy"
+else
+    echo "  ⚠️  Warning: Application files not found. They should be deployed separately."
+fi
 
 # Create virtual environment
 echo "🔧 Setting up Python virtual environment..."
