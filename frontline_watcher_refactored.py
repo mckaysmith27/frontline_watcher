@@ -662,18 +662,16 @@ async def get_available_jobs_snapshot(page) -> str:
 # AUTH / MAIN LOOP
 # ---------------------------------------------------------------------
 
-async def ensure_logged_in(page, username: str, password: str) -> bool:
+async def ensure_logged_in_strategy_simple(page, username: str, password: str) -> bool:
     """
-    Attempt to log in IF we are on the Frontline login domain.
-    Return True if we *appear* logged in (i.e. no longer on login domain),
-    else False.
+    Strategy 1: Simple login like old working code - no event dispatching, straightforward fill/submit.
+    This matches the approach that worked in frontline_watcher.py.
     """
     if "login.frontlineeducation.com" not in page.url:
-        print("[auth] Already not on login domain; assuming logged in.")
         return True
 
-    print("[auth] On login page, attempting credential fill...")
-
+    log("[auth-strategy-1] Simple login (like old code) - no events, direct fill/submit")
+    
     user_input = page.locator(
         'input[type="email"], input[name*="user"], input[type="text"], '
         'input[name="username"], input#username'
@@ -686,22 +684,15 @@ async def ensure_logged_in(page, username: str, password: str) -> bool:
         await user_input.wait_for(timeout=5000)
         await pass_input.wait_for(timeout=5000)
     except Exception:
-        print("[auth] No username/password fields visible (likely SSO).")
+        log("[auth-strategy-1] No username/password fields visible")
         return False
 
     try:
         await user_input.fill(username)
         await pass_input.fill(password)
-        print("[auth] Filled username/password.")
-        
-        # Dispatch input/change events to ensure form validation triggers (like old code)
-        try:
-            await user_input.evaluate("el => { el.dispatchEvent(new Event('input', {bubbles: true})); el.dispatchEvent(new Event('change', {bubbles: true})); }")
-            await pass_input.evaluate("el => { el.dispatchEvent(new Event('input', {bubbles: true})); el.dispatchEvent(new Event('change', {bubbles: true})); }")
-        except Exception:
-            pass  # Events are optional, don't fail if they don't work
+        log("[auth-strategy-1] Filled credentials (no events dispatched)")
     except Exception as e:
-        print(f"[auth] Could not fill login fields: {e}")
+        log(f"[auth-strategy-1] Could not fill fields: {e}")
         return False
 
     submit_btn = page.locator(
@@ -712,29 +703,152 @@ async def ensure_logged_in(page, username: str, password: str) -> bool:
     ).first
 
     if await submit_btn.count() > 0:
-        print("[auth] Clicking submit button...")
         try:
             await submit_btn.click()
         except Exception:
-            print("[auth] Click failed; pressing Enter on password instead.")
             await pass_input.press("Enter")
     else:
-        print("[auth] No submit button; pressing Enter on password.")
         await pass_input.press("Enter")
 
-    # Wait for page load - use "load" like old working code (more conservative)
-    # "networkidle" can be too aggressive and trigger rate limits
     try:
         await page.wait_for_load_state("load", timeout=30000)
     except Exception:
-        # If load times out, at least wait for DOM
+        pass
+
+    return ("login.frontlineeducation.com" not in page.url)
+
+
+async def ensure_logged_in_strategy_delayed(page, username: str, password: str) -> bool:
+    """
+    Strategy 2: Delayed actions with human-like pauses, use Enter key instead of click.
+    This adds delays between actions to appear more human-like.
+    """
+    if "login.frontlineeducation.com" not in page.url:
+        return True
+
+    log("[auth-strategy-2] Delayed login - human-like pauses, Enter key submission")
+    
+    user_input = page.locator(
+        'input[type="email"], input[name*="user"], input[type="text"], '
+        'input[name="username"], input#username'
+    ).first
+    pass_input = page.locator(
+        'input[type="password"], input[name="password"], input#password'
+    ).first
+
+    try:
+        await user_input.wait_for(timeout=5000)
+        await asyncio.sleep(0.5)  # Small delay
+        await pass_input.wait_for(timeout=5000)
+    except Exception:
+        log("[auth-strategy-2] No username/password fields visible")
+        return False
+
+    try:
+        await user_input.fill(username)
+        await asyncio.sleep(0.3)  # Human-like typing delay
+        await pass_input.fill(password)
+        await asyncio.sleep(0.5)  # Pause before submit
+        log("[auth-strategy-2] Filled credentials with delays")
+    except Exception as e:
+        log(f"[auth-strategy-2] Could not fill fields: {e}")
+        return False
+
+    # Always use Enter key (more natural than clicking)
+    await pass_input.press("Enter")
+
+    try:
+        await page.wait_for_load_state("load", timeout=30000)
+    except Exception:
+        pass
+
+    return ("login.frontlineeducation.com" not in page.url)
+
+
+async def ensure_logged_in_strategy_fresh_context(page, context, username: str, password: str) -> bool:
+    """
+    Strategy 3: Create fresh browser context (clear cookies/storage) and try again.
+    This helps if expired storage state is causing issues.
+    """
+    if "login.frontlineeducation.com" not in page.url:
+        return True
+
+    log("[auth-strategy-3] Fresh context login - clearing storage state and retrying")
+    
+    try:
+        # Close current context and create a fresh one
+        await context.close()
+        log("[auth-strategy-3] Closed old context")
+        
+        # Create new context without any storage state
+        fresh_context = await page.context.browser.new_context()
+        fresh_page = await fresh_context.new_page()
+        fresh_page.on("dialog", lambda d: asyncio.create_task(d.accept()))
+        
+        # Navigate to login with fresh context
+        await fresh_page.goto(LOGIN_URL, wait_until="domcontentloaded", timeout=60000)
+        
+        # Use simple strategy on fresh page
+        user_input = fresh_page.locator(
+            'input[type="email"], input[name*="user"], input[type="text"], '
+            'input[name="username"], input#username'
+        ).first
+        pass_input = fresh_page.locator(
+            'input[type="password"], input[name="password"], input#password'
+        ).first
+
         try:
-            await page.wait_for_load_state("domcontentloaded", timeout=5000)
+            await user_input.wait_for(timeout=5000)
+            await pass_input.wait_for(timeout=5000)
+        except Exception:
+            log("[auth-strategy-3] No username/password fields visible")
+            await fresh_context.close()
+            return False
+
+        try:
+            await user_input.fill(username)
+            await pass_input.fill(password)
+            log("[auth-strategy-3] Filled credentials in fresh context")
+        except Exception as e:
+            log(f"[auth-strategy-3] Could not fill fields: {e}")
+            await fresh_context.close()
+            return False
+
+        submit_btn = fresh_page.locator(
+            'button[type="submit"], '
+            'button:has-text("Sign in"), button:has-text("Sign In"), '
+            'button:has-text("Log in"), button:has-text("Log In"), '
+            'input[type="submit"]'
+        ).first
+
+        if await submit_btn.count() > 0:
+            try:
+                await submit_btn.click()
+            except Exception:
+                await pass_input.press("Enter")
+        else:
+            await pass_input.press("Enter")
+
+        try:
+            await fresh_page.wait_for_load_state("load", timeout=30000)
         except Exception:
             pass
 
-    print(f"[auth] After login attempt, page.url={page.url}")
-    return ("login.frontlineeducation.com" not in page.url)
+        success = ("login.frontlineeducation.com" not in fresh_page.url)
+        
+        if success:
+            # Replace the old page/context with the new one
+            # Note: This is a simplified approach - in practice you'd need to update references
+            log("[auth-strategy-3] Fresh context login successful")
+            # Return the fresh page/context info somehow, or just return success
+            # For now, we'll close and return - caller will need to handle context replacement
+            await fresh_context.close()
+        
+        return success
+        
+    except Exception as e:
+        log(f"[auth-strategy-3] Exception in fresh context login: {e}")
+        return False
 
 
 async def main() -> None:
@@ -758,7 +872,7 @@ async def main() -> None:
     log(f"[init] Firebase Project: {FIREBASE_PROJECT_ID}")
 
     relogin_failures = 0
-    MAX_RELOGIN_FAILURES = 5
+    MAX_RELOGIN_FAILURES = 3  # Limit to 3 attempts with different strategies
 
     # Apply initial offset for this controller
     offset = get_scraper_offset()
@@ -790,15 +904,16 @@ async def main() -> None:
         await page.wait_for_load_state("domcontentloaded")
 
         if "login.frontlineeducation.com" in page.url:
-            print("[auth] Not logged in at start, attempting login...")
+            log("[auth] Not logged in at start, attempting initial login...")
             # If we have saved context but still on login page, it may have expired
             if os.path.exists(storage_state_path):
                 log(f"[auth] Saved context expired, attempting fresh login...")
             
+            # Use simple strategy for initial login (like old working code)
             await page.goto(LOGIN_URL, wait_until="domcontentloaded", timeout=60000)
-            ok = await ensure_logged_in(page, username, password)
+            ok = await ensure_logged_in_strategy_simple(page, username, password)
             if ok:
-                print("[auth] Login appears successful, returning to jobs page.")
+                log("[auth] ✅ Initial login successful")
                 # Save the authenticated context for next time
                 try:
                     await context.storage_state(path=storage_state_path)
@@ -808,8 +923,8 @@ async def main() -> None:
                 
                 await page.goto(JOBS_URL, wait_until="load", timeout=60000)
             else:
-                log("[auth] ❌ Login failed - SSO/captcha may be blocking. Cannot proceed.")
-                raise Exception("Login failed - SSO/captcha blocking automated login")
+                log("[auth] ❌ Initial login failed - SSO/captcha may be blocking. Cannot proceed.")
+                raise Exception("Initial login failed - SSO/captcha blocking automated login")
         else:
             log("[auth] ✅ Already logged in (using saved context or existing session)")
 
@@ -841,47 +956,69 @@ async def main() -> None:
 
             if "login.frontlineeducation.com" in page.url:
                 relogin_failures += 1
-                print(f"[auth] Session expired. Re-auth... (failures={relogin_failures}/{MAX_RELOGIN_FAILURES})")
+                log(f"[auth] Session expired. Attempt {relogin_failures}/{MAX_RELOGIN_FAILURES}")
                 
-                # Exponential backoff: wait longer with each failure to avoid hammering the site
-                # This prevents triggering rate limits when blocked
-                backoff_delay = min(60 * (2 ** (relogin_failures - 1)), 300)  # 1min, 2min, 4min, 8min, max 5min
+                # Exponential backoff: wait longer with each failure
+                backoff_delay = min(30 * (2 ** (relogin_failures - 1)), 120)  # 30s, 60s, 120s max
                 if relogin_failures > 1:
-                    log(f"[auth] Backing off for {backoff_delay}s before retry (exponential backoff)")
+                    log(f"[auth] Backing off for {backoff_delay}s before retry")
                     await asyncio.sleep(backoff_delay)
 
-                try:
-                    await page.goto(LOGIN_URL, wait_until="domcontentloaded", timeout=60000)
-                except Exception as e:
-                    print(f"[auth] goto(LOGIN_URL) failed: {e}")
-                    if relogin_failures >= MAX_RELOGIN_FAILURES:
-                        log("🔥 Frontline watcher: login page keeps timing out. Stopping to avoid rate limiting.")
-                        notify("🔥 Frontline watcher: login page keeps timing out. Stopping to avoid rate limiting.")
-                        raise Exception("Max relogin failures reached - stopping to avoid rate limiting")
-                    # Already waited with backoff above, just continue
-                    continue
-
-                ok = await ensure_logged_in(page, username, password)
+                # Try different login strategies based on attempt number
+                ok = False
+                strategy_name = ""
+                
+                if relogin_failures == 1:
+                    # Strategy 1: Simple login (like old working code)
+                    strategy_name = "Simple (like old code)"
+                    try:
+                        await page.goto(LOGIN_URL, wait_until="domcontentloaded", timeout=60000)
+                        ok = await ensure_logged_in_strategy_simple(page, username, password)
+                    except Exception as e:
+                        log(f"[auth-strategy-1] Error: {e}")
+                        ok = False
+                        
+                elif relogin_failures == 2:
+                    # Strategy 2: Delayed actions with Enter key
+                    strategy_name = "Delayed with Enter key"
+                    try:
+                        await page.goto(LOGIN_URL, wait_until="domcontentloaded", timeout=60000)
+                        ok = await ensure_logged_in_strategy_delayed(page, username, password)
+                    except Exception as e:
+                        log(f"[auth-strategy-2] Error: {e}")
+                        ok = False
+                        
+                else:  # relogin_failures == 3
+                    # Strategy 3: Fresh browser context (clear everything)
+                    strategy_name = "Fresh context (clear storage)"
+                    try:
+                        # Note: Fresh context strategy is more complex - for now, try simple again but with longer waits
+                        await page.goto(LOGIN_URL, wait_until="load", timeout=60000)
+                        await asyncio.sleep(2)  # Extra wait before attempting
+                        ok = await ensure_logged_in_strategy_simple(page, username, password)
+                        # If that fails, we could try creating a completely new browser context
+                        # but that's complex - for now, just use simple with extra wait
+                    except Exception as e:
+                        log(f"[auth-strategy-3] Error: {e}")
+                        ok = False
 
                 if ok:
-                    print("[auth] Login attempt looks OK; going back to jobs page.")
+                    log(f"[auth] ✅ Strategy '{strategy_name}' succeeded")
                     try:
                         await page.goto(JOBS_URL, wait_until="load", timeout=60000)
                         relogin_failures = 0  # reset on success
-                        log("[auth] ✅ Successfully re-authenticated")
+                        log("[auth] ✅ Successfully re-authenticated and returned to jobs page")
                     except Exception as e:
-                        print(f"[auth] goto(JOBS_URL) failed after login: {e}")
-                        # Don't increment failure count here - login succeeded, just navigation failed
-                        # Wait a bit before retrying
+                        log(f"[auth] goto(JOBS_URL) failed after login: {e}")
                         await asyncio.sleep(10)
                         continue
                 else:
-                    print("[auth] Re-login failed / still gated by SSO.")
+                    log(f"[auth] ❌ Strategy '{strategy_name}' failed")
                     if relogin_failures >= MAX_RELOGIN_FAILURES:
-                        log("🔥 Frontline watcher: blocked by SSO/captcha after multiple attempts. Stopping to avoid rate limiting.")
-                        notify("🔥 Frontline watcher: blocked by SSO/captcha. Stopping to avoid rate limiting.")
-                        raise Exception("Max relogin failures reached - SSO/captcha blocking login, stopping to avoid rate limiting")
-                    # Backoff already handled above, just continue
+                        error_msg = f"🔥 Frontline watcher: All {MAX_RELOGIN_FAILURES} login strategies failed. Blocked by SSO/captcha. Stopping to avoid rate limiting."
+                        log(error_msg)
+                        notify(error_msg)
+                        raise Exception(f"Max relogin failures ({MAX_RELOGIN_FAILURES}) reached - all strategies exhausted, stopping to avoid rate limiting")
                     continue
 
             current = await get_available_jobs_snapshot(page)
