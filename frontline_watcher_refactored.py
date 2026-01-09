@@ -1001,26 +1001,30 @@ async def main() -> None:
                         ok = False
 
                 if ok:
-                    log(f"[auth] ✅ Strategy '{strategy_name}' succeeded, verifying...")
+                    log(f"[auth] ✅ Strategy '{strategy_name}' (Attempt {relogin_failures}/{MAX_RELOGIN_FAILURES}) succeeded, verifying...")
                     try:
                         await page.goto(JOBS_URL, wait_until="load", timeout=60000)
                         # Verify we're not redirected back to login
                         await asyncio.sleep(2)  # Give page time to redirect if needed
                         if "login.frontlineeducation.com" in page.url:
-                            log(f"[auth] ❌ Strategy '{strategy_name}' appeared successful but redirected to login page")
+                            log(f"[auth] ❌ Strategy '{strategy_name}' (Attempt {relogin_failures}/{MAX_RELOGIN_FAILURES}) appeared successful but redirected to login page")
                             ok = False  # Treat as failure
                         else:
+                            # Save attempt number before resetting
+                            attempt_num = relogin_failures
                             relogin_failures = 0  # reset on success
+                            success_msg = f"✅ Frontline watcher: Re-authenticated successfully!\n  Strategy: {strategy_name}\n  Attempt: {attempt_num}/{MAX_RELOGIN_FAILURES}"
                             log("[auth] ✅ Successfully re-authenticated and verified on jobs page")
+                            notify(success_msg)
                     except Exception as e:
                         log(f"[auth] goto(JOBS_URL) failed after login: {e}")
                         await asyncio.sleep(10)
                         continue
                 
                 if not ok:
-                    log(f"[auth] ❌ Strategy '{strategy_name}' failed")
+                    log(f"[auth] ❌ Strategy '{strategy_name}' (Attempt {relogin_failures}/{MAX_RELOGIN_FAILURES}) failed")
                     if relogin_failures >= MAX_RELOGIN_FAILURES:
-                        error_msg = f"🔥 Frontline watcher: Session expired and all {MAX_RELOGIN_FAILURES} re-login strategies failed (Simple, Delayed, Clear Cookies). Blocked by SSO/captcha. Stopping to avoid rate limiting."
+                        error_msg = f"🔥 Frontline watcher: Session expired and all {MAX_RELOGIN_FAILURES} re-login strategies failed:\n  Attempt 1/3: Simple (like old code) - FAILED\n  Attempt 2/3: Delayed with Enter key - FAILED\n  Attempt 3/3: Clear cookies and retry - FAILED\n\nBlocked by SSO/captcha. Stopping to avoid rate limiting."
                         log(error_msg)
                         notify(error_msg)
                         raise Exception(f"Max relogin failures ({MAX_RELOGIN_FAILURES}) reached - all strategies exhausted, stopping to avoid rate limiting")
