@@ -1008,17 +1008,16 @@ async def main() -> None:
                         ok = False
 
                 if ok:
-                    log(f"[auth] ✅ Strategy '{strategy_name}' (Attempt {relogin_failures}/{MAX_RELOGIN_FAILURES}) succeeded, verifying...")
+                    attempt_num = relogin_failures  # Save attempt number before resetting
+                    log(f"[auth] ✅ Strategy '{strategy_name}' (Attempt {attempt_num}/{MAX_RELOGIN_FAILURES}) succeeded, verifying...")
                     try:
                         await page.goto(JOBS_URL, wait_until="load", timeout=60000)
                         # Verify we're not redirected back to login
                         await asyncio.sleep(2)  # Give page time to redirect if needed
                         if "login.frontlineeducation.com" in page.url:
-                            log(f"[auth] ❌ Strategy '{strategy_name}' (Attempt {relogin_failures}/{MAX_RELOGIN_FAILURES}) appeared successful but redirected to login page")
+                            log(f"[auth] ❌ Strategy '{strategy_name}' (Attempt {attempt_num}/{MAX_RELOGIN_FAILURES}) appeared successful but redirected to login page")
                             ok = False  # Treat as failure
                         else:
-                            # Save attempt number before resetting
-                            attempt_num = relogin_failures
                             relogin_failures = 0  # reset on success
                             success_msg = f"✅ Frontline watcher: Re-authenticated successfully!\n  Strategy: {strategy_name}\n  Attempt: {attempt_num}/{MAX_RELOGIN_FAILURES}"
                             log("[auth] ✅ Successfully re-authenticated and verified on jobs page")
