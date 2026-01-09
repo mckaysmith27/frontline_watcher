@@ -152,7 +152,8 @@ def get_scraper_offset() -> int:
 
 def should_run_aggressive() -> bool:
     """Check if current time is in hot window (configurable via environment)"""
-    from datetime    import json
+    from datetime import time as dt_time
+    import json
     
     # Default hot windows: 4:30am-9:30am and 11:30am-11:00pm
     default_windows = [
