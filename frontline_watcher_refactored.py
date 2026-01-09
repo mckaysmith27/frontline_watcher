@@ -903,7 +903,7 @@ async def main() -> None:
             await page.goto(LOGIN_URL, wait_until="domcontentloaded", timeout=60000)
             ok = await ensure_logged_in_strategy_simple(page, username, password)
             if ok:
-                log("[auth] ✅ Initial login successful")
+                log("[auth] ✅ Initial login attempt successful, verifying...")
                 # Save the authenticated context for next time
                 try:
                     await context.storage_state(path=storage_state_path)
@@ -911,9 +911,22 @@ async def main() -> None:
                 except Exception as e:
                     log(f"[auth] Warning: Could not save context: {e}")
                 
+                # Navigate to jobs page and verify we're actually logged in
                 await page.goto(JOBS_URL, wait_until="load", timeout=60000)
+                
+                # CRITICAL: Verify we're not redirected back to login page
+                await asyncio.sleep(2)  # Give page time to redirect if needed
+                if "login.frontlineeducation.com" in page.url:
+                    log("[auth] ❌ Redirected back to login page - initial login was not successful")
+                    error_msg = "❌ Frontline watcher: Initial login appeared successful but was redirected to login page. SSO/captcha may be blocking. Cannot proceed."
+                    notify(error_msg)
+                    raise Exception("Initial login failed - redirected back to login page, SSO/captcha blocking")
+                else:
+                    log("[auth] ✅ Verified logged in - not redirected to login page")
             else:
                 log("[auth] ❌ Initial login failed - SSO/captcha may be blocking. Cannot proceed.")
+                error_msg = "❌ Frontline watcher: Initial login failed. SSO/captcha may be blocking automated login. Cannot proceed."
+                notify(error_msg)
                 raise Exception("Initial login failed - SSO/captcha blocking automated login")
         else:
             log("[auth] ✅ Already logged in (using saved context or existing session)")
@@ -988,19 +1001,26 @@ async def main() -> None:
                         ok = False
 
                 if ok:
-                    log(f"[auth] ✅ Strategy '{strategy_name}' succeeded")
+                    log(f"[auth] ✅ Strategy '{strategy_name}' succeeded, verifying...")
                     try:
                         await page.goto(JOBS_URL, wait_until="load", timeout=60000)
-                        relogin_failures = 0  # reset on success
-                        log("[auth] ✅ Successfully re-authenticated and returned to jobs page")
+                        # Verify we're not redirected back to login
+                        await asyncio.sleep(2)  # Give page time to redirect if needed
+                        if "login.frontlineeducation.com" in page.url:
+                            log(f"[auth] ❌ Strategy '{strategy_name}' appeared successful but redirected to login page")
+                            ok = False  # Treat as failure
+                        else:
+                            relogin_failures = 0  # reset on success
+                            log("[auth] ✅ Successfully re-authenticated and verified on jobs page")
                     except Exception as e:
                         log(f"[auth] goto(JOBS_URL) failed after login: {e}")
                         await asyncio.sleep(10)
                         continue
-                else:
+                
+                if not ok:
                     log(f"[auth] ❌ Strategy '{strategy_name}' failed")
                     if relogin_failures >= MAX_RELOGIN_FAILURES:
-                        error_msg = f"🔥 Frontline watcher: All {MAX_RELOGIN_FAILURES} login strategies failed. Blocked by SSO/captcha. Stopping to avoid rate limiting."
+                        error_msg = f"🔥 Frontline watcher: Session expired and all {MAX_RELOGIN_FAILURES} re-login strategies failed (Simple, Delayed, Clear Cookies). Blocked by SSO/captcha. Stopping to avoid rate limiting."
                         log(error_msg)
                         notify(error_msg)
                         raise Exception(f"Max relogin failures ({MAX_RELOGIN_FAILURES}) reached - all strategies exhausted, stopping to avoid rate limiting")
