@@ -471,12 +471,39 @@ def publish_job_event(job_block: str) -> bool:
     # Send NTFY notification (non-critical - don't fail if this errors)
     # This is separate so Firestore write success is independent of notification
     try:
-        message = (
-            f"🆕 NEW FRONTLINE JOB\n\n"
-            f"{job_block}\n\n"
-            f"Controller: {CONTROLLER_ID}\n"
-            f"District: {DISTRICT_ID}"
-        )
+        # Build a nicely formatted notification message with job details
+        message_parts = ["🆕 NEW FRONTLINE JOB", ""]
+        
+        # Add key job details in a readable format
+        if job_data.get('date'):
+            message_parts.append(f"📅 Date: {job_data['date']}")
+        
+        if job_data.get('startTime'):
+            time_str = job_data['startTime']
+            if job_data.get('endTime'):
+                time_str += f" - {job_data['endTime']}"
+            message_parts.append(f"⏰ Time: {time_str}")
+        
+        if job_data.get('duration'):
+            message_parts.append(f"⏱️  Duration: {job_data['duration']}")
+        
+        if job_data.get('location'):
+            message_parts.append(f"📍 Location: {job_data['location']}")
+        
+        if job_data.get('teacher'):
+            message_parts.append(f"👤 Teacher: {job_data['teacher']}")
+        
+        if job_data.get('title'):
+            message_parts.append(f"📚 Title: {job_data['title']}")
+        
+        if job_id:
+            message_parts.append(f"🔢 Confirmation #: {job_id}")
+        
+        message_parts.append("")  # Empty line before metadata
+        message_parts.append(f"Controller: {CONTROLLER_ID}")
+        message_parts.append(f"District: {DISTRICT_ID}")
+        
+        message = "\n".join(message_parts)
         notify(message)
         log(f"[notify] Sent NTFY notification for job {job_id} to {get_ntfy_topic()}")
     except Exception as e:
