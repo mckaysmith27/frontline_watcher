@@ -961,6 +961,10 @@ async def main() -> None:
                 relogin_failures += 1
                 log(f"[auth] Session expired. Attempt {relogin_failures}/{MAX_RELOGIN_FAILURES}")
                 
+                # Send notification about session expiry and which attempt we're on
+                session_expired_msg = f"⚠️ Frontline watcher: Session expired. Attempting re-login (Attempt {relogin_failures}/{MAX_RELOGIN_FAILURES})..."
+                notify(session_expired_msg)
+                
                 # Exponential backoff: wait longer with each failure
                 backoff_delay = min(30 * (2 ** (relogin_failures - 1)), 120)  # 30s, 60s, 120s max
                 if relogin_failures > 1:
@@ -974,6 +978,7 @@ async def main() -> None:
                 if relogin_failures == 1:
                     # Strategy 1: Simple login (like old working code)
                     strategy_name = "Simple (like old code)"
+                    log(f"[auth] Attempt {relogin_failures}/{MAX_RELOGIN_FAILURES}: Trying Strategy 1 - {strategy_name}")
                     try:
                         await page.goto(LOGIN_URL, wait_until="domcontentloaded", timeout=60000)
                         ok = await ensure_logged_in_strategy_simple(page, username, password)
@@ -984,6 +989,7 @@ async def main() -> None:
                 elif relogin_failures == 2:
                     # Strategy 2: Delayed actions with Enter key
                     strategy_name = "Delayed with Enter key"
+                    log(f"[auth] Attempt {relogin_failures}/{MAX_RELOGIN_FAILURES}: Trying Strategy 2 - {strategy_name}")
                     try:
                         await page.goto(LOGIN_URL, wait_until="domcontentloaded", timeout=60000)
                         ok = await ensure_logged_in_strategy_delayed(page, username, password)
@@ -994,6 +1000,7 @@ async def main() -> None:
                 else:  # relogin_failures == 3
                     # Strategy 3: Clear cookies and try again
                     strategy_name = "Clear cookies and retry"
+                    log(f"[auth] Attempt {relogin_failures}/{MAX_RELOGIN_FAILURES}: Trying Strategy 3 - {strategy_name}")
                     try:
                         ok = await ensure_logged_in_strategy_clear_cookies(page, context, username, password)
                     except Exception as e:
