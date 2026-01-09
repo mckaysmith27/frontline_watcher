@@ -765,56 +765,55 @@ async def ensure_logged_in_strategy_delayed(page, username: str, password: str) 
     return ("login.frontlineeducation.com" not in page.url)
 
 
-async def ensure_logged_in_strategy_fresh_context(page, context, username: str, password: str) -> bool:
+async def ensure_logged_in_strategy_clear_cookies(page, context, username: str, password: str) -> bool:
     """
-    Strategy 3: Create fresh browser context (clear cookies/storage) and try again.
-    This helps if expired storage state is causing issues.
+    Strategy 3: Clear all cookies and storage, then try simple login again.
+    This helps if expired/stale cookies are causing SSO issues.
     """
     if "login.frontlineeducation.com" not in page.url:
         return True
 
-    log("[auth-strategy-3] Fresh context login - clearing storage state and retrying")
+    log("[auth-strategy-3] Clear cookies/login - clearing all cookies and storage, then retrying")
     
     try:
-        # Close current context and create a fresh one
-        await context.close()
-        log("[auth-strategy-3] Closed old context")
+        # Clear all cookies and storage
+        await context.clear_cookies()
+        await context.clear_permissions()
+        log("[auth-strategy-3] Cleared cookies and permissions")
         
-        # Create new context without any storage state
-        fresh_context = await page.context.browser.new_context()
-        fresh_page = await fresh_context.new_page()
-        fresh_page.on("dialog", lambda d: asyncio.create_task(d.accept()))
+        # Wait a moment for cleanup
+        await asyncio.sleep(1)
         
-        # Navigate to login with fresh context
-        await fresh_page.goto(LOGIN_URL, wait_until="domcontentloaded", timeout=60000)
+        # Navigate to login page with cleared state
+        await page.goto(LOGIN_URL, wait_until="load", timeout=60000)
+        await asyncio.sleep(2)  # Extra wait for page to fully load
         
-        # Use simple strategy on fresh page
-        user_input = fresh_page.locator(
+        # Use simple strategy (like old code) but with cleared cookies
+        user_input = page.locator(
             'input[type="email"], input[name*="user"], input[type="text"], '
             'input[name="username"], input#username'
         ).first
-        pass_input = fresh_page.locator(
+        pass_input = page.locator(
             'input[type="password"], input[name="password"], input#password'
         ).first
 
         try:
-            await user_input.wait_for(timeout=5000)
-            await pass_input.wait_for(timeout=5000)
+            await user_input.wait_for(timeout=10000)  # Longer timeout
+            await pass_input.wait_for(timeout=10000)
         except Exception:
-            log("[auth-strategy-3] No username/password fields visible")
-            await fresh_context.close()
+            log("[auth-strategy-3] No username/password fields visible after clearing cookies")
             return False
 
         try:
             await user_input.fill(username)
+            await asyncio.sleep(0.5)  # Small delay
             await pass_input.fill(password)
-            log("[auth-strategy-3] Filled credentials in fresh context")
+            log("[auth-strategy-3] Filled credentials after clearing cookies")
         except Exception as e:
             log(f"[auth-strategy-3] Could not fill fields: {e}")
-            await fresh_context.close()
             return False
 
-        submit_btn = fresh_page.locator(
+        submit_btn = page.locator(
             'button[type="submit"], '
             'button:has-text("Sign in"), button:has-text("Sign In"), '
             'button:has-text("Log in"), button:has-text("Log In"), '
@@ -830,24 +829,14 @@ async def ensure_logged_in_strategy_fresh_context(page, context, username: str, 
             await pass_input.press("Enter")
 
         try:
-            await fresh_page.wait_for_load_state("load", timeout=30000)
+            await page.wait_for_load_state("load", timeout=30000)
         except Exception:
             pass
 
-        success = ("login.frontlineeducation.com" not in fresh_page.url)
-        
-        if success:
-            # Replace the old page/context with the new one
-            # Note: This is a simplified approach - in practice you'd need to update references
-            log("[auth-strategy-3] Fresh context login successful")
-            # Return the fresh page/context info somehow, or just return success
-            # For now, we'll close and return - caller will need to handle context replacement
-            await fresh_context.close()
-        
-        return success
+        return ("login.frontlineeducation.com" not in page.url)
         
     except Exception as e:
-        log(f"[auth-strategy-3] Exception in fresh context login: {e}")
+        log(f"[auth-strategy-3] Exception in clear cookies login: {e}")
         return False
 
 
@@ -989,15 +978,10 @@ async def main() -> None:
                         ok = False
                         
                 else:  # relogin_failures == 3
-                    # Strategy 3: Fresh browser context (clear everything)
-                    strategy_name = "Fresh context (clear storage)"
+                    # Strategy 3: Clear cookies and try again
+                    strategy_name = "Clear cookies and retry"
                     try:
-                        # Note: Fresh context strategy is more complex - for now, try simple again but with longer waits
-                        await page.goto(LOGIN_URL, wait_until="load", timeout=60000)
-                        await asyncio.sleep(2)  # Extra wait before attempting
-                        ok = await ensure_logged_in_strategy_simple(page, username, password)
-                        # If that fails, we could try creating a completely new browser context
-                        # but that's complex - for now, just use simple with extra wait
+                        ok = await ensure_logged_in_strategy_clear_cookies(page, context, username, password)
                     except Exception as e:
                         log(f"[auth-strategy-3] Error: {e}")
                         ok = False
