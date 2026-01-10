@@ -50,6 +50,11 @@ dependencies:
   url_launcher: ^6.2.2
   share_plus: ^7.2.1
   
+  # Location & Maps
+  geolocator: ^13.0.1
+  geocoding: ^3.0.0
+  google_maps_flutter: ^2.9.0
+  
   # Notifications & WebView
   flutter_local_notifications: ^18.0.1
   webview_flutter: ^4.9.0
@@ -68,5 +73,6 @@ flutter:
   assets:
     - assets/images/
     - assets/icons/
+    - assets/alpine_school_district_schools_ls_of_dicts.json
 
 

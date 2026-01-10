@@ -53,7 +53,7 @@ class NotificationDayCard extends StatelessWidget {
     final isNotificationDay = creditsProvider.committedDates.contains(dateStr);
     
     // Get matched keywords from booked job if available
-    final matchedKeywords = bookedJob != null ? _getMatchedKeywords(bookedJob, includedWords) : [];
+    final matchedKeywords = bookedJob != null ? _getMatchedKeywords(bookedJob!, includedWords) : [];
 
     // Determine border color
     Color? borderColor;

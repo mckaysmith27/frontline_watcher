@@ -1,0 +1,706 @@
+[
+  {
+    "name": "Alpine Elementary",
+    "street": "10880 N Alpine Hwy",
+    "city": "Alpine",
+    "state": "UT",
+    "zip": "84004",
+    "type": "elementary"
+  },
+  {
+    "name": "Timberline Middle School",
+    "street": "5000 N Canyon Rd",
+    "city": "Alpine",
+    "state": "UT",
+    "zip": "84004",
+    "type": "middle school"
+  },
+  {
+    "name": "Westfield Elementary",
+    "street": "10750 N 6000 W",
+    "city": "Highland",
+    "state": "UT",
+    "zip": "84003",
+    "type": "elementary"
+  },
+  {
+    "name": "American Fork High School",
+    "street": "857 N 900 E",
+    "city": "American Fork",
+    "state": "UT",
+    "zip": "84003",
+    "type": "high school"
+  },
+  {
+    "name": "American Fork Junior High School",
+    "street": "20 N 100 E",
+    "city": "American Fork",
+    "state": "UT",
+    "zip": "84003",
+    "type": "high school"
+  },
+  {
+    "name": "Barratt Elementary",
+    "street": "238 S Center St",
+    "city": "American Fork",
+    "state": "UT",
+    "zip": "84003",
+    "type": "elementary"
+  },
+  {
+    "name": "East Shore High School",
+    "street": "680 W 1200 N",
+    "city": "American Fork",
+    "state": "UT",
+    "zip": "84003",
+    "type": "high school"
+  },
+  {
+    "name": "Forbes Elementary",
+    "street": "203 N 700 E",
+    "city": "American Fork",
+    "state": "UT",
+    "zip": "84003",
+    "type": "elementary"
+  },
+  {
+    "name": "Geneva Elementary",
+    "street": "733 S Geneva Rd",
+    "city": "American Fork",
+    "state": "UT",
+    "zip": "84003",
+    "type": "elementary"
+  },
+  {
+    "name": "Greenwood Elementary",
+    "street": "250 E 600 N",
+    "city": "American Fork",
+    "state": "UT",
+    "zip": "84003",
+    "type": "elementary"
+  },
+  {
+    "name": "Legacy Elementary",
+    "street": "455 E 1200 N",
+    "city": "American Fork",
+    "state": "UT",
+    "zip": "84003",
+    "type": "elementary"
+  },
+  {
+    "name": "Polaris High School",
+    "street": "580 S 500 W",
+    "city": "American Fork",
+    "state": "UT",
+    "zip": "84003",
+    "type": "high school"
+  },
+  {
+    "name": "Polaris West High School",
+    "street": "555 S 600 W",
+    "city": "American Fork",
+    "state": "UT",
+    "zip": "84003",
+    "type": "high school"
+  },
+  {
+    "name": "Sharon Elementary",
+    "street": "450 N 100 E",
+    "city": "American Fork",
+    "state": "UT",
+    "zip": "84003",
+    "type": "elementary"
+  },
+  {
+    "name": "Shelley Elementary",
+    "street": "602 E 500 S",
+    "city": "American Fork",
+    "state": "UT",
+    "zip": "84003",
+    "type": "elementary"
+  },
+  {
+    "name": "Suncrest Elementary",
+    "street": "10079 N Eagle Crest Dr",
+    "city": "American Fork",
+    "state": "UT",
+    "zip": "84003",
+    "type": "elementary"
+  },
+  {
+    "name": "Valley View Elementary",
+    "street": "626 S 3550 W",
+    "city": "American Fork",
+    "state": "UT",
+    "zip": "84003",
+    "type": "elementary"
+  },
+  {
+    "name": "Cedar Valley Elementary",
+    "street": "3812 N Cedar Valley Rd",
+    "city": "Cedar Fort",
+    "state": "UT",
+    "zip": "84013",
+    "type": "elementary"
+  },
+  {
+    "name": "Cedar Ridge Elementary",
+    "street": "3825 W Cedar Hills Dr",
+    "city": "Cedar Hills",
+    "state": "UT",
+    "zip": "84062",
+    "type": "elementary"
+  },
+  {
+    "name": "Deerfield Elementary",
+    "street": "1750 N 4000 W",
+    "city": "Cedar Hills",
+    "state": "UT",
+    "zip": "84062",
+    "type": "elementary"
+  },
+  {
+    "name": "Black Ridge Elementary",
+    "street": "4950 W Black Ridge Dr",
+    "city": "Eagle Mountain",
+    "state": "UT",
+    "zip": "84005",
+    "type": "elementary"
+  },
+  {
+    "name": "Brookhaven Elementary",
+    "street": "3560 E Brookhaven Dr",
+    "city": "Eagle Mountain",
+    "state": "UT",
+    "zip": "84005",
+    "type": "elementary"
+  },
+  {
+    "name": "Desert Sky Elementary",
+    "street": "5200 N White Tail Dr",
+    "city": "Eagle Mountain",
+    "state": "UT",
+    "zip": "84005",
+    "type": "elementary"
+  },
+  {
+    "name": "Eagle Valley Elementary",
+    "street": "5681 N Ranches Pkwy",
+    "city": "Eagle Mountain",
+    "state": "UT",
+    "zip": "84005",
+    "type": "elementary"
+  },
+  {
+    "name": "Frontier Middle School",
+    "street": "5750 W Herriman Main St",
+    "city": "Eagle Mountain",
+    "state": "UT",
+    "zip": "84005",
+    "type": "middle school"
+  },
+  {
+    "name": "Hidden Hollow Elementary",
+    "street": "4720 N Hidden Hollow Dr",
+    "city": "Eagle Mountain",
+    "state": "UT",
+    "zip": "84005",
+    "type": "elementary"
+  },
+  {
+    "name": "Mountain Trails Elementary",
+    "street": "6300 N Fox Canyon Rd",
+    "city": "Eagle Mountain",
+    "state": "UT",
+    "zip": "84005",
+    "type": "elementary"
+  },
+  {
+    "name": "Pony Express Elementary",
+    "street": "4085 N Smith Ranch Rd",
+    "city": "Eagle Mountain",
+    "state": "UT",
+    "zip": "84005",
+    "type": "elementary"
+  },
+  {
+    "name": "Sage Canyon Middle School",
+    "street": "3825 E Pony Express Pkwy",
+    "city": "Eagle Mountain",
+    "state": "UT",
+    "zip": "84005",
+    "type": "middle school"
+  },
+  {
+    "name": "Freedom Elementary",
+    "street": "7550 N 6800 W",
+    "city": "Highland",
+    "state": "UT",
+    "zip": "84003",
+    "type": "elementary"
+  },
+  {
+    "name": "Highland Elementary",
+    "street": "10865 N 6000 W",
+    "city": "Highland",
+    "state": "UT",
+    "zip": "84003",
+    "type": "elementary"
+  },
+  {
+    "name": "Lone Peak High School",
+    "street": "10189 N 4800 W",
+    "city": "Highland",
+    "state": "UT",
+    "zip": "84003",
+    "type": "high school"
+  },
+  {
+    "name": "Mountain Ridge Junior High School",
+    "street": "10500 N 6000 W",
+    "city": "Highland",
+    "state": "UT",
+    "zip": "84003",
+    "type": "high school"
+  },
+  {
+    "name": "Ridgeline Elementary",
+    "street": "10300 N 6800 W",
+    "city": "Highland",
+    "state": "UT",
+    "zip": "84003",
+    "type": "elementary"
+  },
+  {
+    "name": "Belmont Elementary",
+    "street": "4201 W 2400 N",
+    "city": "Lehi",
+    "state": "UT",
+    "zip": "84043",
+    "type": "elementary"
+  },
+  {
+    "name": "Dry Creek Elementary",
+    "street": "125 S 200 E",
+    "city": "Lehi",
+    "state": "UT",
+    "zip": "84043",
+    "type": "elementary"
+  },
+  {
+    "name": "Eaglecrest Elementary",
+    "street": "4100 N 2300 W",
+    "city": "Lehi",
+    "state": "UT",
+    "zip": "84043",
+    "type": "elementary"
+  },
+  {
+    "name": "Fox Hollow Elementary",
+    "street": "1960 N 1300 E",
+    "city": "Lehi",
+    "state": "UT",
+    "zip": "84043",
+    "type": "elementary"
+  },
+  {
+    "name": "Lehi Elementary",
+    "street": "1050 W 200 N",
+    "city": "Lehi",
+    "state": "UT",
+    "zip": "84043",
+    "type": "elementary"
+  },
+  {
+    "name": "Lehi High School",
+    "street": "180 N 500 E",
+    "city": "Lehi",
+    "state": "UT",
+    "zip": "84043",
+    "type": "high school"
+  },
+  {
+    "name": "Lehi Junior High School",
+    "street": "150 N 100 E",
+    "city": "Lehi",
+    "state": "UT",
+    "zip": "84043",
+    "type": "high school"
+  },
+  {
+    "name": "Liberty Hills Elementary",
+    "street": "2600 W 1500 N",
+    "city": "Lehi",
+    "state": "UT",
+    "zip": "84043",
+    "type": "elementary"
+  },
+  {
+    "name": "Meadow Elementary",
+    "street": "1850 N 200 E",
+    "city": "Lehi",
+    "state": "UT",
+    "zip": "84043",
+    "type": "elementary"
+  },
+  {
+    "name": "North Point Elementary",
+    "street": "4100 N 2400 W",
+    "city": "Lehi",
+    "state": "UT",
+    "zip": "84043",
+    "type": "elementary"
+  },
+  {
+    "name": "River Rock Elementary",
+    "street": "2430 W 500 N",
+    "city": "Lehi",
+    "state": "UT",
+    "zip": "84043",
+    "type": "elementary"
+  },
+  {
+    "name": "Sego Lily Elementary",
+    "street": "2280 W 1500 N",
+    "city": "Lehi",
+    "state": "UT",
+    "zip": "84043",
+    "type": "elementary"
+  },
+  {
+    "name": "Skyridge High School",
+    "street": "675 S 1000 E",
+    "city": "Lehi",
+    "state": "UT",
+    "zip": "84043",
+    "type": "high school"
+  },
+  {
+    "name": "Snow Springs Elementary",
+    "street": "1360 N 2550 W",
+    "city": "Lehi",
+    "state": "UT",
+    "zip": "84043",
+    "type": "elementary"
+  },
+  {
+    "name": "Traverse Mountain Elementary",
+    "street": "2300 W 700 N",
+    "city": "Lehi",
+    "state": "UT",
+    "zip": "84043",
+    "type": "elementary"
+  },
+  {
+    "name": "Viewpoint Middle School",
+    "street": "1960 N 2300 W",
+    "city": "Lehi",
+    "state": "UT",
+    "zip": "84043",
+    "type": "middle school"
+  },
+  {
+    "name": "Willowcreek Middle School",
+    "street": "2450 W 700 N",
+    "city": "Lehi",
+    "state": "UT",
+    "zip": "84043",
+    "type": "middle school"
+  },
+  {
+    "name": "Lindon Elementary",
+    "street": "30 N Main St",
+    "city": "Lindon",
+    "state": "UT",
+    "zip": "84042",
+    "type": "elementary"
+  },
+  {
+    "name": "Rocky Mountain Elementary",
+    "street": "800 E 100 N",
+    "city": "Lindon",
+    "state": "UT",
+    "zip": "84042",
+    "type": "elementary"
+  },
+  {
+    "name": "Aspen Elementary",
+    "street": "875 N 400 W",
+    "city": "Orem",
+    "state": "UT",
+    "zip": "84057",
+    "type": "elementary"
+  },
+  {
+    "name": "Bonneville Elementary",
+    "street": "950 W 800 N",
+    "city": "Orem",
+    "state": "UT",
+    "zip": "84057",
+    "type": "elementary"
+  },
+  {
+    "name": "Canyon View Junior High School",
+    "street": "1601 N 1200 W",
+    "city": "Orem",
+    "state": "UT",
+    "zip": "84057",
+    "type": "high school"
+  },
+  {
+    "name": "Cascade Elementary",
+    "street": "1450 S 500 W",
+    "city": "Orem",
+    "state": "UT",
+    "zip": "84058",
+    "type": "elementary"
+  },
+  {
+    "name": "Centennial Elementary",
+    "street": "800 S 200 W",
+    "city": "Orem",
+    "state": "UT",
+    "zip": "84058",
+    "type": "elementary"
+  },
+  {
+    "name": "Cherry Hill Elementary",
+    "street": "350 W 1000 N",
+    "city": "Orem",
+    "state": "UT",
+    "zip": "84057",
+    "type": "elementary"
+  },
+  {
+    "name": "Foothill Elementary",
+    "street": "400 E 2000 N",
+    "city": "Orem",
+    "state": "UT",
+    "zip": "84097",
+    "type": "elementary"
+  },
+  {
+    "name": "Lakeridge Junior High School",
+    "street": "951 S 400 W",
+    "city": "Orem",
+    "state": "UT",
+    "zip": "84058",
+    "type": "high school"
+  },
+  {
+    "name": "Mountain View High School",
+    "street": "665 W Center St",
+    "city": "Orem",
+    "state": "UT",
+    "zip": "84057",
+    "type": "high school"
+  },
+  {
+    "name": "Northridge Elementary",
+    "street": "550 N 400 E",
+    "city": "Orem",
+    "state": "UT",
+    "zip": "84057",
+    "type": "elementary"
+  },
+  {
+    "name": "Orchard Elementary",
+    "street": "1150 S 400 E",
+    "city": "Orem",
+    "state": "UT",
+    "zip": "84097",
+    "type": "elementary"
+  },
+  {
+    "name": "Orem Elementary",
+    "street": "450 S 400 W",
+    "city": "Orem",
+    "state": "UT",
+    "zip": "84058",
+    "type": "elementary"
+  },
+  {
+    "name": "Orem High School",
+    "street": "1150 S 400 E",
+    "city": "Orem",
+    "state": "UT",
+    "zip": "84097",
+    "type": "high school"
+  },
+  {
+    "name": "Orem Junior High School",
+    "street": "650 W 800 S",
+    "city": "Orem",
+    "state": "UT",
+    "zip": "84058",
+    "type": "high school"
+  },
+  {
+    "name": "Parkside Elementary",
+    "street": "765 S 1200 W",
+    "city": "Orem",
+    "state": "UT",
+    "zip": "84058",
+    "type": "elementary"
+  },
+  {
+    "name": "Timpanogos High School",
+    "street": "3570 N 750 E",
+    "city": "Orem",
+    "state": "UT",
+    "zip": "84097",
+    "type": "high school"
+  },
+  {
+    "name": "Westmore Elementary",
+    "street": "1950 W 200 N",
+    "city": "Orem",
+    "state": "UT",
+    "zip": "84057",
+    "type": "elementary"
+  },
+  {
+    "name": "Central Elementary",
+    "street": "55 N 300 E",
+    "city": "Pleasant Grove",
+    "state": "UT",
+    "zip": "84062",
+    "type": "elementary"
+  },
+  {
+    "name": "Grovecrest Elementary",
+    "street": "75 E 500 N",
+    "city": "Pleasant Grove",
+    "state": "UT",
+    "zip": "84062",
+    "type": "elementary"
+  },
+  {
+    "name": "Manila Elementary",
+    "street": "420 S 2000 W",
+    "city": "Pleasant Grove",
+    "state": "UT",
+    "zip": "84062",
+    "type": "elementary"
+  },
+  {
+    "name": "Mount Mahogany Elementary",
+    "street": "1450 E 300 N",
+    "city": "Pleasant Grove",
+    "state": "UT",
+    "zip": "84062",
+    "type": "elementary"
+  },
+  {
+    "name": "Oak Canyon Junior High School",
+    "street": "1111 S 800 E",
+    "city": "Pleasant Grove",
+    "state": "UT",
+    "zip": "84062",
+    "type": "high school"
+  },
+  {
+    "name": "Pleasant Grove High School",
+    "street": "700 E 200 S",
+    "city": "Pleasant Grove",
+    "state": "UT",
+    "zip": "84062",
+    "type": "high school"
+  },
+  {
+    "name": "Pleasant Grove Junior High School",
+    "street": "810 N 800 E",
+    "city": "Pleasant Grove",
+    "state": "UT",
+    "zip": "84062",
+    "type": "high school"
+  },
+  {
+    "name": "Harbor Point Elementary",
+    "street": "1775 N Redwood Rd",
+    "city": "Saratoga Springs",
+    "state": "UT",
+    "zip": "84045",
+    "type": "elementary"
+  },
+  {
+    "name": "Harvest Elementary",
+    "street": "2430 S Harvest Dr",
+    "city": "Saratoga Springs",
+    "state": "UT",
+    "zip": "84045",
+    "type": "elementary"
+  },
+  {
+    "name": "Lake Mountain Middle School",
+    "street": "2100 S Lake Mountain Rd",
+    "city": "Saratoga Springs",
+    "state": "UT",
+    "zip": "84045",
+    "type": "middle school"
+  },
+  {
+    "name": "Riverview Elementary",
+    "street": "1250 S Redwood Rd",
+    "city": "Saratoga Springs",
+    "state": "UT",
+    "zip": "84045",
+    "type": "elementary"
+  },
+  {
+    "name": "Sage Hills Elementary",
+    "street": "2895 S Sage Hills Dr",
+    "city": "Saratoga Springs",
+    "state": "UT",
+    "zip": "84045",
+    "type": "elementary"
+  },
+  {
+    "name": "Saratoga Shores Elementary",
+    "street": "305 S Saratoga Rd",
+    "city": "Saratoga Springs",
+    "state": "UT",
+    "zip": "84045",
+    "type": "elementary"
+  },
+  {
+    "name": "Thunder Ridge Elementary",
+    "street": "475 N Redwood Rd",
+    "city": "Saratoga Springs",
+    "state": "UT",
+    "zip": "84045",
+    "type": "elementary"
+  },
+  {
+    "name": "Vista Heights Middle School",
+    "street": "300 N Vista Heights Rd",
+    "city": "Saratoga Springs",
+    "state": "UT",
+    "zip": "84045",
+    "type": "middle school"
+  },
+  {
+    "name": "Westlake High School",
+    "street": "99 N Center St",
+    "city": "Saratoga Springs",
+    "state": "UT",
+    "zip": "84045",
+    "type": "high school"
+  },
+  {
+    "name": "Trailside Elementary",
+    "street": "1000 N Vineyard Loop Rd",
+    "city": "Vineyard",
+    "state": "UT",
+    "zip": "84059",
+    "type": "elementary"
+  },
+  {
+    "name": "Vineyard Elementary",
+    "street": "200 N Vineyard Rd",
+    "city": "Vineyard",
+    "state": "UT",
+    "zip": "84059",
+    "type": "elementary"
+  }
+]

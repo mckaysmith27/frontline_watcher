@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../providers/filters_provider.dart';
 import 'tag_chip.dart';
 
@@ -24,6 +25,7 @@ class NestedFilterColumn extends StatefulWidget {
 class _NestedFilterColumnState extends State<NestedFilterColumn> {
   final TextEditingController _searchController = TextEditingController();
   String _searchQuery = '';
+  bool _isExpanded = false;
 
   @override
   void initState() {
@@ -33,6 +35,22 @@ class _NestedFilterColumnState extends State<NestedFilterColumn> {
         _searchQuery = _searchController.text.toLowerCase();
       });
     });
+    _loadExpansionState();
+  }
+
+  Future<void> _loadExpansionState() async {
+    final prefs = await SharedPreferences.getInstance();
+    final key = 'nested_filter_column_expanded_${widget.category}';
+    // Default: all collapsed
+    setState(() {
+      _isExpanded = prefs.getBool(key) ?? false;
+    });
+  }
+
+  Future<void> _saveExpansionState(bool expanded) async {
+    final prefs = await SharedPreferences.getInstance();
+    final key = 'nested_filter_column_expanded_${widget.category}';
+    await prefs.setBool(key, expanded);
   }
 
   @override
@@ -59,7 +77,7 @@ class _NestedFilterColumnState extends State<NestedFilterColumn> {
     return allSchools;
   }
 
-  // Get filtered schools based on school-types selection
+  // Get filtered schools-by-city (school-types filtering now handled in map widget)
   Map<String, List<String>> _getFilteredSchoolsByCity() {
     final filtersProvider = Provider.of<FiltersProvider>(context, listen: true);
     
@@ -79,7 +97,7 @@ class _NestedFilterColumnState extends State<NestedFilterColumn> {
 
   // Filter cities and schools based on search query
   Map<String, List<String>> _getFilteredData() {
-    // Start with filtered schools (respects school-types selection)
+    // Start with filtered schools
     final baseData = _getFilteredSchoolsByCity();
     
     if (_searchQuery.isEmpty) {
@@ -113,36 +131,45 @@ class _NestedFilterColumnState extends State<NestedFilterColumn> {
         borderRadius: BorderRadius.circular(12),
         border: Border.all(color: Colors.transparent),
       ),
-      padding: const EdgeInsets.all(16),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+      child: ExpansionTile(
+        initiallyExpanded: _isExpanded,
+        onExpansionChanged: (expanded) {
+          setState(() {
+            _isExpanded = expanded;
+          });
+          _saveExpansionState(expanded);
+        },
+        title: Text(
+          _getTitle(),
+          style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                fontWeight: FontWeight.bold,
+              ),
+        ),
         children: [
-          Text(
-            _getTitle(),
-            style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                  fontWeight: FontWeight.bold,
+          Padding(
+            padding: const EdgeInsets.all(16),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                TextField(
+                  controller: _searchController,
+                  decoration: InputDecoration(
+                    hintText: 'Search cities or schools...',
+                    border: const OutlineInputBorder(),
+                    prefixIcon: const Icon(Icons.search),
+                    suffixIcon: _searchQuery.isNotEmpty
+                        ? IconButton(
+                            icon: const Icon(Icons.clear),
+                            onPressed: () {
+                              _searchController.clear();
+                            },
+                          )
+                        : null,
+                  ),
                 ),
-          ),
-          const SizedBox(height: 12),
-          TextField(
-            controller: _searchController,
-            decoration: InputDecoration(
-              hintText: 'Search cities or schools...',
-              border: const OutlineInputBorder(),
-              prefixIcon: const Icon(Icons.search),
-              suffixIcon: _searchQuery.isNotEmpty
-                  ? IconButton(
-                      icon: const Icon(Icons.clear),
-                      onPressed: () {
-                        _searchController.clear();
-                      },
-                    )
-                  : null,
-            ),
-          ),
-          const SizedBox(height: 12),
-          // Display nested structure: City tags with indented schools
-          ...filteredData.entries.map((entry) {
+                const SizedBox(height: 12),
+                // Display nested structure: City tags with indented schools
+                ...filteredData.entries.map((entry) {
             final city = entry.key;
             final schools = entry.value;
             // Use date-specific state if dateStr is provided
@@ -210,7 +237,10 @@ class _NestedFilterColumnState extends State<NestedFilterColumn> {
                 ),
               ],
             );
-          }),
+          }).toList(),
+              ],
+            ),
+          ),
         ],
       ),
     );

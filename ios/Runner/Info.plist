@@ -53,6 +53,10 @@
 	<string>We need access to save photos to your library.</string>
 	<key>NSCalendarsUsageDescription</key>
 	<string>We need access to your calendar to add booked jobs.</string>
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>We need access to your location to show nearby schools on the map.</string>
+	<key>NSLocationAlwaysUsageDescription</key>
+	<string>We need access to your location to show nearby schools on the map.</string>
 	<key>FirebaseAppDelegateProxyEnabled</key>
 	<false/>
 	<key>UIBackgroundModes</key>

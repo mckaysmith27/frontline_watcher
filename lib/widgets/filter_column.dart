@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../providers/filters_provider.dart';
 import 'tag_chip.dart';
 
@@ -26,6 +27,7 @@ class FilterColumn extends StatefulWidget {
 class _FilterColumnState extends State<FilterColumn> {
   final TextEditingController _searchController = TextEditingController();
   String _searchQuery = '';
+  bool _isExpanded = false;
 
   @override
   void initState() {
@@ -35,6 +37,23 @@ class _FilterColumnState extends State<FilterColumn> {
         _searchQuery = _searchController.text.toLowerCase();
       });
     });
+    _loadExpansionState();
+  }
+
+  Future<void> _loadExpansionState() async {
+    final prefs = await SharedPreferences.getInstance();
+    final key = 'filter_column_expanded_${widget.category}';
+    // Default: subjects collapsed, others open
+    final defaultExpanded = widget.category != 'subjects';
+    setState(() {
+      _isExpanded = prefs.getBool(key) ?? defaultExpanded;
+    });
+  }
+
+  Future<void> _saveExpansionState(bool expanded) async {
+    final prefs = await SharedPreferences.getInstance();
+    final key = 'filter_column_expanded_${widget.category}';
+    await prefs.setBool(key, expanded);
   }
 
   @override
@@ -115,87 +134,98 @@ class _FilterColumnState extends State<FilterColumn> {
               : Colors.transparent,
         ),
       ),
-      padding: const EdgeInsets.all(16),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              if (widget.isPremium && !widget.isUnlocked)
-                const Icon(Icons.lock, size: 20, color: Colors.grey),
-              if (widget.isPremium && !widget.isUnlocked)
-                const SizedBox(width: 8),
-              Text(
-                _getTitle(),
-                style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                      fontWeight: FontWeight.bold,
-                      color: widget.isPremium && !widget.isUnlocked
-                          ? Colors.grey
-                          : null,
-                    ),
-              ),
-              const Spacer(),
-            ],
-          ),
-          const SizedBox(height: 12),
-          TextField(
-            controller: _searchController,
-            enabled: widget.isUnlocked || !widget.isPremium,
-            decoration: InputDecoration(
-              hintText: 'Search or add keyword...',
-              border: const OutlineInputBorder(),
-              prefixIcon: const Icon(Icons.search),
-              suffixIcon: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  if (_searchQuery.isNotEmpty)
-                    IconButton(
-                      icon: const Icon(Icons.clear),
-                      onPressed: () {
-                        _searchController.clear();
-                      },
-                    ),
-                  if (isCustomTag)
-                    IconButton(
-                      icon: const Icon(Icons.add),
-                      onPressed: _handleAddCustomTag,
-                    ),
-                ],
-              ),
+      child: ExpansionTile(
+        initiallyExpanded: _isExpanded,
+        onExpansionChanged: (expanded) {
+          setState(() {
+            _isExpanded = expanded;
+          });
+          _saveExpansionState(expanded);
+        },
+        title: Row(
+          children: [
+            if (widget.isPremium && !widget.isUnlocked)
+              const Icon(Icons.lock, size: 20, color: Colors.grey),
+            if (widget.isPremium && !widget.isUnlocked)
+              const SizedBox(width: 8),
+            Text(
+              _getTitle(),
+              style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                    fontWeight: FontWeight.bold,
+                    color: widget.isPremium && !widget.isUnlocked
+                        ? Colors.grey
+                        : null,
+                  ),
             ),
-          ),
-          const SizedBox(height: 12),
-          Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            children: filteredTags.map((tag) {
-              final isCustom = filtersProvider.customTags[widget.category]?.contains(tag) ?? false;
-              // Use date-specific state if dateStr is provided
-              final state = widget.dateStr != null
-                  ? filtersProvider.getTagStateForDate(tag, widget.dateStr)
-                  : (filtersProvider.tagStates[tag] ?? TagState.gray);
-              
-              return TagChip(
-                tag: tag,
-                state: state,
-                isPremium: widget.isPremium,
-                isUnlocked: widget.isUnlocked,
-                isCustom: isCustom,
-                onTap: () async {
-                  if (widget.isPremium && !widget.isUnlocked) return;
-                  if (widget.dateStr != null) {
-                    await filtersProvider.toggleTagForDate(widget.category, tag, widget.dateStr!);
-                  } else {
-                    await filtersProvider.toggleTag(widget.category, tag);
-                  }
-                },
-                onDelete: isCustom
-                    ? () {
-                        filtersProvider.removeCustomTag(widget.category, tag);
-                      }
-                    : null,
-              );
-            }).toList(),
+          ],
+        ),
+        children: [
+          Padding(
+            padding: const EdgeInsets.all(16),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                TextField(
+                  controller: _searchController,
+                  enabled: widget.isUnlocked || !widget.isPremium,
+                  decoration: InputDecoration(
+                    hintText: 'Search or add keyword...',
+                    border: const OutlineInputBorder(),
+                    prefixIcon: const Icon(Icons.search),
+                    suffixIcon: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        if (_searchQuery.isNotEmpty)
+                          IconButton(
+                            icon: const Icon(Icons.clear),
+                            onPressed: () {
+                              _searchController.clear();
+                            },
+                          ),
+                        if (isCustomTag)
+                          IconButton(
+                            icon: const Icon(Icons.add),
+                            onPressed: _handleAddCustomTag,
+                          ),
+                      ],
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 12),
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: filteredTags.map((tag) {
+                    final isCustom = filtersProvider.customTags[widget.category]?.contains(tag) ?? false;
+                    // Use date-specific state if dateStr is provided
+                    final state = widget.dateStr != null
+                        ? filtersProvider.getTagStateForDate(tag, widget.dateStr)
+                        : (filtersProvider.tagStates[tag] ?? TagState.gray);
+                    
+                    return TagChip(
+                      tag: tag,
+                      state: state,
+                      isPremium: widget.isPremium,
+                      isUnlocked: widget.isUnlocked,
+                      isCustom: isCustom,
+                      onTap: () async {
+                        if (widget.isPremium && !widget.isUnlocked) return;
+                        if (widget.dateStr != null) {
+                          await filtersProvider.toggleTagForDate(widget.category, tag, widget.dateStr!);
+                        } else {
+                          await filtersProvider.toggleTag(widget.category, tag);
+                        }
+                      },
+                      onDelete: isCustom
+                          ? () {
+                              filtersProvider.removeCustomTag(widget.category, tag);
+                            }
+                          : null,
+                    );
+                  }).toList(),
+                ),
+              ],
+            ),
           ),
         ],
       ),

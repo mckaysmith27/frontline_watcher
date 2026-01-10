@@ -7,26 +7,6 @@ class FiltersProvider extends ChangeNotifier {
   final FirebaseAuth _auth = FirebaseAuth.instance;
 
   Map<String, dynamic> _filtersDict = {
-    "school-types": [
-      "high school",
-      "middle school",
-      "jr. high",
-      "elementary",
-      "pre-k",
-      "kindergarten",
-      "1st",
-      "2nd",
-      "3rd",
-      "4th",
-      "5th",
-      "6th",
-      "7th",
-      "8th",
-      "9th",
-      "10th",
-      "11th",
-      "12th"
-    ],
     "subjects": [
       "math",
       "algebra",
@@ -63,7 +43,7 @@ class FiltersProvider extends ChangeNotifier {
       "engineering"
     ],
     "specialties": ["aide", "ap", "honors", "sped"],
-    "job-type": ["half", "full"],
+    "Duration": ["half", "full"],
     "schools-by-city": {
       "Alpine": [
         "Alpine Elementary",
@@ -216,85 +196,9 @@ class FiltersProvider extends ChangeNotifier {
   Map<String, List<String>> get customTags => _customTags;
   Map<String, Map<String, List<String>>> get dateFilters => _dateFilters;
 
-  // Get filtered schools-by-city based on selected school-types
+  // Get filtered schools-by-city (no longer filters by school-types, that's handled in map widget)
   Map<String, List<String>> getFilteredSchoolsByCity() {
-    // Get selected school types (green tags only)
-    final selectedSchoolTypes = _filtersDict['school-types'] as List<String>;
-    final selectedTypes = selectedSchoolTypes.where((type) {
-      final state = _tagStates[type] ?? TagState.gray;
-      return state == TagState.green;
-    }).toList();
-
-    // If no school types are selected, return all schools
-    if (selectedTypes.isEmpty) {
-      return Map<String, List<String>>.from(_filtersDict['schools-by-city'] as Map);
-    }
-
-    // Filter schools based on selected types
-    final filteredSchools = <String, List<String>>{};
-    final allSchools = _filtersDict['schools-by-city'] as Map<String, dynamic>;
-    
-    allSchools.forEach((city, schools) {
-      if (schools is List) {
-        final filteredSchoolList = <String>[];
-        for (var school in schools) {
-          final schoolType = _getSchoolTypeFromName(school);
-          if (selectedTypes.contains(schoolType)) {
-            filteredSchoolList.add(school);
-          }
-        }
-        if (filteredSchoolList.isNotEmpty) {
-          filteredSchools[city] = filteredSchoolList;
-        }
-      }
-    });
-
-    return filteredSchools;
-  }
-
-  // Determine school type from school name
-  String _getSchoolTypeFromName(String schoolName) {
-    final nameLower = schoolName.toLowerCase();
-    
-    // Check for high school
-    if (nameLower.contains('high school')) {
-      return 'high school';
-    }
-    
-    // Check for middle school
-    if (nameLower.contains('middle school')) {
-      return 'middle school';
-    }
-    
-    // Check for junior high / jr. high
-    if (nameLower.contains('junior high') || nameLower.contains('jr. high') || nameLower.contains('jr high')) {
-      return 'jr. high';
-    }
-    
-    // Check for elementary
-    if (nameLower.contains('elementary')) {
-      return 'elementary';
-    }
-    
-    // Check for pre-k
-    if (nameLower.contains('pre-k') || nameLower.contains('prek') || nameLower.contains('preschool')) {
-      return 'pre-k';
-    }
-    
-    // Check for kindergarten
-    if (nameLower.contains('kindergarten')) {
-      return 'kindergarten';
-    }
-    
-    // Check for grade levels (1st-12th)
-    for (var grade in ['1st', '2nd', '3rd', '4th', '5th', '6th', '7th', '8th', '9th', '10th', '11th', '12th']) {
-      if (nameLower.contains(grade)) {
-        return grade;
-      }
-    }
-    
-    // Default to elementary if no match (most common)
-    return 'elementary';
+    return Map<String, List<String>>.from(_filtersDict['schools-by-city'] as Map);
   }
 
   FiltersProvider() {
@@ -450,11 +354,6 @@ class FiltersProvider extends ChangeNotifier {
 
     await _saveToFirebase();
     notifyListeners();
-    
-    // If school-types changed, notify listeners to update schools-by-city
-    if (category == 'school-types') {
-      notifyListeners();
-    }
   }
 
   // Clear filters for a specific date
@@ -527,11 +426,6 @@ class FiltersProvider extends ChangeNotifier {
     
     await _saveToFirebase();
     notifyListeners();
-    
-    // If school-types changed, notify listeners to update schools-by-city
-    if (category == 'school-types') {
-      notifyListeners();
-    }
   }
 
   Future<void> addCustomTag(String category, String tag) async {
@@ -565,6 +459,11 @@ class FiltersProvider extends ChangeNotifier {
     notifyListeners();
   }
 
+
+  // Make saveToFirebase public for map widget to use
+  Future<void> saveToFirebase() async {
+    await _saveToFirebase();
+  }
 
   Future<void> _saveToFirebase() async {
     final user = _auth.currentUser;

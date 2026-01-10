@@ -6,9 +6,9 @@ import '../../services/automation_service.dart';
 import '../../utils/keyword_mapper.dart';
 import '../../widgets/filter_column.dart';
 import '../../widgets/nested_filter_column.dart';
+import '../../widgets/school_map_widget.dart';
 import '../../widgets/profile_app_bar.dart';
 import 'automation_bottom_sheet.dart';
-import 'payment_screen.dart';
 
 class FiltersScreen extends StatelessWidget {
   const FiltersScreen({super.key});
@@ -54,8 +54,13 @@ class FiltersScreen extends StatelessWidget {
             // Filter Legend with Tooltips
             _buildFilterLegend(context),
             const SizedBox(height: 24),
+            // Other filter categories first (subjects, specialties, duration)
             ...filtersProvider.filtersDict.entries.map((entry) {
-              // Handle nested dictionaries (like "schools-by-city")
+              // Skip schools-by-city as it's now handled by the map widget
+              if (entry.key == 'schools-by-city') {
+                return const SizedBox.shrink();
+              }
+              // Handle nested dictionaries
               if (entry.value is Map) {
                 return Padding(
                   padding: const EdgeInsets.only(bottom: 24.0),
@@ -81,6 +86,11 @@ class FiltersScreen extends StatelessWidget {
                 );
               }
             }),
+            // School Map Widget last (after other filters)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 24.0, top: 24.0),
+              child: const SchoolMapWidget(),
+            ),
           ],
         ),
       ),
