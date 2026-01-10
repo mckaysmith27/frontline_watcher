@@ -401,7 +401,7 @@ class _SchoolMapWidgetState extends State<SchoolMapWidget> {
     path.moveTo(size / 2, 0);
     path.arcToPoint(
       Offset(size, size * 0.6),
-      radius: const Radius.circular(size * 0.3),
+      radius: Radius.circular(size * 0.3),
       clockwise: false,
     );
     path.lineTo(size * 0.7, size * 0.9);
@@ -410,7 +410,7 @@ class _SchoolMapWidgetState extends State<SchoolMapWidget> {
     path.lineTo(0, size * 0.6);
     path.arcToPoint(
       Offset(size / 2, 0),
-      radius: const Radius.circular(size * 0.3),
+      radius: Radius.circular(size * 0.3),
       clockwise: false,
     );
     path.close();
