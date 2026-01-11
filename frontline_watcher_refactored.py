@@ -77,7 +77,7 @@ def _ts() -> str:
 
 def log(*args, **kwargs) -> None:
     """Print with timestamps prepended (shows in docker logs)."""
-    print(_ts(), *args, **kwargs)
+    print(_ts(), *args, **kwargs, flush=True)
 
 LOGIN_URL = (
     "https://login.frontlineeducation.com/login"
@@ -663,6 +663,66 @@ async def get_available_jobs_snapshot(page) -> str:
 # AUTH / MAIN LOOP
 # ---------------------------------------------------------------------
 
+async def check_login_error_messages(page) -> Optional[str]:
+    """
+    Check for error messages on the login page that indicate credential issues.
+    Returns error message if found, None otherwise.
+    """
+    try:
+        # Common error message selectors
+        error_selectors = [
+            '[class*="error"]',
+            '[class*="alert"]',
+            '[class*="warning"]',
+            '[id*="error"]',
+            '.error-message',
+            '.alert-danger',
+            '.invalid-credentials',
+        ]
+        
+        for selector in error_selectors:
+            try:
+                error_elements = page.locator(selector)
+                count = await error_elements.count()
+                if count > 0:
+                    for i in range(count):
+                        text = await error_elements.nth(i).inner_text()
+                        text_lower = text.lower().strip()
+                        # Check for credential-related error messages
+                        if any(keyword in text_lower for keyword in [
+                            'invalid', 'incorrect', 'wrong', 'username', 'password',
+                            'credentials', 'authentication failed', 'login failed',
+                            'user not found', 'account not found'
+                        ]):
+                            return text.strip()
+            except Exception:
+                continue
+        
+        # Also check page content for error messages
+        try:
+            body_text = await page.locator('body').inner_text()
+            body_lower = body_text.lower()
+            if any(keyword in body_lower for keyword in [
+                'invalid username', 'invalid password', 'incorrect password',
+                'wrong password', 'authentication failed', 'login failed'
+            ]):
+                # Try to extract the actual error message
+                lines = body_text.split('\n')
+                for line in lines:
+                    line_lower = line.lower().strip()
+                    if any(keyword in line_lower for keyword in [
+                        'invalid', 'incorrect', 'wrong', 'failed'
+                    ]):
+                        return line.strip()
+        except Exception:
+            pass
+        
+        return None
+    except Exception as e:
+        log(f"[auth] Error checking for login error messages: {e}")
+        return None
+
+
 async def ensure_logged_in_strategy_simple(page, username: str, password: str) -> bool:
     """
     Strategy 1: Simple login like old working code - no event dispatching, straightforward fill/submit.
@@ -716,7 +776,18 @@ async def ensure_logged_in_strategy_simple(page, username: str, password: str) -
     except Exception:
         pass
 
-    return ("login.frontlineeducation.com" not in page.url)
+    # Check if still on login page
+    still_on_login = "login.frontlineeducation.com" in page.url
+    
+    if still_on_login:
+        # Check for credential error messages
+        error_msg = await check_login_error_messages(page)
+        if error_msg:
+            log(f"[auth-strategy-1] ❌ Login failed - credential error detected: {error_msg}")
+            log(f"[auth-strategy-1] ⚠️  This suggests the username/password may be incorrect, not SSO/Captcha")
+            return False
+    
+    return not still_on_login
 
 
 async def ensure_logged_in_strategy_delayed(page, username: str, password: str) -> bool:
@@ -924,10 +995,19 @@ async def main() -> None:
                 else:
                     log("[auth] ✅ Verified logged in - not redirected to login page")
             else:
-                log("[auth] ❌ Initial login failed - SSO/captcha may be blocking. Cannot proceed.")
-                error_msg = "❌ Frontline watcher: Initial login failed. SSO/captcha may be blocking automated login. Cannot proceed."
-                notify(error_msg)
-                raise Exception("Initial login failed - SSO/captcha blocking automated login")
+                # Check for credential errors vs SSO/Captcha
+                error_msg_detected = await check_login_error_messages(page)
+                if error_msg_detected:
+                    log(f"[auth] ❌ Initial login failed - credential error detected: {error_msg_detected}")
+                    log("[auth] ⚠️  This suggests the username/password may be INCORRECT")
+                    error_msg = f"❌ Frontline watcher: Initial login failed.\n\nError message: {error_msg_detected}\n\n⚠️  This suggests the username/password for controller_1 may be INCORRECT.\nPlease verify the credentials in the .env file on EC2."
+                    notify(error_msg)
+                    raise Exception(f"Initial login failed - credential error: {error_msg_detected}")
+                else:
+                    log("[auth] ❌ Initial login failed - SSO/captcha may be blocking. Cannot proceed.")
+                    error_msg = "❌ Frontline watcher: Initial login failed. SSO/captcha may be blocking automated login. Cannot proceed."
+                    notify(error_msg)
+                    raise Exception("Initial login failed - SSO/captcha blocking automated login")
         else:
             log("[auth] ✅ Already logged in (using saved context or existing session)")
 
@@ -950,12 +1030,30 @@ async def main() -> None:
 
         while True:
             try:
-                await page.reload(wait_until="domcontentloaded")
+                # Check if page is still valid before reloading
+                if page.is_closed():
+                    log("[!] Page is closed, cannot reload. This should not happen.")
+                    raise Exception("Page is closed")
+                
+                await page.reload(wait_until="domcontentloaded", timeout=30000)
             except PWTimeout:
-                log("[!] reload timeout")
+                log("[!] reload timeout, trying goto instead...")
+                try:
+                    await page.goto(JOBS_URL, wait_until="domcontentloaded", timeout=30000)
+                except Exception as goto_err:
+                    log(f"[!] goto also failed after reload timeout: {goto_err}")
+                    await asyncio.sleep(5)
+                    continue
             except Exception as e:
-                log(f"[!] reload error: {e}")
-                await asyncio.sleep(2)
+                log(f"[!] reload error: {e}, trying goto instead...")
+                try:
+                    # If reload fails, try navigating to the URL directly
+                    await page.goto(JOBS_URL, wait_until="domcontentloaded", timeout=30000)
+                except Exception as goto_err:
+                    log(f"[!] goto also failed after reload error: {goto_err}")
+                    # If both fail, wait a bit longer and continue
+                    await asyncio.sleep(5)
+                    continue
 
             if "login.frontlineeducation.com" in page.url:
                 relogin_failures += 1

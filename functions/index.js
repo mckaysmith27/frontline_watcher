@@ -492,3 +492,398 @@ async function sendEmailNotification(user, event, eventId) {
   // Placeholder - implement with your email service
   // await sendEmailViaService(user.email, emailSubject, emailBody);
 }
+
+/**
+ * Cloud Function to check if user is admin
+ */
+exports.isAdmin = functions.https.onCall(async (data, context) => {
+  if (!context.auth) {
+    throw new functions.https.HttpsError('unauthenticated', 'User must be authenticated');
+  }
+
+  const userId = context.auth.uid;
+  const userDoc = await admin.firestore().collection('users').doc(userId).get();
+  const userData = userDoc.data();
+
+  return {
+    isAdmin: userData?.role === 'admin' || userData?.isAdmin === true,
+  };
+});
+
+/**
+ * Cloud Function to block user completely
+ */
+exports.blockUser = functions.https.onCall(async (data, context) => {
+  if (!context.auth) {
+    throw new functions.https.HttpsError('unauthenticated', 'User must be authenticated');
+  }
+
+  const { postId, userId } = data;
+  if (!postId || !userId) {
+    throw new functions.https.HttpsError('invalid-argument', 'postId and userId are required');
+  }
+
+  // Check if user is admin
+  const adminDoc = await admin.firestore().collection('users').doc(context.auth.uid).get();
+  const adminData = adminDoc.data();
+  if (adminData?.role !== 'admin' && adminData?.isAdmin !== true) {
+    throw new functions.https.HttpsError('permission-denied', 'Admin access required');
+  }
+
+  // Get user document to extract IPs if available
+  const userDoc = await admin.firestore().collection('users').doc(userId).get();
+  const userData = userDoc.data();
+
+  // Mark user as blocked
+  await admin.firestore().collection('users').doc(userId).update({
+    isBlocked: true,
+    blockedAt: admin.firestore.FieldValue.serverTimestamp(),
+    blockedBy: context.auth.uid,
+    blockedReason: 'Malicious user - blocked by admin',
+  });
+
+  // Store blocked IPs if available
+  const ipAddresses = userData?.ipAddresses || [];
+  if (ipAddresses.length > 0) {
+    await admin.firestore().collection('blocked_ips').doc(userId).set({
+      userId: userId,
+      ipAddresses: ipAddresses,
+      blockedAt: admin.firestore.FieldValue.serverTimestamp(),
+      blockedBy: context.auth.uid,
+    });
+  }
+
+  // Update post to mark user as blocked
+  await admin.firestore().collection('posts').doc(postId).update({
+    approvalStatus: 'rejected',
+    blockedReason: 'User blocked by admin',
+  });
+
+  // Delete all posts by this user
+  const userPostsSnapshot = await admin.firestore()
+    .collection('posts')
+    .where('userId', '==', userId)
+    .get();
+
+  const batch = admin.firestore().batch();
+  userPostsSnapshot.docs.forEach((doc) => {
+    batch.delete(doc.ref);
+  });
+  await batch.commit();
+
+  return { success: true };
+});
+
+/**
+ * Cloud Function to block image from post
+ */
+exports.blockImage = functions.https.onCall(async (data, context) => {
+  if (!context.auth) {
+    throw new functions.https.HttpsError('unauthenticated', 'User must be authenticated');
+  }
+
+  const { postId } = data;
+  if (!postId) {
+    throw new functions.https.HttpsError('invalid-argument', 'postId is required');
+  }
+
+  // Check if user is admin
+  const adminDoc = await admin.firestore().collection('users').doc(context.auth.uid).get();
+  const adminData = adminDoc.data();
+  if (adminData?.role !== 'admin' && adminData?.isAdmin !== true) {
+    throw new functions.https.HttpsError('permission-denied', 'Admin access required');
+  }
+
+  await admin.firestore().collection('posts').doc(postId).update({
+    imageBlocked: true,
+    approvalStatus: 'partially_approved',
+    blockedReason: 'Image blocked by admin',
+  });
+
+  return { success: true };
+});
+
+/**
+ * Cloud Function to block message content from post
+ */
+exports.blockContent = functions.https.onCall(async (data, context) => {
+  if (!context.auth) {
+    throw new functions.https.HttpsError('unauthenticated', 'User must be authenticated');
+  }
+
+  const { postId } = data;
+  if (!postId) {
+    throw new functions.https.HttpsError('invalid-argument', 'postId is required');
+  }
+
+  // Check if user is admin
+  const adminDoc = await admin.firestore().collection('users').doc(context.auth.uid).get();
+  const adminData = adminDoc.data();
+  if (adminData?.role !== 'admin' && adminData?.isAdmin !== true) {
+    throw new functions.https.HttpsError('permission-denied', 'Admin access required');
+  }
+
+  await admin.firestore().collection('posts').doc(postId).update({
+    contentBlocked: true,
+    approvalStatus: 'partially_approved',
+    blockedReason: 'Content blocked by admin',
+  });
+
+  return { success: true };
+});
+
+/**
+ * Cloud Function to fully approve post
+ */
+exports.approvePost = functions.https.onCall(async (data, context) => {
+  if (!context.auth) {
+    throw new functions.https.HttpsError('unauthenticated', 'User must be authenticated');
+  }
+
+  const { postId } = data;
+  if (!postId) {
+    throw new functions.https.HttpsError('invalid-argument', 'postId is required');
+  }
+
+  // Check if user is admin
+  const adminDoc = await admin.firestore().collection('users').doc(context.auth.uid).get();
+  const adminData = adminDoc.data();
+  if (adminData?.role !== 'admin' && adminData?.isAdmin !== true) {
+    throw new functions.https.HttpsError('permission-denied', 'Admin access required');
+  }
+
+  await admin.firestore().collection('posts').doc(postId).update({
+    approvalStatus: 'approved',
+    imageBlocked: false,
+    contentBlocked: false,
+    blockedReason: null,
+  });
+
+  return { success: true };
+});
+
+/**
+ * Cloud Function to check if a shortname is available
+ */
+exports.checkShortnameAvailability = functions.https.onCall(async (data, context) => {
+  if (!context.auth) {
+    throw new functions.https.HttpsError('unauthenticated', 'User must be authenticated');
+  }
+
+  const { shortname } = data;
+  if (!shortname || typeof shortname !== 'string') {
+    throw new functions.https.HttpsError('invalid-argument', 'shortname is required');
+  }
+
+  // Validate format: at least 3 characters, 1 number
+  if (shortname.length < 3) {
+    return { available: false, reason: 'Must be at least 3 characters' };
+  }
+
+  if (!/\d/.test(shortname)) {
+    return { available: false, reason: 'Must contain at least 1 number' };
+  }
+
+  // Check if shortname is already taken
+  const db = admin.firestore();
+  const usersSnapshot = await db.collection('users')
+    .where('shortname', '==', shortname.toLowerCase())
+    .limit(1)
+    .get();
+
+  // If current user already has this shortname, it's available to them
+  if (usersSnapshot.empty) {
+    return { available: true };
+  }
+
+  const existingUser = usersSnapshot.docs[0];
+  if (existingUser.id === context.auth.uid) {
+    return { available: true };
+  }
+
+  return { available: false, reason: 'Shortname already taken' };
+});
+
+/**
+ * Cloud Function to toggle post flag (flag or unflag)
+ * When 2+ users flag a post, it's sent to admin approval queue
+ */
+exports.togglePostFlag = functions.https.onCall(async (data, context) => {
+  if (!context.auth) {
+    throw new functions.https.HttpsError('unauthenticated', 'User must be authenticated');
+  }
+
+  const { postId, isFlagged } = data;
+  if (!postId || typeof isFlagged !== 'boolean') {
+    throw new functions.https.HttpsError('invalid-argument', 'postId and isFlagged are required');
+  }
+
+  const userId = context.auth.uid;
+  const db = admin.firestore();
+  const postRef = db.collection('posts').doc(postId);
+  const flagRef = postRef.collection('flags').doc(userId);
+
+  // Get current post data
+  const postDoc = await postRef.get();
+  if (!postDoc.exists) {
+    throw new functions.https.HttpsError('not-found', 'Post not found');
+  }
+
+  const postData = postDoc.data();
+  let currentFlagCount = postData?.flagCount || 0;
+
+  if (isFlagged) {
+    // User is flagging the post
+    await flagRef.set({
+      flagged: true,
+      flaggedAt: admin.firestore.FieldValue.serverTimestamp(),
+      userId: userId,
+    });
+
+    // Increment flag count
+    currentFlagCount += 1;
+  } else {
+    // User is unflagging the post
+    await flagRef.delete();
+
+    // Decrement flag count
+    currentFlagCount = Math.max(0, currentFlagCount - 1);
+  }
+
+  // Update post flag count and isFlagged status
+  const updateData = {
+    flagCount: currentFlagCount,
+  };
+
+  // If 2+ flags, mark as flagged and send to approval queue if not already there
+  if (currentFlagCount >= 2) {
+    updateData.isFlagged = true;
+    
+    // If post was approved, change status to pending for admin review
+    if (postData?.approvalStatus === 'approved') {
+      updateData.approvalStatus = 'pending';
+    }
+  } else {
+    // Less than 2 flags, remove flagged status
+    updateData.isFlagged = false;
+    
+    // If post was pending only due to flags (not original content), restore to approved
+    // But we need to check if it was originally flagged for content
+    // For now, we'll leave it as is - admin can decide
+  }
+
+  await postRef.update(updateData);
+
+  return { 
+    success: true, 
+    flagCount: currentFlagCount,
+    isFlagged: currentFlagCount >= 2,
+  };
+});
+
+/**
+ * Cloud Function to get user data by shortname (for public booking page)
+ */
+exports.getUserByShortname = functions.https.onCall(async (data, context) => {
+  const { shortname } = data;
+  if (!shortname || typeof shortname !== 'string') {
+    throw new functions.https.HttpsError('invalid-argument', 'shortname is required');
+  }
+
+  const db = admin.firestore();
+  const usersSnapshot = await db.collection('users')
+    .where('shortname', '==', shortname.toLowerCase())
+    .limit(1)
+    .get();
+
+  if (usersSnapshot.empty) {
+    throw new functions.https.HttpsError('not-found', 'User not found');
+  }
+
+  const userDoc = usersSnapshot.docs[0];
+  const userData = userDoc.data();
+  
+  // Get Firebase Auth user for email
+  let email = null;
+  try {
+    const authUser = await admin.auth().getUser(userDoc.id);
+    email = authUser.email;
+  } catch (e) {
+    // User might not exist in Auth
+  }
+
+  // Return public profile data only
+  return {
+    name: userData.shortname || userData.nickname || 'Substitute Teacher',
+    phone: userData.phoneNumber || null,
+    email: email,
+    photoUrl: userData.photoUrl || null,
+  };
+});
+
+/**
+ * Cloud Function to create business card order
+ */
+exports.createBusinessCardOrder = functions.https.onCall(async (data, context) => {
+  if (!context.auth) {
+    throw new functions.https.HttpsError('unauthenticated', 'User must be authenticated');
+  }
+
+  const { quantity, shippingAddress, shortname } = data;
+  if (!quantity || !shippingAddress || !shortname) {
+    throw new functions.https.HttpsError('invalid-argument', 'Missing required fields');
+  }
+
+  const userId = context.auth.uid;
+  const db = admin.firestore();
+  
+  // Get user data
+  const userDoc = await db.collection('users').doc(userId).get();
+  const userData = userDoc.data();
+  
+  // Check if user has credits or subscription
+  const hasCredits = (userData?.credits || 0) > 0;
+  const hasSubscription = userData?.subscriptionActive === true || 
+                          userData?.hasActiveSubscription === true;
+  const isFree = quantity === 5 && (hasCredits || hasSubscription);
+  
+  // Calculate price
+  const pricing = {
+    5: 0.0,
+    10: 5.99,
+    20: 9.99,
+    50: 19.00,
+    100: 34.99,
+    500: 89.99,
+  };
+  const price = isFree ? 0.0 : (pricing[quantity] || 0.0);
+  
+  // Calculate delivery date (10-14 days)
+  const deliveryDate = new Date();
+  deliveryDate.setDate(deliveryDate.getDate() + 12);
+  
+  // Create order
+  const orderData = {
+    userId: userId,
+    shortname: shortname,
+    userName: userData?.shortname || userData?.nickname || 'User',
+    userPhone: userData?.phoneNumber || null,
+    userEmail: context.auth.email || null,
+    quantity: quantity,
+    price: price,
+    isFree: isFree,
+    shippingAddress: shippingAddress,
+    status: isFree ? 'confirmed' : 'pending_payment',
+    estimatedDelivery: deliveryDate.toISOString().split('T')[0],
+    createdAt: admin.firestore.FieldValue.serverTimestamp(),
+  };
+  
+  const orderRef = await db.collection('business_card_orders').add(orderData);
+  
+  return {
+    orderId: orderRef.id,
+    isFree: isFree,
+    price: price,
+    estimatedDelivery: orderData.estimatedDelivery,
+  };
+});

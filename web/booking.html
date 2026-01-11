@@ -1,0 +1,427 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Book Sub - Sub67</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+    
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 20px;
+    }
+    
+    .container {
+      background: white;
+      border-radius: 16px;
+      box-shadow: 0 10px 40px rgba(0,0,0,0.2);
+      max-width: 600px;
+      width: 100%;
+      padding: 32px;
+      margin-top: 20px;
+    }
+    
+    .profile-section {
+      text-align: center;
+      margin-bottom: 32px;
+    }
+    
+    .profile-photo {
+      width: 120px;
+      height: 120px;
+      border-radius: 50%;
+      margin: 0 auto 16px;
+      object-fit: cover;
+      border: 4px solid #667eea;
+    }
+    
+    .profile-name {
+      font-size: 24px;
+      font-weight: bold;
+      color: #333;
+      margin-bottom: 8px;
+    }
+    
+    .profile-info {
+      color: #666;
+      font-size: 16px;
+      margin: 4px 0;
+    }
+    
+    .calendar-section {
+      margin: 32px 0;
+    }
+    
+    .calendar-title {
+      font-size: 20px;
+      font-weight: bold;
+      margin-bottom: 16px;
+      color: #333;
+    }
+    
+    .book-button {
+      width: 100%;
+      padding: 16px;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      color: white;
+      border: none;
+      border-radius: 8px;
+      font-size: 18px;
+      font-weight: bold;
+      cursor: pointer;
+      margin-top: 24px;
+      transition: transform 0.2s;
+    }
+    
+    .book-button:hover {
+      transform: translateY(-2px);
+    }
+    
+    .book-button:disabled {
+      opacity: 0.6;
+      cursor: not-allowed;
+    }
+    
+    .modal {
+      display: none;
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: rgba(0,0,0,0.5);
+      z-index: 1000;
+      align-items: center;
+      justify-content: center;
+    }
+    
+    .modal-content {
+      background: white;
+      border-radius: 16px;
+      padding: 24px;
+      max-width: 500px;
+      width: 90%;
+      max-height: 90vh;
+      overflow-y: auto;
+    }
+    
+    .modal-title {
+      font-size: 24px;
+      font-weight: bold;
+      margin-bottom: 16px;
+    }
+    
+    .terms-checkbox {
+      margin: 16px 0;
+      display: flex;
+      align-items: flex-start;
+    }
+    
+    .terms-checkbox input {
+      margin-right: 8px;
+      margin-top: 4px;
+    }
+    
+    .terms-text {
+      font-size: 14px;
+      color: #666;
+      line-height: 1.5;
+    }
+    
+    .form-group {
+      margin: 16px 0;
+    }
+    
+    .form-group label {
+      display: block;
+      margin-bottom: 8px;
+      font-weight: 500;
+      color: #333;
+    }
+    
+    .form-group input {
+      width: 100%;
+      padding: 12px;
+      border: 2px solid #ddd;
+      border-radius: 8px;
+      font-size: 16px;
+    }
+    
+    .form-group input:focus {
+      outline: none;
+      border-color: #667eea;
+    }
+    
+    .button-group {
+      display: flex;
+      gap: 12px;
+      margin-top: 24px;
+    }
+    
+    .button-group button {
+      flex: 1;
+      padding: 12px;
+      border: none;
+      border-radius: 8px;
+      font-size: 16px;
+      font-weight: 500;
+      cursor: pointer;
+    }
+    
+    .button-cancel {
+      background: #f0f0f0;
+      color: #333;
+    }
+    
+    .button-submit {
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      color: white;
+    }
+    
+    .webview-container {
+      margin-top: 24px;
+      border: 2px solid #ddd;
+      border-radius: 8px;
+      overflow: hidden;
+      position: relative;
+    }
+    
+    .webview-overlay {
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background: rgba(255,255,255,0.95);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 20px;
+      z-index: 10;
+    }
+    
+    .overlay-content {
+      text-align: center;
+      max-width: 400px;
+    }
+    
+    .overlay-title {
+      font-size: 20px;
+      font-weight: bold;
+      margin-bottom: 12px;
+    }
+    
+    .overlay-steps {
+      text-align: left;
+      margin: 16px 0;
+    }
+    
+    .overlay-steps li {
+      margin: 8px 0;
+      color: #666;
+    }
+    
+    .overlay-button {
+      padding: 12px 24px;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      color: white;
+      border: none;
+      border-radius: 8px;
+      font-size: 16px;
+      font-weight: 500;
+      cursor: pointer;
+      margin-top: 16px;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="profile-section" id="profileSection">
+      <!-- Profile data will be loaded here -->
+    </div>
+    
+    <div class="calendar-section">
+      <div class="calendar-title">Select Dates</div>
+      <div id="calendarContainer">
+        <!-- Calendar will be rendered here -->
+      </div>
+    </div>
+    
+    <button class="book-button" id="bookButton" onclick="openBookingModal()">
+      Book Sub
+    </button>
+  </div>
+  
+  <!-- Booking Modal -->
+  <div class="modal" id="bookingModal">
+    <div class="modal-content">
+      <div class="modal-title">Book Substitute</div>
+      
+      <div class="terms-checkbox">
+        <input type="checkbox" id="termsCheckbox" onchange="checkTerms()">
+        <label for="termsCheckbox" class="terms-text">
+          I agree to the Terms of Service and understand that I will be requesting a substitute teacher through the Sub67 platform.
+        </label>
+      </div>
+      
+      <div id="credentialsForm" style="display: none;">
+        <div class="form-group">
+          <label for="essUsername">ESS Username</label>
+          <input type="text" id="essUsername" placeholder="Enter your ESS username">
+        </div>
+        
+        <div class="form-group">
+          <label for="essPassword">ESS Password</label>
+          <input type="password" id="essPassword" placeholder="Enter your ESS password">
+        </div>
+        
+        <div class="button-group">
+          <button class="button-cancel" onclick="closeModal()">Cancel</button>
+          <button class="button-submit" id="submitButton" onclick="submitBooking()" disabled>
+            Continue to Request
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+  
+  <!-- WebView Modal -->
+  <div class="modal" id="webviewModal">
+    <div class="modal-content" style="max-width: 90%; height: 90vh;">
+      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
+        <div class="modal-title">Request Substitute</div>
+        <button onclick="closeWebView()" style="background: none; border: none; font-size: 24px; cursor: pointer;">×</button>
+      </div>
+      
+      <div class="webview-container" style="height: calc(90vh - 100px);">
+        <iframe id="essWebView" style="width: 100%; height: 100%; border: none;"></iframe>
+        <div class="webview-overlay" id="webviewOverlay">
+          <div class="overlay-content">
+            <div class="overlay-title">Guide to Requesting a Substitute</div>
+            <ol class="overlay-steps">
+              <li>Fill in the substitute request form with the selected dates</li>
+              <li>Review all information carefully</li>
+              <li>Submit the request</li>
+            </ol>
+            <button class="overlay-button" onclick="hideOverlay()">I Understand, Continue</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+  
+  <script>
+    // Get shortname from URL
+    const pathParts = window.location.pathname.split('/');
+    const shortname = pathParts[pathParts.length - 1] || pathParts[pathParts.length - 2];
+    
+    // Load user profile data
+    async function loadProfile() {
+      try {
+        // This would call your backend API to get user data by shortname
+        // For now, using placeholder
+        const response = await fetch(`/api/user-by-shortname/${shortname}`);
+        const userData = await response.json();
+        
+        document.getElementById('profileSection').innerHTML = `
+          <img src="${userData.photoUrl || '/default-avatar.png'}" alt="Profile" class="profile-photo">
+          <div class="profile-name">${userData.name || 'Substitute Teacher'}</div>
+          ${userData.phone ? `<div class="profile-info">${userData.phone}</div>` : ''}
+          ${userData.email ? `<div class="profile-info">${userData.email}</div>` : ''}
+        `;
+      } catch (error) {
+        console.error('Error loading profile:', error);
+      }
+    }
+    
+    // Initialize calendar (simplified - you'd use a proper calendar library)
+    function initCalendar() {
+      const container = document.getElementById('calendarContainer');
+      container.innerHTML = '<p>Calendar component would go here</p>';
+      // You'd integrate a calendar library like FullCalendar or similar
+    }
+    
+    let selectedDates = [];
+    
+    function openBookingModal() {
+      document.getElementById('bookingModal').style.display = 'flex';
+    }
+    
+    function closeModal() {
+      document.getElementById('bookingModal').style.display = 'none';
+    }
+    
+    function checkTerms() {
+      const checkbox = document.getElementById('termsCheckbox');
+      const form = document.getElementById('credentialsForm');
+      const submitButton = document.getElementById('submitButton');
+      
+      if (checkbox.checked) {
+        form.style.display = 'block';
+        checkCredentials();
+      } else {
+        form.style.display = 'none';
+        submitButton.disabled = true;
+      }
+    }
+    
+    function checkCredentials() {
+      const username = document.getElementById('essUsername').value;
+      const password = document.getElementById('essPassword').value;
+      const submitButton = document.getElementById('submitButton');
+      
+      submitButton.disabled = !(username && password);
+    }
+    
+    async function submitBooking() {
+      const username = document.getElementById('essUsername').value;
+      const password = document.getElementById('essPassword').value;
+      
+      // Save credentials locally (browser keychain/localStorage)
+      localStorage.setItem('ess_username', username);
+      localStorage.setItem('ess_password', password);
+      
+      // Close modal and open WebView
+      closeModal();
+      openWebView();
+    }
+    
+    function openWebView() {
+      document.getElementById('webviewModal').style.display = 'flex';
+      
+      // Navigate to ESS teacher portal request page
+      // This URL would be constructed based on the selected dates
+      const requestUrl = `https://absencesub.frontlineeducation.com/request?dates=${selectedDates.join(',')}`;
+      document.getElementById('essWebView').src = requestUrl;
+    }
+    
+    function closeWebView() {
+      document.getElementById('webviewModal').style.display = 'none';
+      document.getElementById('essWebView').src = '';
+    }
+    
+    function hideOverlay() {
+      document.getElementById('webviewOverlay').style.display = 'none';
+    }
+    
+    // Initialize
+    loadProfile();
+    initCalendar();
+    
+    // Add event listeners
+    document.getElementById('essUsername')?.addEventListener('input', checkCredentials);
+    document.getElementById('essPassword')?.addEventListener('input', checkCredentials);
+  </script>
+</body>
+</html>

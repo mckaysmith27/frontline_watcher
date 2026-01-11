@@ -3,6 +3,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import '../models/post.dart';
 import '../models/comment.dart';
 import '../models/social_link.dart';
+import '../utils/content_moderation.dart';
 
 class SocialService {
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
@@ -17,7 +18,21 @@ class SocialService {
     if (user == null) return;
 
     final userDoc = await _firestore.collection('users').doc(user.uid).get();
-    final nickname = userDoc.data()?['nickname'] ?? user.email?.split('@')[0] ?? 'User';
+    final nickname = userDoc.data()?['shortname'] ?? 
+                    userDoc.data()?['nickname'] ?? 
+                    user.email?.split('@')[0] ?? 
+                    'User';
+
+    // Check if post requires approval
+    final requiresApproval = ContentModeration.requiresApproval(
+      content: content,
+      imageUrls: imageUrls,
+    );
+
+    // Determine approval status
+    // If requires approval, set to 'pending' - user sees it as posted, others don't until approved
+    // If doesn't require approval, set to 'approved' - everyone sees it immediately
+    final approvalStatus = requiresApproval ? 'pending' : 'approved';
 
     await _firestore.collection('posts').add({
       'userId': user.uid,
@@ -32,18 +47,47 @@ class SocialService {
       'isPinned': false,
       'pinOrder': 0,
       'categoryTag': categoryTag,
+      'approvalStatus': approvalStatus,
+      'imageBlocked': null,
+      'contentBlocked': null,
+      'blockedReason': null,
+      'flagCount': 0,
+      'isFlagged': false,
     });
   }
 
   Stream<List<Post>> getFeedPosts() {
+    final user = _auth.currentUser;
     return _firestore
         .collection('posts')
         .orderBy('createdAt', descending: true)
         .snapshots()
         .map((snapshot) {
-      final posts = snapshot.docs
-          .map((doc) => Post.fromMap(doc.data(), doc.id))
-          .toList();
+      final posts = <Post>[];
+      
+      for (final doc in snapshot.docs) {
+        final data = doc.data();
+        
+        // Author always sees their own posts normally
+        if (user != null && data['userId'] == user.uid) {
+          posts.add(Post.fromMap(data, doc.id));
+          continue;
+        }
+        
+        // If post is flagged (2+ flags) and not approved, hide from others
+        if (data['isFlagged'] == true && 
+            data['approvalStatus'] != 'approved' && 
+            data['approvalStatus'] != 'partially_approved') {
+          continue; // Don't show to others
+        }
+        
+        // Check approval status
+        if (data['approvalStatus'] == 'approved' && 
+            data['imageBlocked'] != true && 
+            data['contentBlocked'] != true) {
+          posts.add(Post.fromMap(data, doc.id));
+        }
+      }
       
       // Sort: top 3 by upvotes, then chronological
       posts.sort((a, b) {
@@ -54,7 +98,7 @@ class SocialService {
         }
         return b.createdAt.compareTo(a.createdAt);
       });
-
+      
       return posts;
     });
   }
@@ -204,22 +248,55 @@ class SocialService {
   }
 
   Stream<List<Post>> getTopPosts({String? categoryTag}) {
+    final user = _auth.currentUser;
     return _firestore
         .collection('posts')
         .snapshots()
         .map((snapshot) {
-      final posts = snapshot.docs
-          .map((doc) {
-            try {
-              return Post.fromMap(doc.data(), doc.id);
-            } catch (e) {
-              print('Error parsing post ${doc.id}: $e');
-              return null;
-            }
-          })
-          .where((post) => post != null)
-          .cast<Post>()
-          .toList();
+      final posts = <Post>[];
+      
+      for (final doc in snapshot.docs) {
+        try {
+          final data = doc.data();
+          
+          // Author always sees their own posts normally
+          if (user != null && data['userId'] == user.uid) {
+            posts.add(Post.fromMap(data, doc.id));
+            continue;
+          }
+          
+          // If post is flagged (2+ flags) and not approved, hide from others
+          if (data['isFlagged'] == true && 
+              data['approvalStatus'] != 'approved' && 
+              data['approvalStatus'] != 'partially_approved') {
+            continue; // Don't show to others
+          }
+          
+          // Check approval status
+          if (data['approvalStatus'] == 'approved' && 
+              data['imageBlocked'] != true && 
+              data['contentBlocked'] != true) {
+            posts.add(Post.fromMap(data, doc.id));
+          }
+        } catch (e) {
+          print('Error parsing post ${doc.id}: $e');
+        }
+      }
+      
+      // Filter by category if specified
+      if (categoryTag != null && categoryTag != 'ALL') {
+        posts.removeWhere((post) => post.categoryTag != categoryTag);
+      }
+      
+      // Sort by (upvotes - downvotes) descending
+      posts.sort((a, b) {
+        final scoreA = a.upvotes - a.downvotes;
+        final scoreB = b.upvotes - b.downvotes;
+        return scoreB.compareTo(scoreA);
+      });
+      
+      return posts;
+    });
       
       // Filter by category if specified
       if (categoryTag != null && categoryTag != 'ALL') {
@@ -287,7 +364,10 @@ class SocialService {
     if (user == null) return;
 
     final userDoc = await _firestore.collection('users').doc(user.uid).get();
-    final nickname = userDoc.data()?['nickname'] ?? user.email?.split('@')[0] ?? 'User';
+    final nickname = userDoc.data()?['shortname'] ?? 
+                    userDoc.data()?['nickname'] ?? 
+                    user.email?.split('@')[0] ?? 
+                    'User';
 
     await _firestore.collection('posts').doc(postId).collection('comments').add({
       'postId': postId,

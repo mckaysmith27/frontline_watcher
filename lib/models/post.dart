@@ -14,6 +14,12 @@ class Post {
   final bool isPinned;
   final int pinOrder;
   final String? categoryTag; // happy, funny, random-thought, heart-warming, sad
+  final String approvalStatus; // 'approved', 'pending', 'rejected', 'partially_approved'
+  final bool? imageBlocked; // If true, image is blocked for others but visible to author
+  final bool? contentBlocked; // If true, content is blocked for others but visible to author
+  final String? blockedReason; // Reason for blocking (if applicable)
+  final int flagCount; // Number of users who flagged this post
+  final bool isFlagged; // If true, 2+ users have flagged it and it's in admin queue
 
   Post({
     required this.id,
@@ -29,6 +35,12 @@ class Post {
     this.isPinned = false,
     this.pinOrder = 0,
     this.categoryTag,
+    this.approvalStatus = 'approved',
+    this.imageBlocked,
+    this.contentBlocked,
+    this.blockedReason,
+    this.flagCount = 0,
+    this.isFlagged = false,
   });
 
   factory Post.fromMap(Map<String, dynamic> map, String id) {
@@ -48,6 +60,12 @@ class Post {
       isPinned: map['isPinned'] ?? false,
       pinOrder: map['pinOrder'] ?? 0,
       categoryTag: map['categoryTag'],
+      approvalStatus: map['approvalStatus'] ?? 'approved',
+      imageBlocked: map['imageBlocked'],
+      contentBlocked: map['contentBlocked'],
+      blockedReason: map['blockedReason'],
+      flagCount: map['flagCount'] ?? 0,
+      isFlagged: map['isFlagged'] ?? false,
     );
   }
 
@@ -65,6 +83,12 @@ class Post {
       'isPinned': isPinned,
       'pinOrder': pinOrder,
       'categoryTag': categoryTag,
+      'approvalStatus': approvalStatus,
+      'imageBlocked': imageBlocked,
+      'contentBlocked': contentBlocked,
+      'blockedReason': blockedReason,
+      'flagCount': flagCount,
+      'isFlagged': isFlagged,
     };
   }
 }

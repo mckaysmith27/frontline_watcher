@@ -37,7 +37,7 @@ sudo systemctl enable frontline-watcher-controller_1  # Auto-start on boot
 
 ```
 /opt/frontline-watcher/
-├── frontline_watcher.py      # Main script
+├── frontline_watcher_refactored.py      # Main script
 ├── requirements_raw.txt      # Python dependencies
 ├── .env                      # Environment variables (create from template)
 ├── firebase-credentials.json # Firebase service account (upload separately)

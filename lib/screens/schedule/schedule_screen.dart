@@ -434,23 +434,25 @@ class _ScheduleScreenState extends State<ScheduleScreen> {
         padding: const EdgeInsets.all(16),
         child: Consumer<CreditsProvider>(
           builder: (context, creditsProvider, _) {
-            // Unlocked condition: user has credits OR has notification days (green days)
-            // If they have green days, they've paid for services for those days
-            final unlockedCondition = creditsProvider.credits > 0 || 
-                                     creditsProvider.committedDates.isNotEmpty;
+            // Locked condition: user has NO credits AND NO green days (committed dates)
+            // Button is always visible but locked when BOTH conditions are true
+            final isLocked = creditsProvider.credits == 0 && 
+                            creditsProvider.committedDates.isEmpty;
             
             return ElevatedButton.icon(
-              onPressed: unlockedCondition ? () => _syncCalendarToDevice(context) : null,
-              icon: Icon(unlockedCondition ? Icons.lock_open : Icons.lock),
-              label: Text(unlockedCondition ? 'Sync Calendar' : 'Sync Calendar (Locked)'),
+              onPressed: isLocked ? null : () => _syncCalendarToDevice(context),
+              icon: isLocked 
+                  ? const Icon(Icons.lock)
+                  : const Icon(Icons.sync), // Sync icon (arrows in circle) when unlocked
+              label: Text(isLocked ? 'Sync Calendar (Locked)' : 'Sync Calendar'),
               style: ElevatedButton.styleFrom(
                 padding: const EdgeInsets.symmetric(vertical: 16),
-                backgroundColor: unlockedCondition 
-                    ? Theme.of(context).colorScheme.primary
-                    : Colors.grey,
-                foregroundColor: unlockedCondition
-                    ? Theme.of(context).colorScheme.onPrimary
-                    : Colors.grey[300],
+                backgroundColor: isLocked 
+                    ? Colors.grey
+                    : Theme.of(context).colorScheme.primary,
+                foregroundColor: isLocked
+                    ? Colors.grey[300]
+                    : Theme.of(context).colorScheme.onPrimary,
               ),
             );
           },

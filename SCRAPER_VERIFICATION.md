@@ -19,7 +19,6 @@
 
 4. **Python Scripts**:
    - `frontline_watcher_refactored.py` - ✅ **Active** (used by EC2)
-   - `frontline_watcher.py` - ⚠️ **Old version** (not used, kept for reference)
 
 ### Current Architecture
 
@@ -28,11 +27,11 @@
 │   AWS EC2 Instance (t3.micro)       │
 │   ┌─────────────────────────────┐   │
 │   │ Controller 1 (systemd)      │   │
-│   │ → frontline_watcher.py      │   │
+│   │ → frontline_watcher_refactored.py │   │
 │   └─────────────────────────────┘   │
 │   ┌─────────────────────────────┐   │
 │   │ Controller 2 (systemd)      │   │
-│   │ → frontline_watcher.py      │   │
+│   │ → frontline_watcher_refactored.py │   │
 │   └─────────────────────────────┘   │
 └─────────────────────────────────────┘
            ↓
@@ -70,8 +69,4 @@ ssh sub67-watcher 'sudo systemctl list-units --type=service --state=running | gr
 
 All Cloud Run infrastructure has been removed. The only active scrapers are:
 - 2 systemd services running on EC2
-- Both use `frontline_watcher.py` (which should be `frontline_watcher_refactored.py` - see note below)
-
-### ⚠️ Note: Service File Mismatch
-
-The systemd service file (`ec2/install-service.sh`) references `frontline_watcher.py`, but the active code is `frontline_watcher_refactored.py`. This should be updated to ensure the correct file is being used.
+- Both use `frontline_watcher_refactored.py`

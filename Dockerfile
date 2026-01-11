@@ -11,11 +11,11 @@ RUN playwright install chromium
 RUN playwright install-deps chromium
 
 # Copy application code
-COPY frontline_watcher_refactored.py /app/frontline_watcher.py
+COPY frontline_watcher_refactored.py /app/frontline_watcher_refactored.py
 
 ENV PYTHONUNBUFFERED=1
 
 # Dockerfile for containerized deployments (EC2 or other container platforms)
 # Long-running process (no HTTP server needed)
-CMD ["python", "frontline_watcher.py"]
+CMD ["python", "frontline_watcher_refactored.py"]
 

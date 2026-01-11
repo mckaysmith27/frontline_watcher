@@ -54,6 +54,16 @@ class CreditsProvider extends ChangeNotifier {
         _committedDates = List<String>.from(data['committedDates'] ?? []);
         _excludedDates = List<String>.from(data['excludedDates'] ?? []);
         _scheduledJobDates = List<String>.from(data['scheduledJobDates'] ?? []);
+        
+        // Auto-disable notifications if user has no credits AND no green days
+        final isLocked = _credits == 0 && _committedDates.isEmpty;
+        if (isLocked && data['notifyEnabled'] == true) {
+          await _firestore.collection('users').doc(user.uid).update({
+            'notifyEnabled': false,
+          });
+          print('[CreditsProvider] Auto-disabled notifications: no credits and no green days');
+        }
+        
         notifyListeners();
       }
     } catch (e, stackTrace) {
@@ -173,6 +183,15 @@ class CreditsProvider extends ChangeNotifier {
         'committedDates': FieldValue.arrayRemove([date]),
         'credits': FieldValue.increment(1),
       });
+      
+      // Check if we need to disable notifications after uncommitting date
+      final isLocked = _credits == 0 && _committedDates.isEmpty;
+      if (isLocked) {
+        await _firestore.collection('users').doc(user.uid).update({
+          'notifyEnabled': false,
+        });
+        print('[CreditsProvider] Auto-disabled notifications: no credits and no green days after uncommitting');
+      }
     } catch (e) {
       // Rollback local state on error
       _credits -= 1;
@@ -219,8 +238,21 @@ class CreditsProvider extends ChangeNotifier {
     await _firestore.collection('users').doc(user.uid).update({
       'credits': FieldValue.increment(-1),
     });
+    
+    // Check if we need to disable notifications after using credit
+    final isLocked = _credits == 0 && _committedDates.isEmpty;
+    if (isLocked) {
+      await _firestore.collection('users').doc(user.uid).update({
+        'notifyEnabled': false,
+      });
+      print('[CreditsProvider] Auto-disabled notifications: credits exhausted and no green days');
+    }
+    
     notifyListeners();
   }
+  
+  /// Check if features are locked (no credits AND no green days)
+  bool get isLocked => _credits == 0 && _committedDates.isEmpty;
 }
 
 

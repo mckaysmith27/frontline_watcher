@@ -230,14 +230,14 @@ echo "📤 Uploading files to EC2..."
 
 # Create temporary directory with all needed files
 TEMP_DIR=$(mktemp -d)
-cp frontline_watcher_refactored.py "$TEMP_DIR/frontline_watcher.py"
+cp frontline_watcher_refactored.py "$TEMP_DIR/frontline_watcher_refactored.py"
 cp requirements_raw.txt "$TEMP_DIR/"
 cp "$FIREBASE_CREDENTIALS_PATH" "$TEMP_DIR/firebase-credentials.json"
 cp -r ec2 "$TEMP_DIR/"
 
 # Create deployment package
 cd "$TEMP_DIR"
-tar czf deploy.tar.gz frontline_watcher.py requirements_raw.txt firebase-credentials.json ec2/
+tar czf deploy.tar.gz frontline_watcher_refactored.py requirements_raw.txt firebase-credentials.json ec2/
 cd - > /dev/null
 
 # Upload to EC2
@@ -257,7 +257,7 @@ tar xzf deploy.tar.gz
 
 # Move to application directory
 sudo mkdir -p /opt/frontline-watcher
-sudo mv frontline_watcher.py requirements_raw.txt firebase-credentials.json /opt/frontline-watcher/
+sudo mv frontline_watcher_refactored.py requirements_raw.txt firebase-credentials.json /opt/frontline-watcher/
 sudo mv ec2 /opt/frontline-watcher/
 sudo chown -R \$USER:\$USER /opt/frontline-watcher
 

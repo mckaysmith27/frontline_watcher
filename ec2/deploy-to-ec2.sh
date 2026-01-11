@@ -16,6 +16,14 @@ EC2_HOST="$1"
 CONTROLLER_ID="$2"
 APP_DIR="/opt/frontline-watcher"
 
+# BLOCK controller_2 from ever being deployed
+if [ "$CONTROLLER_ID" = "controller_2" ]; then
+    echo "❌ ERROR: Controller_2 is DISABLED and cannot be deployed"
+    echo "   Controller_2 has been permanently disabled to prevent rate limiting issues"
+    echo "   Only controller_1 should be used"
+    exit 1
+fi
+
 echo "🚀 Deploying Frontline Watcher to EC2"
 echo "Host: $EC2_HOST"
 echo "Controller: $CONTROLLER_ID"
@@ -26,19 +34,25 @@ TEMP_DIR=$(mktemp -d)
 echo "📦 Creating deployment package..."
 
 # Copy necessary files
-cp frontline_watcher_refactored.py "$TEMP_DIR/frontline_watcher.py"
+cp frontline_watcher_refactored.py "$TEMP_DIR/frontline_watcher_refactored.py"
 cp requirements_raw.txt "$TEMP_DIR/"
 
 # Create deployment archive
 cd "$TEMP_DIR"
-tar czf deploy.tar.gz frontline_watcher.py requirements_raw.txt
+tar czf deploy.tar.gz frontline_watcher_refactored.py requirements_raw.txt
 cd - > /dev/null
 
 echo "📤 Uploading files to EC2..."
-scp "$TEMP_DIR/deploy.tar.gz" "$EC2_HOST:/tmp/"
+# Use SSH key if it exists, otherwise use default
+SSH_KEY=""
+if [ -f ~/.ssh/frontline-watcher_V7plus-key.pem ]; then
+    SSH_KEY="-i ~/.ssh/frontline-watcher_V7plus-key.pem"
+fi
+
+scp $SSH_KEY "$TEMP_DIR/deploy.tar.gz" "$EC2_HOST:/tmp/"
 
 echo "🔧 Installing on EC2..."
-ssh "$EC2_HOST" << EOF
+ssh $SSH_KEY "$EC2_HOST" << EOF
 set -e
 
 # Extract files
@@ -79,7 +93,7 @@ echo ""
 echo "✅ Deployment complete!"
 echo ""
 echo "📋 Check service status:"
-echo "  ssh $EC2_HOST 'sudo systemctl status frontline-watcher-${CONTROLLER_ID}'"
+echo "  ssh $SSH_KEY $EC2_HOST 'sudo systemctl status frontline-watcher-${CONTROLLER_ID}'"
 echo ""
 echo "📋 View logs:"
-echo "  ssh $EC2_HOST 'sudo journalctl -u frontline-watcher-${CONTROLLER_ID} -f'"
+echo "  ssh $SSH_KEY $EC2_HOST 'sudo journalctl -u frontline-watcher-${CONTROLLER_ID} -f'"

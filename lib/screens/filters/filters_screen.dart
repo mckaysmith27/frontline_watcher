@@ -109,23 +109,23 @@ class FiltersScreen extends StatelessWidget {
         child: SafeArea(
           child: Consumer<CreditsProvider>(
             builder: (context, creditsProvider, _) {
-              // Unlocked condition: user has credits OR has notification days (green days)
-              // If they have green days, they've paid for filter services for those days
-              final unlockedCondition = creditsProvider.credits > 0 || 
-                                       creditsProvider.committedDates.isNotEmpty;
+              // Locked condition: user has NO credits AND NO green days (committed dates)
+              // Button is locked when BOTH conditions are true: credits == 0 AND committedDates.isEmpty
+              final isLocked = creditsProvider.credits == 0 && 
+                              creditsProvider.committedDates.isEmpty;
               
               return ElevatedButton.icon(
-                onPressed: unlockedCondition ? () => _applyFilters(context) : null,
-                icon: Icon(unlockedCondition ? Icons.lock_open : Icons.lock),
-                label: Text(unlockedCondition ? 'Apply Filters' : 'Apply Filters (Locked)'),
+                onPressed: isLocked ? null : () => _applyFilters(context),
+                icon: Icon(isLocked ? Icons.lock : Icons.check_circle),
+                label: Text(isLocked ? 'Apply Filters (Locked)' : 'Apply Filters'),
                 style: ElevatedButton.styleFrom(
                   padding: const EdgeInsets.symmetric(vertical: 16),
-                  backgroundColor: unlockedCondition 
-                      ? Theme.of(context).colorScheme.primary
-                      : Colors.grey,
-                  foregroundColor: unlockedCondition
-                      ? Theme.of(context).colorScheme.onPrimary
-                      : Colors.grey[300],
+                  backgroundColor: isLocked 
+                      ? Colors.grey
+                      : Theme.of(context).colorScheme.primary,
+                  foregroundColor: isLocked
+                      ? Colors.grey[300]
+                      : Theme.of(context).colorScheme.onPrimary,
                 ),
               );
             },
@@ -148,6 +148,10 @@ class FiltersScreen extends StatelessWidget {
     final creditsProvider = Provider.of<CreditsProvider>(context, listen: false);
     final automationService = AutomationService();
     
+    // Check if locked (no credits AND no green days)
+    final isLocked = creditsProvider.credits == 0 && 
+                    creditsProvider.committedDates.isEmpty;
+    
     // Collect included and excluded words from filters
     final includedWords = filtersProvider.includedLs.toList();
     final excludedWords = filtersProvider.excludeLs.toList();
@@ -165,21 +169,31 @@ class FiltersScreen extends StatelessWidget {
       return KeywordMapper.dateToKeyword(dateStr);
     }).toList();
     
-    // Add date keywords to included words
-    includedWords.addAll(dateKeywords);
+    // If locked, only filter for committed dates (green days)
+    // Otherwise, add all date keywords to included words
+    if (isLocked) {
+      // Only filter for committed dates - don't add other date keywords
+      // This means filtering only works for days already selected (green days)
+    } else {
+      // Add date keywords to included words for full filtering
+      includedWords.addAll(dateKeywords);
+    }
     
     try {
       await automationService.startAutomation(
         includedWords: includedWords,
         excludedWords: excludedWords,
         committedDates: creditsProvider.committedDates,
+        notifyEnabled: !isLocked, // Disable notifications when locked
       );
       
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Filters applied successfully!'),
-            backgroundColor: Colors.green,
+          SnackBar(
+            content: Text(isLocked 
+                ? 'Filters applied for committed dates only. Notifications disabled.'
+                : 'Filters applied successfully!'),
+            backgroundColor: isLocked ? Colors.orange : Colors.green,
           ),
         );
       }

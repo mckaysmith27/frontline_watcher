@@ -17,6 +17,14 @@ EC2_HOST="$1"
 CONTROLLER_ID="$2"
 APP_DIR="/opt/frontline-watcher"
 
+# BLOCK controller_2 from ever being deployed
+if [ "$CONTROLLER_ID" = "controller_2" ]; then
+    echo "❌ ERROR: Controller_2 is DISABLED and cannot be deployed"
+    echo "   Controller_2 has been permanently disabled to prevent rate limiting issues"
+    echo "   Only controller_1 should be used"
+    exit 1
+fi
+
 echo "🚀 Quick Deploy to EC2"
 echo "Host: $EC2_HOST"
 if [ -n "$CONTROLLER_ID" ]; then
@@ -31,11 +39,11 @@ echo ""
 # Create deployment package
 TEMP_DIR=$(mktemp -d)
 echo "📦 Creating deployment package..."
-cp frontline_watcher_refactored.py "$TEMP_DIR/frontline_watcher.py"
+cp frontline_watcher_refactored.py "$TEMP_DIR/frontline_watcher_refactored.py"
 cp requirements_raw.txt "$TEMP_DIR/"
 
 cd "$TEMP_DIR"
-tar czf deploy.tar.gz frontline_watcher.py requirements_raw.txt
+tar czf deploy.tar.gz frontline_watcher_refactored.py requirements_raw.txt
 cd - > /dev/null
 
 # Upload and deploy
@@ -49,7 +57,7 @@ set -e
 # Extract files
 cd $APP_DIR
 tar xzf /tmp/deploy.tar.gz
-chown \$USER:\$USER frontline_watcher.py requirements_raw.txt
+chown \$USER:\$USER frontline_watcher_refactored.py requirements_raw.txt
 
 # Update virtual environment
 source $APP_DIR/venv/bin/activate

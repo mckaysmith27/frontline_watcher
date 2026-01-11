@@ -124,7 +124,7 @@ sudo ./ec2/setup-all-controllers.sh 5
 ### Service won't start
 - Check `.env` file exists and has correct values
 - View error logs: `sudo journalctl -u frontline-watcher-controller_1 -n 50`
-- Test manually: `cd /opt/frontline-watcher && source venv/bin/activate && python frontline_watcher.py`
+- Test manually: `cd /opt/frontline-watcher && source venv/bin/activate && python frontline_watcher_refactored.py`
 
 ### No job events in Firestore
 - Check Firebase credentials file path

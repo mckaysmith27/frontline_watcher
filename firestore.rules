@@ -1,9 +1,19 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
+    // Helper function to check if user is admin
+    function isAdmin() {
+      return request.auth != null && 
+             (get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin' ||
+              get(/databases/$(database)/documents/users/$(request.auth.uid)).data.isAdmin == true);
+    }
+
     // Users can read/write their own user document
+    // Admins can read/write any user document
+    // Public read access for shortname lookup (for booking pages) - handled via Cloud Function
     match /users/{userId} {
-      allow read, write: if request.auth != null && request.auth.uid == userId;
+      allow read: if request.auth != null && (request.auth.uid == userId || isAdmin());
+      allow write: if request.auth != null && (request.auth.uid == userId || isAdmin());
     }
     
     // Job events are read-only for users, writable by service accounts
@@ -20,9 +30,24 @@ service cloud.firestore {
     
     // Posts collection
     match /posts/{postId} {
-      allow read: if request.auth != null;
+      // Users can read approved posts or their own posts
+      // Admins can read all posts
+      allow read: if request.auth != null && (
+        resource.data.approvalStatus == 'approved' ||
+        resource.data.userId == request.auth.uid ||
+        isAdmin()
+      );
+      
+      // Users can create posts
       allow create: if request.auth != null && request.resource.data.userId == request.auth.uid;
-      allow update, delete: if request.auth != null && resource.data.userId == request.auth.uid;
+      
+      // Users can update/delete their own posts
+      // Admins can update any post (for approval actions)
+      allow update: if request.auth != null && (
+        resource.data.userId == request.auth.uid ||
+        isAdmin()
+      );
+      allow delete: if request.auth != null && resource.data.userId == request.auth.uid;
       
       // Comments subcollection
       match /comments/{commentId} {
@@ -52,11 +77,37 @@ service cloud.firestore {
       match /views/{userId} {
         allow read, write: if request.auth != null && request.auth.uid == userId;
       }
+      
+      // Post flags subcollection (users can flag/unflag posts)
+      match /flags/{userId} {
+        allow read: if request.auth != null;
+        allow write: if request.auth != null && request.auth.uid == userId;
+      }
     }
     
     // Message logs (for debugging)
     match /messageLogs/{logId} {
       allow read, write: if false; // Internal only
+    }
+    
+    // Blocked IPs collection (admin only)
+    match /blocked_ips/{blockId} {
+      allow read, write: if isAdmin();
+    }
+    
+    // Business card orders collection
+    match /business_card_orders/{orderId} {
+      // Users can read their own orders
+      // Admins can read all orders
+      allow read: if request.auth != null && (
+        resource.data.userId == request.auth.uid ||
+        isAdmin()
+      );
+      // Users can create their own orders
+      allow create: if request.auth != null && 
+                     request.resource.data.userId == request.auth.uid;
+      // Only admins can update orders (for fulfillment status)
+      allow update: if isAdmin();
     }
   }
 }

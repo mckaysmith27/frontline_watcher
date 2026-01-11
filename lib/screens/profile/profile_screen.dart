@@ -75,9 +75,9 @@ class ProfileScreen extends StatelessWidget {
             _buildSettingsItem(
               context,
               icon: Icons.person,
-              title: 'Nickname',
+              title: 'Shortname',
               subtitle: 'Change your display name',
-              onTap: () => _showNicknameDialog(context),
+              onTap: () => _showShortnameDialog(context),
             ),
             _buildThemeSettingsItem(context),
             _buildSettingsItem(
@@ -245,7 +245,7 @@ class ProfileScreen extends StatelessWidget {
     }
   }
 
-  void _showNicknameDialog(BuildContext context) {
+  void _showShortnameDialog(BuildContext context) {
     final controller = TextEditingController();
     final authProvider = Provider.of<AuthProvider>(context, listen: false);
 
@@ -257,11 +257,11 @@ class ProfileScreen extends StatelessWidget {
           return true;
         },
         child: AlertDialog(
-          title: const Text('Change Nickname'),
+          title: const Text('Change Shortname'),
           content: TextField(
             controller: controller,
             decoration: const InputDecoration(
-              labelText: 'Nickname',
+              labelText: 'Shortname',
               border: OutlineInputBorder(),
             ),
           ),
@@ -275,11 +275,11 @@ class ProfileScreen extends StatelessWidget {
             ),
             ElevatedButton(
               onPressed: () async {
-                // Update nickname in Firestore
+                // Update shortname in Firestore
                 controller.dispose();
                 Navigator.pop(context);
                 ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('Nickname updated')),
+                  const SnackBar(content: Text('Shortname updated')),
                 );
               },
               child: const Text('Save'),

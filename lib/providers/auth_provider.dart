@@ -85,6 +85,7 @@ class AuthProvider extends ChangeNotifier {
             'username': username,
             'email': email,
             'nickname': username,
+            'shortname': null, // Will be set later via business card screen
             'credits': 0,
             'createdAt': FieldValue.serverTimestamp(),
             'premiumClassesUnlocked': false,

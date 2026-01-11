@@ -48,9 +48,9 @@ sudo chown $USER:$USER $APP_DIR
 # Copy application files (if not already present from deployment)
 echo "📋 Copying application files..."
 if [ -f "frontline_watcher_refactored.py" ]; then
-    cp frontline_watcher_refactored.py $APP_DIR/frontline_watcher.py
+    cp frontline_watcher_refactored.py $APP_DIR/frontline_watcher_refactored.py
     cp requirements_raw.txt $APP_DIR/
-elif [ -f "$APP_DIR/frontline_watcher.py" ]; then
+elif [ -f "$APP_DIR/frontline_watcher_refactored.py" ]; then
     echo "  Files already present, skipping copy"
 else
     echo "  ⚠️  Warning: Application files not found. They should be deployed separately."

@@ -228,7 +228,7 @@ cat /opt/frontline-watcher/.env
 # Test manually
 cd /opt/frontline-watcher
 source venv/bin/activate
-python frontline_watcher.py
+python frontline_watcher_refactored.py
 ```
 
 ### Playwright Issues:
