@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../providers/notifications_provider.dart';
 import '../../providers/credits_provider.dart';
-import '../../widgets/notifications_terms_agreement.dart';
 import '../filters/automation_bottom_sheet.dart';
 import '../profile/profile_screen.dart';
 import 'time_window_widget.dart';
@@ -38,32 +37,11 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
       body: Consumer2<NotificationsProvider, CreditsProvider>(
         builder: (context, notificationsProvider, creditsProvider, _) {
           final hasActiveSubscription = creditsProvider.hasActiveSubscription;
-          final termsAccepted = notificationsProvider.termsAccepted;
           
           return ListView(
             padding: const EdgeInsets.all(16),
             children: [
-              // Terms and Conditions Agreement (shown if not accepted)
-              if (!termsAccepted)
-                NotificationsTermsAgreement(
-                  onAgreed: (_) {},
-                  onAccept: () {
-                    notificationsProvider.acceptTerms();
-                  },
-                ),
-              
-              if (!termsAccepted) const SizedBox(height: 16),
-              
-              // All toggles are disabled until terms are accepted
-              if (!termsAccepted)
-                Opacity(
-                  opacity: 0.5,
-                  child: IgnorePointer(
-                    child: _buildToggles(context, notificationsProvider, creditsProvider, hasActiveSubscription),
-                  ),
-                )
-              else
-                _buildToggles(context, notificationsProvider, creditsProvider, hasActiveSubscription),
+              _buildToggles(context, notificationsProvider, creditsProvider, hasActiveSubscription),
             ],
           );
         },
@@ -80,11 +58,9 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
             title: const Text('Enable Notifications'),
             subtitle: const Text('Receive notifications for new job postings'),
             value: notificationsProvider.notificationsEnabled,
-            onChanged: notificationsProvider.termsAccepted
-                ? (value) {
-                    notificationsProvider.setNotificationsEnabled(value);
-                  }
-                : null,
+            onChanged: (value) {
+              notificationsProvider.setNotificationsEnabled(value);
+            },
           ),
         ),
         const SizedBox(height: 16),
@@ -111,18 +87,17 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
             ),
             subtitle: const Text('Get instant notifications for matching jobs'),
             value: notificationsProvider.fastNotificationsEnabled,
-            onChanged: notificationsProvider.termsAccepted
-                ? (hasActiveSubscription
-                    ? (value) {
-                        notificationsProvider.setFastNotificationsEnabled(value);
-                      }
-                    : (_) {
-                        _showPurchaseOptions(context);
-                      })
-                : null,
-            secondary: !hasActiveSubscription
-                ? const Icon(Icons.lock, color: Colors.orange)
-                : null,
+            onChanged: hasActiveSubscription
+                ? (value) {
+                    notificationsProvider.setFastNotificationsEnabled(value);
+                  }
+                : (_) {
+                    _showPurchaseOptions(context);
+                  },
+            secondary: Icon(
+              hasActiveSubscription ? Icons.lock_open : Icons.lock,
+              color: hasActiveSubscription ? Colors.green : Colors.orange,
+            ),
           ),
         ),
         const SizedBox(height: 16),
@@ -149,18 +124,17 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
             ),
             subtitle: const Text('Automatically accept jobs that match your preferences'),
             value: notificationsProvider.fastJobAcceptEnabled,
-            onChanged: notificationsProvider.termsAccepted
-                ? (hasActiveSubscription
-                    ? (value) {
-                        notificationsProvider.setFastJobAcceptEnabled(value);
-                      }
-                    : (_) {
-                        _showPurchaseOptions(context);
-                      })
-                : null,
-            secondary: !hasActiveSubscription
-                ? const Icon(Icons.lock, color: Colors.orange)
-                : null,
+            onChanged: hasActiveSubscription
+                ? (value) {
+                    notificationsProvider.setFastJobAcceptEnabled(value);
+                  }
+                : (_) {
+                    _showPurchaseOptions(context);
+                  },
+            secondary: Icon(
+              hasActiveSubscription ? Icons.lock_open : Icons.lock,
+              color: hasActiveSubscription ? Colors.green : Colors.orange,
+            ),
           ),
         ),
         const SizedBox(height: 16),
@@ -187,18 +161,17 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
             ),
             subtitle: const Text('Apply your keyword filters to job notifications'),
             value: notificationsProvider.applyFilterEnabled,
-            onChanged: notificationsProvider.termsAccepted
-                ? (hasActiveSubscription
-                    ? (value) {
-                        notificationsProvider.setApplyFilterEnabled(value);
-                      }
-                    : (_) {
-                        _showPurchaseOptions(context);
-                      })
-                : null,
-            secondary: !hasActiveSubscription
-                ? const Icon(Icons.lock, color: Colors.orange)
-                : null,
+            onChanged: hasActiveSubscription
+                ? (value) {
+                    notificationsProvider.setApplyFilterEnabled(value);
+                  }
+                : (_) {
+                    _showPurchaseOptions(context);
+                  },
+            secondary: Icon(
+              hasActiveSubscription ? Icons.lock_open : Icons.lock,
+              color: hasActiveSubscription ? Colors.green : Colors.orange,
+            ),
           ),
         ),
         const SizedBox(height: 16),
@@ -209,11 +182,9 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
             title: const Text('Set Times'),
             subtitle: const Text('Only receive notifications during specified time windows'),
             value: notificationsProvider.setTimesEnabled,
-            onChanged: notificationsProvider.termsAccepted
-                ? (value) {
-                    notificationsProvider.setSetTimesEnabled(value);
-                  }
-                : null,
+            onChanged: (value) {
+              notificationsProvider.setSetTimesEnabled(value);
+            },
           ),
         ),
         
@@ -239,11 +210,9 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
           Padding(
             padding: const EdgeInsets.only(top: 8),
             child: OutlinedButton.icon(
-              onPressed: notificationsProvider.termsAccepted
-                  ? () {
-                      _addTimeWindow(context, notificationsProvider);
-                    }
-                  : null,
+              onPressed: () {
+                _addTimeWindow(context, notificationsProvider);
+              },
               icon: const Icon(Icons.add),
               label: const Text('Add Time Window'),
             ),

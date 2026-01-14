@@ -3,7 +3,6 @@ import 'package:provider/provider.dart';
 import '../../providers/auth_provider.dart';
 import '../../providers/credits_provider.dart';
 import '../../providers/filters_provider.dart';
-import '../../widgets/terms_agreement.dart';
 import 'payment_screen.dart';
 
 class AutomationBottomSheet extends StatefulWidget {
@@ -15,8 +14,6 @@ class AutomationBottomSheet extends StatefulWidget {
 
 class _AutomationBottomSheetState extends State<AutomationBottomSheet> {
   String? _selectedTier;
-  bool _hasAgreedToTerms = false;
-  bool _hasShownTerms = false;
 
   final Map<String, Map<String, dynamic>> _tiers = {
     'daily': {'days': 1, 'price': 1.99, 'credits': 1},
@@ -122,22 +119,8 @@ class _AutomationBottomSheetState extends State<AutomationBottomSheet> {
                       );
                     }),
                     const SizedBox(height: 24),
-                    TermsAgreement(
-                      onAgreed: (agreed) {
-                        setState(() {
-                          _hasAgreedToTerms = agreed;
-                          if (!_hasShownTerms) {
-                            _hasShownTerms = true;
-                          }
-                        });
-                      },
-                    ),
-                    const SizedBox(height: 16),
                     ElevatedButton.icon(
-                      onPressed: _selectedTier != null &&
-                              (_hasAgreedToTerms && _hasShownTerms)
-                          ? () => _handleAutomate()
-                          : null,
+                      onPressed: _selectedTier != null ? () => _handleAutomate() : null,
                       icon: const Icon(Icons.auto_awesome),
                       label: const Text('Automate'),
                       style: ElevatedButton.styleFrom(
@@ -194,6 +177,8 @@ class _AutomationBottomSheetState extends State<AutomationBottomSheet> {
     final usernameController = TextEditingController();
     final passwordController = TextEditingController();
     final formKey = GlobalKey<FormState>();
+    bool consentChecked = false;
+    bool expanded = false;
 
     return showDialog<Map<String, String>>(
       context: context,
@@ -210,6 +195,11 @@ class _AutomationBottomSheetState extends State<AutomationBottomSheet> {
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
+                const Text(
+                  'Optional: save your ESS login on this device to speed up sign-in.',
+                  style: TextStyle(fontSize: 13),
+                ),
+                const SizedBox(height: 12),
                 TextFormField(
                   controller: usernameController,
                   decoration: const InputDecoration(
@@ -238,6 +228,61 @@ class _AutomationBottomSheetState extends State<AutomationBottomSheet> {
                     return null;
                   },
                 ),
+                const SizedBox(height: 12),
+                StatefulBuilder(
+                  builder: (context, setLocalState) {
+                    return Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          children: [
+                            Checkbox(
+                              value: consentChecked,
+                              onChanged: (v) {
+                                setLocalState(() => consentChecked = v ?? false);
+                              },
+                            ),
+                            Expanded(
+                              child: GestureDetector(
+                                onTap: () => setLocalState(() => expanded = !expanded),
+                                child: Row(
+                                  children: [
+                                    const Expanded(
+                                      child: Text(
+                                        'I understand and consent to saving my credentials locally on this device',
+                                        style: TextStyle(fontSize: 12),
+                                      ),
+                                    ),
+                                    Icon(
+                                      expanded ? Icons.expand_less : Icons.expand_more,
+                                      size: 18,
+                                      color: Colors.grey[700],
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                        if (expanded)
+                          Container(
+                            margin: const EdgeInsets.only(left: 40),
+                            padding: const EdgeInsets.all(10),
+                            decoration: BoxDecoration(
+                              color: Theme.of(context).colorScheme.surfaceVariant,
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            child: const Text(
+                              'Your ESS username/password are stored locally on your device (secure storage) '
+                              'and are used only to help you sign in inside the app. Sub67 does not store your '
+                              'third‑party password in Firestore.',
+                              style: TextStyle(fontSize: 12),
+                            ),
+                          ),
+                      ],
+                    );
+                  },
+                ),
               ],
             ),
           ),
@@ -252,7 +297,7 @@ class _AutomationBottomSheetState extends State<AutomationBottomSheet> {
             ),
             ElevatedButton(
               onPressed: () {
-                if (formKey.currentState!.validate()) {
+                if (formKey.currentState!.validate() && consentChecked) {
                   final result = {
                     'username': usernameController.text,
                     'password': passwordController.text,
@@ -260,6 +305,10 @@ class _AutomationBottomSheetState extends State<AutomationBottomSheet> {
                   usernameController.dispose();
                   passwordController.dispose();
                   Navigator.pop(context, result);
+                } else if (!consentChecked) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('Please confirm consent to save credentials locally.')),
+                  );
                 }
               },
               child: const Text('Save'),

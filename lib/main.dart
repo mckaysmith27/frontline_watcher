@@ -13,6 +13,7 @@ import 'services/push_notification_service.dart';
 import 'screens/auth/login_screen.dart';
 import 'screens/main_navigation.dart';
 import 'screens/job/job_webview_screen.dart';
+import 'widgets/global_terms_gate.dart';
 
 // Background message handler must be top-level function
 @pragma('vm:entry-point')
@@ -146,8 +147,10 @@ class AuthWrapper extends StatelessWidget {
         if (authProvider.user == null) {
           return const LoginScreen();
         }
-        
-        return const MainNavigation();
+
+        return GlobalTermsGate(
+          child: const MainNavigation(),
+        );
       },
     );
   }

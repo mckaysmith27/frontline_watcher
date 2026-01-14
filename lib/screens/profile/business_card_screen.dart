@@ -10,7 +10,6 @@ import 'package:firebase_storage/firebase_storage.dart';
 import '../../providers/auth_provider.dart';
 import '../../services/user_role_service.dart';
 import 'business_card_order_screen.dart';
-import '../../widgets/terms_agreement.dart';
 import 'profile_screen.dart';
 
 class BusinessCardScreen extends StatefulWidget {
@@ -36,7 +35,6 @@ class _BusinessCardScreenState extends State<BusinessCardScreen> {
   String? _validationMessage;
   bool _isValidating = false;
   bool _isAvailable = false;
-  bool _termsAgreed = false;
   bool _isFormComplete = false;
   String? _profilePhotoUrl;
 
@@ -186,8 +184,7 @@ class _BusinessCardScreenState extends State<BusinessCardScreen> {
         _phoneController.text.isNotEmpty &&
         _emailController.text.isNotEmpty &&
         _shortnameController.text.isNotEmpty &&
-        _isAvailable &&
-        _termsAgreed;
+        _isAvailable;
     
     if (_isFormComplete != isComplete) {
       setState(() {
@@ -307,16 +304,6 @@ class _BusinessCardScreenState extends State<BusinessCardScreen> {
             const SizedBox(height: 24),
             
             // Terms and Conditions
-            BusinessCardTermsAgreement(
-              onAgreed: (agreed) {
-                setState(() {
-                  _termsAgreed = agreed;
-                });
-                _checkFormComplete();
-              },
-            ),
-            const SizedBox(height: 24),
-            
             // Checkout Button
             SizedBox(
               width: double.infinity,
@@ -616,116 +603,4 @@ class _BusinessCardScreenState extends State<BusinessCardScreen> {
   }
 }
 
-// Custom Terms Agreement widget for business cards
-class BusinessCardTermsAgreement extends StatefulWidget {
-  final Function(bool) onAgreed;
-
-  const BusinessCardTermsAgreement({super.key, required this.onAgreed});
-
-  @override
-  State<BusinessCardTermsAgreement> createState() => _BusinessCardTermsAgreementState();
-}
-
-class _BusinessCardTermsAgreementState extends State<BusinessCardTermsAgreement> {
-  bool _agreed = false;
-  bool _expanded = false;
-
-  @override
-  Widget build(BuildContext context) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Row(
-          children: [
-            Checkbox(
-              value: _agreed,
-              onChanged: (value) {
-                setState(() {
-                  _agreed = value ?? false;
-                });
-                widget.onAgreed(_agreed);
-              },
-            ),
-            Expanded(
-              child: GestureDetector(
-                onTap: () {
-                  setState(() {
-                    _expanded = !_expanded;
-                  });
-                },
-                child: Row(
-                  children: [
-                    Expanded(
-                      child: RichText(
-                        text: TextSpan(
-                          style: Theme.of(context).textTheme.bodyMedium,
-                          children: const [
-                            TextSpan(text: 'I agree to the '),
-                            TextSpan(
-                              text: 'Terms and Conditions',
-                              style: TextStyle(decoration: TextDecoration.underline),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
-                    Icon(
-                      _expanded ? Icons.expand_less : Icons.expand_more,
-                      size: 20,
-                    ),
-                  ],
-                ),
-              ),
-            ),
-          ],
-        ),
-        if (_expanded)
-          Container(
-            margin: const EdgeInsets.only(left: 48, top: 8),
-            padding: const EdgeInsets.all(16),
-            decoration: BoxDecoration(
-              color: Theme.of(context).colorScheme.surfaceVariant,
-              borderRadius: BorderRadius.circular(8),
-            ),
-            child: const SingleChildScrollView(
-              child: Text(
-                _businessCardTermsText,
-                style: TextStyle(fontSize: 12),
-              ),
-            ),
-          ),
-      ],
-    );
-  }
-}
-
-const String _businessCardTermsText = '''
-BUSINESS CARD TERMS AND CONDITIONS
-
-By creating and ordering business cards through Sub67, you agree to the following terms:
-
-1. DATA USE AND SHARING
-You grant Sub67 and its affiliates permission to use the information provided in this form (including but not limited to your name, phone number, email address, and shortname) for the following purposes:
-
-- Transmission to individuals who access your professional page via the QR code or link
-- Enabling visitors to manually or automatically fill out information needed to:
-  * Add you as a preferred substitute teacher
-  * Reserve you for specific dates
-  * Contact you professionally or otherwise
-- Use of your data for advertising and promotional purposes as permitted by iOS App Store, Google Play Store, and web platform policies
-- Promotion of Sub67's own products and services
-
-2. INFORMATION ACCURACY
-You are responsible for ensuring all information on your business card is accurate and up-to-date. Sub67 is not responsible for errors in information you provide.
-
-3. PROFESSIONAL USE
-Your business card and associated information will be publicly accessible via the provided URL and QR code. You agree to use this service for professional purposes only.
-
-4. DATA RETENTION
-Sub67 may retain your business card information for as long as necessary to provide services and as permitted by applicable laws and platform policies.
-
-5. MODIFICATIONS
-Sub67 reserves the right to modify these terms at any time. Continued use of the business card service constitutes acceptance of modified terms.
-
-By checking the box above, you acknowledge that you have read, understood, and agree to these terms and conditions.
-''';
+// Business card terms were consolidated into the global one-time Terms & Conditions gate.

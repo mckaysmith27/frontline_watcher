@@ -202,14 +202,22 @@ function matchesKeyword(text, keywords, term) {
  * Check if a job event matches a user's filter preferences
  */
 function matchesUserFilters(event, user) {
+  // Keyword filtering is opt-in via Notifications UI.
+  // If not enabled (or not subscribed), match everything in the district.
+  const applyFilterEnabled = user.applyFilterEnabled === true && user.subscriptionActive === true;
+  if (!applyFilterEnabled) {
+    return true;
+  }
+
   const text = (event.snapshotText || '').toLowerCase();
   const keywords = new Set((event.keywords || []).map(k => k.toLowerCase()));
   
   // Get user's automation config (preferences)
   // Flutter app saves: automationConfig.includedWords and automationConfig.excludedWords
   const automationConfig = user.automationConfig || {};
-  const includedWords = automationConfig.includedWords || [];
-  const excludedWords = automationConfig.excludedWords || [];
+  // Prefer the provider-backed fields (auto-saved from the Filters screen)
+  const includedWords = user.includedLs || automationConfig.includedWords || [];
+  const excludedWords = user.excludeLs || automationConfig.excludedWords || [];
   
   // If no filters set, match all jobs (user wants everything)
   if (includedWords.length === 0 && excludedWords.length === 0) {
@@ -249,18 +257,24 @@ async function createUserJobEventRecord(userId, eventId, event) {
   const db = admin.firestore();
   const userJobRef = db.collection('users').doc(userId).collection('matched_jobs').doc(eventId);
   
+  const userDoc = await db.collection('users').doc(userId).get();
+  const user = userDoc.data() || {};
+
   // Extract matched keywords for this user
-  const automationConfig = event.automationConfig || {};
-  const includedWords = automationConfig.includedWords || [];
+  const automationConfig = user.automationConfig || {};
+  const includedWords = user.includedLs || automationConfig.includedWords || [];
   const matchedKeywords = [];
   
   const text = (event.snapshotText || '').toLowerCase();
   const keywords = new Set((event.keywords || []).map(k => k.toLowerCase()));
   
   // Find which included keywords matched
-  for (const term of includedWords) {
-    if (matchesKeyword(text, keywords, term)) {
-      matchedKeywords.push(term);
+  const applyFilterEnabled = user.applyFilterEnabled === true && user.subscriptionActive === true;
+  if (applyFilterEnabled) {
+    for (const term of includedWords) {
+      if (matchesKeyword(text, keywords, term)) {
+        matchedKeywords.push(term);
+      }
     }
   }
   
@@ -345,14 +359,17 @@ async function sendFCMNotification(user, event, eventId) {
   
   // Organize keywords for notification
   const automationConfig = user.automationConfig || {};
-  const includedWords = automationConfig.includedWords || [];
+  const includedWords = user.includedLs || automationConfig.includedWords || [];
   const matchedKeywords = [];
   const text = (event.snapshotText || '').toLowerCase();
   const keywords = new Set((event.keywords || []).map(k => k.toLowerCase()));
   
-  for (const term of includedWords) {
-    if (matchesKeyword(text, keywords, term)) {
-      matchedKeywords.push(term);
+  const applyFilterEnabled = user.applyFilterEnabled === true && user.subscriptionActive === true;
+  if (applyFilterEnabled) {
+    for (const term of includedWords) {
+      if (matchesKeyword(text, keywords, term)) {
+        matchedKeywords.push(term);
+      }
     }
   }
   

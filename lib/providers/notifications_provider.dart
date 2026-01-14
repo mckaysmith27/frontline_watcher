@@ -48,7 +48,6 @@ class NotificationsProvider extends ChangeNotifier {
   bool _fastJobAcceptEnabled = false;
   bool _applyFilterEnabled = false;
   bool _setTimesEnabled = false;
-  bool _termsAccepted = false;
   List<TimeWindow> _timeWindows = [];
 
   bool get notificationsEnabled => _notificationsEnabled;
@@ -56,7 +55,6 @@ class NotificationsProvider extends ChangeNotifier {
   bool get fastJobAcceptEnabled => _fastJobAcceptEnabled;
   bool get applyFilterEnabled => _applyFilterEnabled;
   bool get setTimesEnabled => _setTimesEnabled;
-  bool get termsAccepted => _termsAccepted;
   List<TimeWindow> get timeWindows => _timeWindows;
 
   NotificationsProvider() {
@@ -89,7 +87,6 @@ class NotificationsProvider extends ChangeNotifier {
         _fastJobAcceptEnabled = data['fastJobAcceptEnabled'] ?? false;
         _applyFilterEnabled = data['applyFilterEnabled'] ?? false;
         _setTimesEnabled = data['setTimesEnabled'] ?? false;
-        _termsAccepted = data['notificationsTermsAccepted'] ?? false;
         
         // Load time windows
         final timeWindowsData = data['notificationTimeWindows'] as List<dynamic>? ?? [];
@@ -116,9 +113,15 @@ class NotificationsProvider extends ChangeNotifier {
     if (user == null) return;
 
     _notificationsEnabled = enabled;
-    await _firestore.collection('users').doc(user.uid).update({
-      'notifyEnabled': enabled,
-    });
+    await _firestore.collection('users').doc(user.uid).set(
+      {
+        'notifyEnabled': enabled,
+        'automationActive': enabled,
+        // Ensure user is subscribed to at least one district (MVP)
+        'districtIds': FieldValue.arrayUnion(['alpine_school_district']),
+      },
+      SetOptions(merge: true),
+    );
     notifyListeners();
   }
 
@@ -162,17 +165,6 @@ class NotificationsProvider extends ChangeNotifier {
     _setTimesEnabled = enabled;
     await _firestore.collection('users').doc(user.uid).update({
       'setTimesEnabled': enabled,
-    });
-    notifyListeners();
-  }
-
-  Future<void> acceptTerms() async {
-    final user = _auth.currentUser;
-    if (user == null) return;
-
-    _termsAccepted = true;
-    await _firestore.collection('users').doc(user.uid).update({
-      'notificationsTermsAccepted': true,
     });
     notifyListeners();
   }
