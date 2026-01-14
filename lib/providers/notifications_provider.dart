@@ -43,14 +43,20 @@ class NotificationsProvider extends ChangeNotifier {
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
   final FirebaseAuth _auth = FirebaseAuth.instance;
 
-  bool _notificationsEnabled = false;
+  bool _notificationsEnabled = true; // Default to true
   bool _fastNotificationsEnabled = false;
+  bool _fastJobAcceptEnabled = false;
+  bool _applyFilterEnabled = false;
   bool _setTimesEnabled = false;
+  bool _termsAccepted = false;
   List<TimeWindow> _timeWindows = [];
 
   bool get notificationsEnabled => _notificationsEnabled;
   bool get fastNotificationsEnabled => _fastNotificationsEnabled;
+  bool get fastJobAcceptEnabled => _fastJobAcceptEnabled;
+  bool get applyFilterEnabled => _applyFilterEnabled;
   bool get setTimesEnabled => _setTimesEnabled;
+  bool get termsAccepted => _termsAccepted;
   List<TimeWindow> get timeWindows => _timeWindows;
 
   NotificationsProvider() {
@@ -78,9 +84,12 @@ class NotificationsProvider extends ChangeNotifier {
       final doc = await _firestore.collection('users').doc(user.uid).get();
       if (doc.exists) {
         final data = doc.data()!;
-        _notificationsEnabled = data['notifyEnabled'] ?? false;
+        _notificationsEnabled = data['notifyEnabled'] ?? true; // Default to true
         _fastNotificationsEnabled = data['fastNotificationsEnabled'] ?? false;
+        _fastJobAcceptEnabled = data['fastJobAcceptEnabled'] ?? false;
+        _applyFilterEnabled = data['applyFilterEnabled'] ?? false;
         _setTimesEnabled = data['setTimesEnabled'] ?? false;
+        _termsAccepted = data['notificationsTermsAccepted'] ?? false;
         
         // Load time windows
         final timeWindowsData = data['notificationTimeWindows'] as List<dynamic>? ?? [];
@@ -88,6 +97,13 @@ class NotificationsProvider extends ChangeNotifier {
             .map((tw) => TimeWindow.fromMap(Map<String, dynamic>.from(tw)))
             .toList();
         
+        notifyListeners();
+      } else {
+        // New user - default notifications to enabled
+        _notificationsEnabled = true;
+        await _firestore.collection('users').doc(user.uid).update({
+          'notifyEnabled': true,
+        });
         notifyListeners();
       }
     } catch (e) {
@@ -117,6 +133,28 @@ class NotificationsProvider extends ChangeNotifier {
     notifyListeners();
   }
 
+  Future<void> setFastJobAcceptEnabled(bool enabled) async {
+    final user = _auth.currentUser;
+    if (user == null) return;
+
+    _fastJobAcceptEnabled = enabled;
+    await _firestore.collection('users').doc(user.uid).update({
+      'fastJobAcceptEnabled': enabled,
+    });
+    notifyListeners();
+  }
+
+  Future<void> setApplyFilterEnabled(bool enabled) async {
+    final user = _auth.currentUser;
+    if (user == null) return;
+
+    _applyFilterEnabled = enabled;
+    await _firestore.collection('users').doc(user.uid).update({
+      'applyFilterEnabled': enabled,
+    });
+    notifyListeners();
+  }
+
   Future<void> setSetTimesEnabled(bool enabled) async {
     final user = _auth.currentUser;
     if (user == null) return;
@@ -124,6 +162,17 @@ class NotificationsProvider extends ChangeNotifier {
     _setTimesEnabled = enabled;
     await _firestore.collection('users').doc(user.uid).update({
       'setTimesEnabled': enabled,
+    });
+    notifyListeners();
+  }
+
+  Future<void> acceptTerms() async {
+    final user = _auth.currentUser;
+    if (user == null) return;
+
+    _termsAccepted = true;
+    await _firestore.collection('users').doc(user.uid).update({
+      'notificationsTermsAccepted': true,
     });
     notifyListeners();
   }
