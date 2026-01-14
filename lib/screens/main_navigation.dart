@@ -248,7 +248,9 @@ class _MainNavigationState extends State<MainNavigation> {
           // Main navigation bar (only if there are accessible features)
           if (mainDestinations.isNotEmpty)
             NavigationBar(
-              selectedIndex: _showAdminScreen ? null : (_currentIndex < mainDestinations.length ? _currentIndex : null),
+              selectedIndex: _showAdminScreen 
+                  ? (_currentIndex < mainDestinations.length ? _currentIndex : 0)
+                  : (_currentIndex < mainDestinations.length ? _currentIndex : 0),
               onDestinationSelected: (index) {
                 setState(() {
                   _currentIndex = index;
@@ -267,7 +269,9 @@ class _MainNavigationState extends State<MainNavigation> {
               ),
               child: NavigationBar(
                 height: 60,
-                selectedIndex: _showAdminScreen ? (_adminIndex < adminDestinations.length ? _adminIndex : null) : null,
+                selectedIndex: _showAdminScreen 
+                    ? (_adminIndex < adminDestinations.length ? _adminIndex : 0)
+                    : (_adminIndex < adminDestinations.length ? _adminIndex : 0),
                 onDestinationSelected: (index) {
                   setState(() {
                     _adminIndex = index;

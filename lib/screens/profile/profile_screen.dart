@@ -341,9 +341,7 @@ class ProfileScreen extends StatelessWidget {
       ),
     ).then((_) {
       // Dispose controller when dialog is closed
-      if (controller.hasClients) {
-        controller.dispose();
-      }
+      controller.dispose();
     });
   }
 

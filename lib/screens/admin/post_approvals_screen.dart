@@ -191,7 +191,7 @@ class _PostApprovalsScreenState extends State<PostApprovalsScreen> {
   Widget _buildPostCard(Post post) {
     final dateFormat = DateFormat('MMM dd, yyyy HH:mm');
     final dateStr = post.createdAt != null
-        ? dateFormat.format(post.createdAt!.toDate())
+        ? dateFormat.format(post.createdAt!)
         : 'Unknown date';
 
     return Card(
@@ -206,11 +206,11 @@ class _PostApprovalsScreenState extends State<PostApprovalsScreen> {
               children: [
                 CircleAvatar(
                   radius: 20,
-                  backgroundImage: post.authorPhotoUrl != null
-                      ? NetworkImage(post.authorPhotoUrl!)
+                  backgroundImage: post.userPhotoUrl != null
+                      ? NetworkImage(post.userPhotoUrl!)
                       : null,
-                  child: post.authorPhotoUrl == null
-                      ? Text(post.authorName[0].toUpperCase())
+                  child: post.userPhotoUrl == null
+                      ? Text(post.userNickname.isNotEmpty ? post.userNickname[0].toUpperCase() : '?')
                       : null,
                 ),
                 const SizedBox(width: 12),
@@ -219,7 +219,7 @@ class _PostApprovalsScreenState extends State<PostApprovalsScreen> {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        post.authorName,
+                        post.userNickname,
                         style: const TextStyle(
                           fontWeight: FontWeight.bold,
                           fontSize: 16,
@@ -269,26 +269,29 @@ class _PostApprovalsScreenState extends State<PostApprovalsScreen> {
                 style: const TextStyle(fontSize: 14),
               ),
             
-            // Post image
-            if (post.imageUrl != null && post.imageUrl!.isNotEmpty) ...[
+            // Post images
+            if (post.imageUrls.isNotEmpty) ...[
               const SizedBox(height: 8),
-              ClipRRect(
-                borderRadius: BorderRadius.circular(8),
-                child: Image.network(
-                  post.imageUrl!,
-                  width: double.infinity,
-                  fit: BoxFit.cover,
-                  errorBuilder: (context, error, stackTrace) {
-                    return Container(
-                      height: 200,
-                      color: Colors.grey[300],
-                      child: const Center(
-                        child: Icon(Icons.broken_image),
-                      ),
-                    );
-                  },
+              ...post.imageUrls.map((imageUrl) => Padding(
+                padding: const EdgeInsets.only(bottom: 8),
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(8),
+                  child: Image.network(
+                    imageUrl,
+                    width: double.infinity,
+                    fit: BoxFit.cover,
+                    errorBuilder: (context, error, stackTrace) {
+                      return Container(
+                        height: 200,
+                        color: Colors.grey[300],
+                        child: const Center(
+                          child: Icon(Icons.broken_image),
+                        ),
+                      );
+                    },
+                  ),
                 ),
-              ),
+              )),
             ],
             
             const SizedBox(height: 16),
@@ -307,7 +310,7 @@ class _PostApprovalsScreenState extends State<PostApprovalsScreen> {
                 IconButton(
                   icon: const Icon(Icons.image_not_supported, color: Colors.orange),
                   tooltip: 'Block Image',
-                  onPressed: post.imageUrl != null && post.imageUrl!.isNotEmpty
+                  onPressed: post.imageUrls.isNotEmpty
                       ? () => _blockImage(post.id)
                       : null,
                 ),

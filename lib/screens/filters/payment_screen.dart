@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../providers/credits_provider.dart';
+import '../../providers/filters_provider.dart';
 import '../../providers/auth_provider.dart';
 import '../../config/app_config.dart';
 
