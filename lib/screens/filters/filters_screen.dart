@@ -159,10 +159,8 @@ class _FiltersScreenState extends State<FiltersScreen> {
         child: SafeArea(
           child: Consumer<CreditsProvider>(
             builder: (context, creditsProvider, _) {
-              // Locked condition: user has NO credits AND NO green days (committed dates)
-              // Button is locked when BOTH conditions are true: credits == 0 AND committedDates.isEmpty
-              final isLocked = creditsProvider.credits == 0 && 
-                              creditsProvider.committedDates.isEmpty;
+              // Locked condition: subscription is not active
+              final isLocked = !creditsProvider.hasActiveSubscription;
               
               return ElevatedButton.icon(
                 onPressed: isLocked ? null : () => _applyFilters(context),
@@ -198,9 +196,8 @@ class _FiltersScreenState extends State<FiltersScreen> {
     final creditsProvider = Provider.of<CreditsProvider>(context, listen: false);
     final automationService = AutomationService();
     
-    // Check if locked (no credits AND no green days)
-    final isLocked = creditsProvider.credits == 0 && 
-                    creditsProvider.committedDates.isEmpty;
+    // Check if locked (subscription not active)
+    final isLocked = !creditsProvider.hasActiveSubscription;
     
     // Collect included and excluded words from filters
     final includedWords = filtersProvider.includedLs.toList();

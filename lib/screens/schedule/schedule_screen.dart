@@ -467,10 +467,9 @@ class _ScheduleScreenState extends State<ScheduleScreen> {
         padding: const EdgeInsets.all(16),
         child: Consumer<CreditsProvider>(
           builder: (context, creditsProvider, _) {
-            // Locked condition: user has NO credits AND NO green days (committed dates)
-            // Button is always visible but locked when BOTH conditions are true
-            final isLocked = creditsProvider.credits == 0 && 
-                            creditsProvider.committedDates.isEmpty;
+            // Locked condition: subscription is not active
+            // Button is always visible but locked when subscription is not active
+            final isLocked = !creditsProvider.hasActiveSubscription;
             
             return ElevatedButton.icon(
               onPressed: isLocked ? null : () => _syncCalendarToDevice(context),

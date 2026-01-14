@@ -511,8 +511,8 @@ class CreditsProvider extends ChangeNotifier {
     notifyListeners();
   }
   
-  /// Check if features are locked (no credits AND no green days)
-  bool get isLocked => _credits == 0 && _committedDates.isEmpty;
+  /// Check if features are locked (inverse of hasActiveSubscription)
+  bool get isLocked => !hasActiveSubscription;
   
   /// Update scheduled job dates (called when jobs are loaded)
   Future<void> updateScheduledJobDates(List<String> jobDates) async {
