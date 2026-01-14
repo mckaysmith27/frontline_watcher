@@ -1344,11 +1344,7 @@ class _SchoolMapWidgetState extends State<SchoolMapWidget> {
                             ? Row(
                                 mainAxisSize: MainAxisSize.min,
                                 children: [
-                                  IconButton(
-                                    icon: const Icon(Icons.search),
-                                    tooltip: 'Search location (or press Search)',
-                                    onPressed: () => _searchLocation(_locationController.text),
-                                  ),
+                                  // Don't show a second magnifying glass (prefix already shows it)
                                   IconButton(
                                     icon: const Icon(Icons.clear),
                                     onPressed: () {
@@ -1380,7 +1376,7 @@ class _SchoolMapWidgetState extends State<SchoolMapWidget> {
                           onPressed: _returnToCurrentLocation,
                         ),
                         Text(
-                          'Use Current\nLocation',
+                          'Current\nLocation',
                           style: TextStyle(
                             fontSize: 10,
                             color: Colors.blue,
@@ -1397,7 +1393,7 @@ class _SchoolMapWidgetState extends State<SchoolMapWidget> {
                 Padding(
                   padding: const EdgeInsets.only(top: 4, left: 12),
                   child: Text(
-                    'Press Search or tap the search icon to search',
+                    'Put in your address.',
                     style: Theme.of(context).textTheme.bodySmall?.copyWith(
                           fontStyle: FontStyle.italic,
                           color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.6),
