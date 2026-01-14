@@ -12,6 +12,7 @@ import '../filters/automation_bottom_sheet.dart';
 import '../../widgets/notification_day_card.dart';
 import 'job_card.dart';
 import 'package:add_2_calendar/add_2_calendar.dart';
+import '../profile/profile_screen.dart';
 
 class ScheduleScreen extends StatefulWidget {
   const ScheduleScreen({super.key});
@@ -239,23 +240,17 @@ class _ScheduleScreenState extends State<ScheduleScreen> {
     return Scaffold(
       appBar: ProfileAppBar(
         actions: [
-          GestureDetector(
-            onTap: () => _showPurchaseOptions(context),
-            child: Padding(
-              padding: const EdgeInsets.all(16.0),
-              child: Center(
-                child: Row(
-                  children: [
-                    const Icon(Icons.stars, size: 20),
-                    const SizedBox(width: 4),
-                    Text(
-                      '${creditsProvider.credits}',
-                      style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-                    ),
-                  ],
+          IconButton(
+            icon: const Icon(Icons.settings),
+            onPressed: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => const ProfileScreen(),
                 ),
-              ),
-            ),
+              );
+            },
+            tooltip: 'Settings',
           ),
         ],
       ),

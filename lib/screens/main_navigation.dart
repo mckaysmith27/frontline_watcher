@@ -3,7 +3,6 @@ import 'notifications/notifications_screen.dart';
 import 'filters/filters_screen.dart';
 import 'schedule/schedule_screen.dart';
 import 'social/social_screen.dart';
-import 'profile/profile_screen.dart';
 import 'profile/business_card_screen.dart';
 import 'admin/post_approvals_screen.dart';
 import 'admin/business_card_orders_queue_screen.dart';
@@ -109,11 +108,6 @@ class _MainNavigationState extends State<MainNavigation> {
       screens.add(const BusinessCardScreen());
     }
     
-    // Profile - for 'sub', 'teacher', 'administration'
-    if (_accessibleFeatures.contains('profile')) {
-      screens.add(const ProfileScreen());
-    }
-    
     return screens;
   }
   
@@ -157,14 +151,6 @@ class _MainNavigationState extends State<MainNavigation> {
       destinations.add(const NavigationDestination(
         icon: Icon(Icons.badge),
         label: 'ID Card',
-      ));
-    }
-    
-    // Profile - for 'sub', 'teacher', 'administration'
-    if (_accessibleFeatures.contains('profile')) {
-      destinations.add(const NavigationDestination(
-        icon: Icon(Icons.settings),
-        label: 'Settings',
       ));
     }
     

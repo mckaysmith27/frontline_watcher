@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../providers/auth_provider.dart';
 import '../screens/social/user_page_viewer.dart';
-import 'package:provider/provider.dart';
 
 class ProfileAppBar extends StatelessWidget implements PreferredSizeWidget {
   final Widget? child;

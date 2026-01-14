@@ -11,6 +11,7 @@ import '../../providers/auth_provider.dart';
 import '../../services/user_role_service.dart';
 import 'business_card_order_screen.dart';
 import '../../widgets/terms_agreement.dart';
+import 'profile_screen.dart';
 
 class BusinessCardScreen extends StatefulWidget {
   const BusinessCardScreen({super.key});
@@ -282,6 +283,20 @@ class _BusinessCardScreenState extends State<BusinessCardScreen> {
     return Scaffold(
       appBar: AppBar(
         title: const Text('Business Card'),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.settings),
+            onPressed: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => const ProfileScreen(),
+                ),
+              );
+            },
+            tooltip: 'Settings',
+          ),
+        ],
       ),
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(24.0),

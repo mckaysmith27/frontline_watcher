@@ -8,6 +8,7 @@ import 'post_composer.dart';
 import 'my_page_tab.dart';
 import 'feed_tab.dart';
 import 'top_posts_tab.dart';
+import '../profile/profile_screen.dart';
 
 class SocialScreen extends StatefulWidget {
   final VoidCallback? onNavigateToMyPage;
@@ -74,6 +75,20 @@ class _SocialScreenState extends State<SocialScreen>
               )
             : null,
         automaticallyImplyLeading: false,
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.settings),
+            onPressed: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => const ProfileScreen(),
+                ),
+              );
+            },
+            tooltip: 'Settings',
+          ),
+        ],
         bottom: TabBar(
           controller: _tabController,
           tabs: const [

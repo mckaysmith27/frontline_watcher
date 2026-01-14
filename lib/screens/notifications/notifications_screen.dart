@@ -4,7 +4,7 @@ import '../../providers/notifications_provider.dart';
 import '../../providers/credits_provider.dart';
 import '../../widgets/notifications_terms_agreement.dart';
 import '../filters/automation_bottom_sheet.dart';
-import '../filters/filters_screen.dart';
+import '../profile/profile_screen.dart';
 import 'time_window_widget.dart';
 
 class NotificationsScreen extends StatefulWidget {
@@ -20,6 +20,20 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
     return Scaffold(
       appBar: AppBar(
         title: const Text('Notifications'),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.settings),
+            onPressed: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => const ProfileScreen(),
+                ),
+              );
+            },
+            tooltip: 'Settings',
+          ),
+        ],
       ),
       body: Consumer2<NotificationsProvider, CreditsProvider>(
         builder: (context, notificationsProvider, creditsProvider, _) {
@@ -83,24 +97,10 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
               spacing: 6,
               runSpacing: 4,
               children: [
-                const Text("Enable 'FAST Notifications'"),
-                Text(
-                  '(recommended)',
-                  style: TextStyle(
-                    fontSize: 12,
-                    color: Colors.grey[600],
-                    fontStyle: FontStyle.italic,
-                  ),
-                ),
-              ],
-            ),
-            subtitle: Row(
-              children: [
-                const Expanded(
-                  child: Text('Get instant notifications for matching jobs'),
-                ),
+                const Text("Enable 'FAST Notify'"),
                 Tooltip(
-                  message: 'Uses proprietary scanning architecture to minimize the gap between a job first being posted and the user being notified.',
+                  message:
+                      'Uses proprietary scanning architecture to minimize the gap between a job first being posted and the user being notified.',
                   child: Icon(
                     Icons.help_outline,
                     size: 18,
@@ -109,6 +109,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
                 ),
               ],
             ),
+            subtitle: const Text('Get instant notifications for matching jobs'),
             value: notificationsProvider.fastNotificationsEnabled,
             onChanged: notificationsProvider.termsAccepted
                 ? (hasActiveSubscription
@@ -129,14 +130,15 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
         // Enable FAST Job Accept toggle (paid feature)
         Card(
           child: SwitchListTile(
-            title: const Text("Enable 'FAST Job Accept'"),
-            subtitle: Row(
+            title: Wrap(
+              crossAxisAlignment: WrapCrossAlignment.center,
+              spacing: 6,
+              runSpacing: 4,
               children: [
-                const Expanded(
-                  child: Text('Automatically accept jobs that match your preferences'),
-                ),
+                const Text("Enable 'FAST Job Accept'"),
                 Tooltip(
-                  message: 'Uses proprietary technology features—like the applying of a keywords filter and guidance towards a users desired call to action thus enabling the user to reduce time between being notified and accepting a desired new job.',
+                  message:
+                      'Uses proprietary technology features—like the applying of a keywords filter and guidance towards a users desired call to action thus enabling the user to reduce time between being notified and accepting a desired new job.',
                   child: Icon(
                     Icons.help_outline,
                     size: 18,
@@ -145,6 +147,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
                 ),
               ],
             ),
+            subtitle: const Text('Automatically accept jobs that match your preferences'),
             value: notificationsProvider.fastJobAcceptEnabled,
             onChanged: notificationsProvider.termsAccepted
                 ? (hasActiveSubscription
@@ -162,7 +165,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
         ),
         const SizedBox(height: 16),
         
-        // Apply Filter (keywords) toggle (paid feature)
+        // Apply Filter Keywords toggle (paid feature)
         Card(
           child: SwitchListTile(
             title: Wrap(
@@ -170,23 +173,14 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
               spacing: 6,
               runSpacing: 4,
               children: [
-                const Text('Apply Filter (keywords)'),
-                GestureDetector(
-                  onTap: () {
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (_) => const FiltersScreen(),
-                      ),
-                    );
-                  },
-                  child: Text(
-                    'Filter (keywords)',
-                    style: TextStyle(
-                      color: Theme.of(context).colorScheme.primary,
-                      decoration: TextDecoration.underline,
-                      fontSize: 14,
-                    ),
+                const Text('Apply Filter Keywords'),
+                Tooltip(
+                  message:
+                      "This activates the keywords specified on the 'filters' feature so that you are only notified of jobs that meet your keyword specifications.",
+                  child: Icon(
+                    Icons.help_outline,
+                    size: 18,
+                    color: Colors.grey[600],
                   ),
                 ),
               ],

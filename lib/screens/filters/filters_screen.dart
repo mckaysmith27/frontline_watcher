@@ -10,6 +10,7 @@ import '../../widgets/nested_filter_column.dart';
 import '../../widgets/school_map_widget.dart';
 import '../../widgets/profile_app_bar.dart';
 import 'automation_bottom_sheet.dart';
+import '../profile/profile_screen.dart';
 
 class FiltersScreen extends StatefulWidget {
   const FiltersScreen({super.key});
@@ -71,23 +72,17 @@ class _FiltersScreenState extends State<FiltersScreen> {
     return Scaffold(
       appBar: ProfileAppBar(
         actions: [
-          GestureDetector(
-            onTap: () => _showPurchaseOptions(context),
-            child: Padding(
-              padding: const EdgeInsets.all(16.0),
-              child: Center(
-                child: Row(
-                  children: [
-                    const Icon(Icons.stars, size: 20),
-                    const SizedBox(width: 4),
-                    Text(
-                      '${creditsProvider.credits}',
-                      style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-                    ),
-                  ],
+          IconButton(
+            icon: const Icon(Icons.settings),
+            onPressed: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => const ProfileScreen(),
                 ),
-              ),
-            ),
+              );
+            },
+            tooltip: 'Settings',
           ),
         ],
       ),
