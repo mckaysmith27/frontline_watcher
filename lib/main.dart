@@ -8,6 +8,7 @@ import 'providers/theme_provider.dart';
 import 'providers/auth_provider.dart';
 import 'providers/filters_provider.dart';
 import 'providers/credits_provider.dart';
+import 'providers/notifications_provider.dart';
 import 'services/push_notification_service.dart';
 import 'screens/auth/login_screen.dart';
 import 'screens/main_navigation.dart';
@@ -83,6 +84,7 @@ class _Sub67AppState extends State<Sub67App> {
         ChangeNotifierProvider(create: (_) => AuthProvider()),
         ChangeNotifierProvider(create: (_) => FiltersProvider()),
         ChangeNotifierProvider(create: (_) => CreditsProvider()),
+        ChangeNotifierProvider(create: (_) => NotificationsProvider()),
       ],
       child: Consumer<ThemeProvider>(
         builder: (context, themeProvider, _) {

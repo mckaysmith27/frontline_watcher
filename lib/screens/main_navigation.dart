@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:provider/provider.dart';
+import 'notifications/notifications_screen.dart';
 import 'filters/filters_screen.dart';
 import 'schedule/schedule_screen.dart';
 import 'social/social_screen.dart';
@@ -22,11 +22,9 @@ class _MainNavigationState extends State<MainNavigation> {
   int _currentIndex = 0;
   int _adminIndex = 0; // For admin navigation
   bool _showAdminScreen = false; // Whether to show admin screen overlay
-  final GlobalKey<NavigatorState> _socialNavigatorKey = GlobalKey<NavigatorState>();
   final AdminService _adminService = AdminService();
   final UserRoleService _roleService = UserRoleService();
   bool _isAdmin = false;
-  List<String> _userRoles = [];
   List<String> _accessibleFeatures = [];
   bool _isLoadingRoles = true;
 
@@ -42,13 +40,11 @@ class _MainNavigationState extends State<MainNavigation> {
     });
     
     final isAdmin = await _adminService.isAdmin();
-    final userRoles = await _roleService.getCurrentUserRoles();
     final accessibleFeatures = await _roleService.getAccessibleFeatures();
     
     if (mounted) {
       setState(() {
         _isAdmin = isAdmin;
-        _userRoles = userRoles;
         _accessibleFeatures = accessibleFeatures;
         _isLoadingRoles = false;
       });
@@ -76,6 +72,11 @@ class _MainNavigationState extends State<MainNavigation> {
   List<Widget> _buildMainScreens() {
     final screens = <Widget>[];
     
+    // Notifications - only for 'sub' (first screen)
+    if (_accessibleFeatures.contains('notifications')) {
+      screens.add(const NotificationsScreen());
+    }
+    
     // Filters - only for 'sub'
     if (_accessibleFeatures.contains('filters')) {
       screens.add(const FiltersScreen());
@@ -92,6 +93,7 @@ class _MainNavigationState extends State<MainNavigation> {
         onNavigateToMyPage: () {
           // Find community index
           int communityIndex = 0;
+          if (_accessibleFeatures.contains('notifications')) communityIndex++;
           if (_accessibleFeatures.contains('filters')) communityIndex++;
           if (_accessibleFeatures.contains('schedule')) communityIndex++;
           setState(() {
@@ -117,6 +119,14 @@ class _MainNavigationState extends State<MainNavigation> {
   
   List<NavigationDestination> _buildMainDestinations() {
     final destinations = <NavigationDestination>[];
+    
+    // Notifications - only for 'sub' (first icon)
+    if (_accessibleFeatures.contains('notifications')) {
+      destinations.add(const NavigationDestination(
+        icon: Icon(Icons.bolt),
+        label: 'Notifications',
+      ));
+    }
     
     // Filters - only for 'sub'
     if (_accessibleFeatures.contains('filters')) {

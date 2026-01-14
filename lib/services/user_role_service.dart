@@ -36,6 +36,7 @@ class UserRoleService {
 
   /// Check if current user has access to a feature
   /// Features are mapped to roles:
+  /// - 'notifications': ['sub']
   /// - 'filters': ['sub']
   /// - 'schedule': ['sub']
   /// - 'community': ['sub', 'teacher', 'administration']
@@ -49,6 +50,7 @@ class UserRoleService {
     
     // Feature to role mapping
     final featureRoleMap = {
+      'notifications': ['sub'],
       'filters': ['sub'],
       'schedule': ['sub'],
       'community': ['sub', 'teacher', 'administration'],
@@ -70,7 +72,7 @@ class UserRoleService {
 
     // Check each feature
     if (userRoles.contains('sub')) {
-      accessibleFeatures.addAll(['filters', 'schedule']);
+      accessibleFeatures.addAll(['notifications', 'filters', 'schedule']);
     }
     
     if (userRoles.any((r) => ['sub', 'teacher', 'administration'].contains(r))) {
