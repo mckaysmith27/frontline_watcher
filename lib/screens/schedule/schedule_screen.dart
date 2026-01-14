@@ -5,6 +5,7 @@ import '../../providers/credits_provider.dart';
 import '../../providers/filters_provider.dart';
 import '../../models/job.dart';
 import '../../services/job_service.dart';
+import '../../services/user_role_service.dart';
 import '../../widgets/profile_app_bar.dart';
 import '../../widgets/day_action_bottom_sheet.dart';
 import '../filters/automation_bottom_sheet.dart';
@@ -521,6 +522,20 @@ class _ScheduleScreenState extends State<ScheduleScreen> {
   }
 
   Future<void> _syncCalendarToDevice(BuildContext context) async {
+    // Check if user has access to schedule feature (requires 'sub' role)
+    final roleService = UserRoleService();
+    final hasScheduleAccess = await roleService.hasFeatureAccess('schedule');
+    
+    if (!hasScheduleAccess) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('This feature requires substitute teacher access.'),
+          backgroundColor: Colors.orange,
+        ),
+      );
+      return;
+    }
+    
     final creditsProvider = Provider.of<CreditsProvider>(context, listen: false);
     
     // Only sync jobs that are marked with "has job" color (blue) - these are in scheduledJobDates

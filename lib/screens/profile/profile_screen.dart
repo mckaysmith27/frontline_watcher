@@ -4,6 +4,7 @@ import 'package:image_picker/image_picker.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import '../../providers/auth_provider.dart';
 import '../../providers/theme_provider.dart';
+import '../../services/user_role_service.dart';
 import '../../widgets/profile_app_bar.dart';
 import 'password_reset_screen.dart';
 import 'agreements_screen.dart';
@@ -236,6 +237,20 @@ class ProfileScreen extends StatelessWidget {
   }
 
   Future<void> _pickProfilePhoto(BuildContext context) async {
+    // Check if user has access to profile feature
+    final roleService = UserRoleService();
+    final hasProfileAccess = await roleService.hasFeatureAccess('profile');
+    
+    if (!hasProfileAccess) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('This feature is not available for your role.'),
+          backgroundColor: Colors.orange,
+        ),
+      );
+      return;
+    }
+    
     final picker = ImagePicker();
     final image = await picker.pickImage(source: ImageSource.gallery);
     if (image != null) {
@@ -358,6 +373,20 @@ class ProfileScreen extends StatelessWidget {
   }
 
   Future<void> _pickVerificationPhoto(BuildContext context) async {
+    // Check if user has access to profile feature
+    final roleService = UserRoleService();
+    final hasProfileAccess = await roleService.hasFeatureAccess('profile');
+    
+    if (!hasProfileAccess) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('This feature is not available for your role.'),
+          backgroundColor: Colors.orange,
+        ),
+      );
+      return;
+    }
+    
     final picker = ImagePicker();
     final image = await picker.pickImage(source: ImageSource.camera);
     if (image != null) {

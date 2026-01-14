@@ -2,6 +2,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import '../../services/social_service.dart';
+import '../../services/user_role_service.dart';
 
 class PostComposer extends StatefulWidget {
   final String? initialTag;
@@ -43,6 +44,22 @@ class _PostComposerState extends State<PostComposer> {
   }
 
   Future<void> _pickImage() async {
+    // Check if user has access to community feature
+    final roleService = UserRoleService();
+    final hasCommunityAccess = await roleService.hasFeatureAccess('community');
+    
+    if (!hasCommunityAccess) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('This feature is not available for your role.'),
+            backgroundColor: Colors.orange,
+          ),
+        );
+      }
+      return;
+    }
+    
     final image = await _picker.pickImage(source: ImageSource.gallery);
     if (image != null) {
       // In production, upload to Firebase Storage

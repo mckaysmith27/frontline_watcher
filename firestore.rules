@@ -3,9 +3,11 @@ service cloud.firestore {
   match /databases/{database}/documents {
     // Helper function to check if user is admin
     function isAdmin() {
-      return request.auth != null && 
-             (get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin' ||
-              get(/databases/$(database)/documents/users/$(request.auth.uid)).data.isAdmin == true);
+      return request.auth != null && (
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin' ||
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.isAdmin == true ||
+        'app admin' in get(/databases/$(database)/documents/users/$(request.auth.uid)).data.userRoles
+      );
     }
 
     // Users can read/write their own user document

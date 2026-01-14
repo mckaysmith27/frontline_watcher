@@ -19,6 +19,7 @@ class _LoginScreenState extends State<LoginScreen> {
   bool _isLogin = true;
   bool _obscurePassword = true;
   String _passwordStrength = '';
+  String? _selectedRole; // For signup: 'teacher', 'sub', or 'administration'
 
   @override
   void dispose() {
@@ -63,11 +64,12 @@ class _LoginScreenState extends State<LoginScreen> {
           password: _passwordController.text,
         );
       } else {
-        print('[LoginScreen] Calling signUp with email: ${_emailController.text.trim()}, username: ${_usernameController.text.trim()}');
+        print('[LoginScreen] Calling signUp with email: ${_emailController.text.trim()}, username: ${_usernameController.text.trim()}, role: $_selectedRole');
         error = await authProvider.signUp(
           email: _emailController.text.trim(),
           password: _passwordController.text,
           username: _usernameController.text.trim(),
+          userRole: _selectedRole!,
         );
       }
 
@@ -168,6 +170,40 @@ class _LoginScreenState extends State<LoginScreen> {
                           return 'Username must be at least 3 characters';
                         }
                         return null;
+                      },
+                    ),
+                    const SizedBox(height: 16),
+                    DropdownButtonFormField<String>(
+                      value: _selectedRole,
+                      decoration: const InputDecoration(
+                        labelText: 'Select Your Role',
+                        border: OutlineInputBorder(),
+                        prefixIcon: Icon(Icons.person_outline),
+                      ),
+                      items: const [
+                        DropdownMenuItem(
+                          value: 'sub',
+                          child: Text('Substitute Teacher'),
+                        ),
+                        DropdownMenuItem(
+                          value: 'teacher',
+                          child: Text('Teacher'),
+                        ),
+                        DropdownMenuItem(
+                          value: 'administration',
+                          child: Text('Administration'),
+                        ),
+                      ],
+                      validator: (value) {
+                        if (value == null || value.isEmpty) {
+                          return 'Please select your role';
+                        }
+                        return null;
+                      },
+                      onChanged: (value) {
+                        setState(() {
+                          _selectedRole = value;
+                        });
                       },
                     ),
                     const SizedBox(height: 16),
@@ -288,6 +324,7 @@ class _LoginScreenState extends State<LoginScreen> {
                       setState(() {
                         _isLogin = !_isLogin;
                         _passwordStrength = '';
+                        _selectedRole = null; // Reset role selection when switching
                       });
                     },
                     child: Text(

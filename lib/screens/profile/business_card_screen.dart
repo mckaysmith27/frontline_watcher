@@ -8,6 +8,7 @@ import 'package:qr_flutter/qr_flutter.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:firebase_storage/firebase_storage.dart';
 import '../../providers/auth_provider.dart';
+import '../../services/user_role_service.dart';
 import 'business_card_order_screen.dart';
 import '../../widgets/terms_agreement.dart';
 
@@ -94,6 +95,22 @@ class _BusinessCardScreenState extends State<BusinessCardScreen> {
   }
 
   Future<void> _pickProfilePhoto() async {
+    // Check if user has access to business card feature
+    final roleService = UserRoleService();
+    final hasBusinessCardAccess = await roleService.hasFeatureAccess('business_card');
+    
+    if (!hasBusinessCardAccess) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('This feature is not available for your role.'),
+            backgroundColor: Colors.orange,
+          ),
+        );
+      }
+      return;
+    }
+    
     try {
       final image = await _imagePicker.pickImage(
         source: ImageSource.gallery,

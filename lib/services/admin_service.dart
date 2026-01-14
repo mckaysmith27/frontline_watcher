@@ -16,8 +16,88 @@ class AdminService {
     final userDoc = await _firestore.collection('users').doc(user.uid).get();
     final userData = userDoc.data();
     
-    // Check if user has admin role
-    return userData?['role'] == 'admin' || userData?['isAdmin'] == true;
+    // Check if user has app admin role in userRoles array
+    final userRoles = userData?['userRoles'] as List<dynamic>? ?? [];
+    return userRoles.contains('app admin') || 
+           userData?['role'] == 'admin' || 
+           userData?['isAdmin'] == true;
+  }
+  
+  /// Get user roles for a user
+  Future<List<String>> getUserRoles(String userId) async {
+    final userDoc = await _firestore.collection('users').doc(userId).get();
+    final userData = userDoc.data();
+    final userRoles = userData?['userRoles'] as List<dynamic>? ?? [];
+    return userRoles.map((r) => r.toString()).toList();
+  }
+  
+  /// Update user roles (only app admins can do this)
+  Future<void> updateUserRoles(String userId, List<String> roles) async {
+    if (!await isAdmin()) {
+      throw Exception('Only app admins can update user roles');
+    }
+    
+    await _firestore.collection('users').doc(userId).update({
+      'userRoles': roles,
+    });
+  }
+  
+  /// Search for users by email or username
+  Stream<List<Map<String, dynamic>>> searchUsers(String query) {
+    if (query.isEmpty) {
+      return const Stream.empty();
+    }
+    
+    final lowerQuery = query.toLowerCase();
+    
+    // Search by email (starts with)
+    final emailQuery = _firestore
+        .collection('users')
+        .where('email', isGreaterThanOrEqualTo: lowerQuery)
+        .where('email', isLessThan: lowerQuery + 'z')
+        .limit(20)
+        .snapshots();
+    
+    // Search by username (starts with)
+    final usernameQuery = _firestore
+        .collection('users')
+        .where('username', isGreaterThanOrEqualTo: lowerQuery)
+        .where('username', isLessThan: lowerQuery + 'z')
+        .limit(20)
+        .snapshots();
+    
+    // Combine both streams
+    return Stream.periodic(const Duration(milliseconds: 100), (_) => null)
+        .asyncMap((_) async {
+      final emailSnapshot = await emailQuery.first;
+      final usernameSnapshot = await usernameQuery.first;
+      
+      final users = <String, Map<String, dynamic>>{};
+      
+      for (var doc in emailSnapshot.docs) {
+        final data = doc.data();
+        users[doc.id] = {
+          'id': doc.id,
+          'email': data['email'],
+          'username': data['username'],
+          'userRoles': data['userRoles'] ?? [],
+        };
+      }
+      
+      for (var doc in usernameSnapshot.docs) {
+        final data = doc.data();
+        if (!users.containsKey(doc.id)) {
+          users[doc.id] = {
+            'id': doc.id,
+            'email': data['email'],
+            'username': data['username'],
+            'userRoles': data['userRoles'] ?? [],
+          };
+        }
+      }
+      
+      return users.values.toList();
+    });
   }
 
   /// Get all posts pending approval (includes flagged posts)

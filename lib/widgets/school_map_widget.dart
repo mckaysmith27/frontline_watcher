@@ -10,6 +10,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../models/school.dart';
 import '../providers/filters_provider.dart';
 import '../services/school_service.dart';
+import '../services/user_role_service.dart';
 import 'tag_chip.dart';
 
 class SchoolMapWidget extends StatefulWidget {
@@ -118,7 +119,16 @@ class _SchoolMapWidgetState extends State<SchoolMapWidget> {
   }
 
   Future<void> _initializeMap() async {
-    // Request location permissions
+    // Check if user has access to filters feature (requires 'sub' role)
+    final roleService = UserRoleService();
+    final hasFiltersAccess = await roleService.hasFeatureAccess('filters');
+    
+    if (!hasFiltersAccess) {
+      // User doesn't have access to this feature, don't request permissions
+      return;
+    }
+    
+    // Request location permissions only if user has access to the feature
     bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
     if (!serviceEnabled) {
       if (mounted) {
@@ -835,9 +845,56 @@ class _SchoolMapWidgetState extends State<SchoolMapWidget> {
   }
 
   Future<void> _returnToCurrentLocation() async {
+    // Check if user has access to filters feature (requires 'sub' role)
+    final roleService = UserRoleService();
+    final hasFiltersAccess = await roleService.hasFeatureAccess('filters');
+    
+    if (!hasFiltersAccess) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('This feature requires substitute teacher access.'),
+            backgroundColor: Colors.orange,
+          ),
+        );
+      }
+      return;
+    }
+    
     setState(() {
       _isLoading = true;
     });
+    
+    // Check and request location permissions if needed
+    LocationPermission permission = await Geolocator.checkPermission();
+    if (permission == LocationPermission.denied) {
+      permission = await Geolocator.requestPermission();
+      if (permission == LocationPermission.denied) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Location permissions are denied.')),
+          );
+        }
+        setState(() {
+          _isLoading = false;
+        });
+        return;
+      }
+    }
+
+    if (permission == LocationPermission.deniedForever) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Location permissions are permanently denied.'),
+          ),
+        );
+      }
+      setState(() {
+        _isLoading = false;
+      });
+      return;
+    }
     
     // Try to get current location
     try {

@@ -3,6 +3,7 @@ import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'user_role_service.dart';
 
 class PushNotificationService {
   static final PushNotificationService _instance = PushNotificationService._internal();
@@ -29,7 +30,17 @@ class PushNotificationService {
   Future<void> initialize() async {
     if (_isInitialized) return;
     
-    // Request permissions
+    // Check if user has access to schedule feature (requires 'sub' role for job notifications)
+    final roleService = UserRoleService();
+    final hasScheduleAccess = await roleService.hasFeatureAccess('schedule');
+    
+    if (!hasScheduleAccess) {
+      // User doesn't have access to job notifications, skip permission request
+      print('[PushNotificationService] User does not have schedule access, skipping notification permissions');
+      return;
+    }
+    
+    // Request permissions only if user has access to the feature
     await _requestPermissions();
 
     // Initialize local notifications for foreground

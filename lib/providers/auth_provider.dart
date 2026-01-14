@@ -56,6 +56,7 @@ class AuthProvider extends ChangeNotifier {
     required String email,
     required String password,
     required String username,
+    required String userRole, // 'teacher', 'sub', or 'administration'
   }) async {
     try {
       print('[AuthProvider] Starting signup for email: $email');
@@ -91,6 +92,7 @@ class AuthProvider extends ChangeNotifier {
             'email': email,
             'nickname': username,
             'shortname': defaultShortname,
+            'userRoles': [userRole], // Array of roles, starting with selected role
             'credits': 0,
             'createdAt': FieldValue.serverTimestamp(),
             'premiumClassesUnlocked': false,
