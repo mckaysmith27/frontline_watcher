@@ -78,10 +78,12 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
         // Enable FAST Notifications toggle (paid feature)
         Card(
           child: SwitchListTile(
-            title: Row(
+            title: Wrap(
+              crossAxisAlignment: WrapCrossAlignment.center,
+              spacing: 6,
+              runSpacing: 4,
               children: [
                 const Text("Enable 'FAST Notifications'"),
-                const SizedBox(width: 4),
                 Text(
                   '(recommended)',
                   style: TextStyle(
@@ -90,16 +92,6 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
                     fontStyle: FontStyle.italic,
                   ),
                 ),
-                      const Spacer(),
-                      if (!hasActiveSubscription)
-                        IconButton(
-                          icon: const Icon(Icons.lock),
-                          color: Colors.orange,
-                          onPressed: () {
-                            _showPurchaseOptions(context);
-                          },
-                          tooltip: 'Requires subscription',
-                        ),
               ],
             ),
             subtitle: Row(
@@ -137,21 +129,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
         // Enable FAST Job Accept toggle (paid feature)
         Card(
           child: SwitchListTile(
-            title: Row(
-              children: [
-                const Text("Enable 'FAST Job Accept'"),
-                      const Spacer(),
-                      if (!hasActiveSubscription)
-                        IconButton(
-                          icon: const Icon(Icons.lock),
-                          color: Colors.orange,
-                          onPressed: () {
-                            _showPurchaseOptions(context);
-                          },
-                          tooltip: 'Requires subscription',
-                        ),
-              ],
-            ),
+            title: const Text("Enable 'FAST Job Accept'"),
             subtitle: Row(
               children: [
                 const Expanded(
@@ -187,13 +165,14 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
         // Apply Filter (keywords) toggle (paid feature)
         Card(
           child: SwitchListTile(
-            title: Row(
+            title: Wrap(
+              crossAxisAlignment: WrapCrossAlignment.center,
+              spacing: 6,
+              runSpacing: 4,
               children: [
                 const Text('Apply Filter (keywords)'),
-                const SizedBox(width: 4),
                 GestureDetector(
                   onTap: () {
-                    // Navigate to filters page
                     Navigator.push(
                       context,
                       MaterialPageRoute(
@@ -210,16 +189,6 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
                     ),
                   ),
                 ),
-                      const Spacer(),
-                      if (!hasActiveSubscription)
-                        IconButton(
-                          icon: const Icon(Icons.lock),
-                          color: Colors.orange,
-                          onPressed: () {
-                            _showPurchaseOptions(context);
-                          },
-                          tooltip: 'Requires subscription',
-                        ),
               ],
             ),
             subtitle: const Text('Apply your keyword filters to job notifications'),
