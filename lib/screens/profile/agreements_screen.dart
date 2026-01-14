@@ -107,7 +107,7 @@ PRIVACY POLICY
 - Delete your account
 - Export your data
 
-For questions, contact: sub67support@gmail.com
+For questions, contact: sub67reachout@gmail.com
 ''';
 
 

@@ -2,9 +2,11 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:table_calendar/table_calendar.dart';
 import '../../providers/credits_provider.dart';
+import '../../providers/filters_provider.dart';
 import '../../models/job.dart';
 import '../../services/job_service.dart';
 import '../../widgets/profile_app_bar.dart';
+import '../../widgets/day_action_bottom_sheet.dart';
 import '../filters/automation_bottom_sheet.dart';
 import '../../widgets/notification_day_card.dart';
 import 'job_card.dart';
@@ -40,8 +42,12 @@ class _ScheduleScreenState extends State<ScheduleScreen> {
       final jobService = JobService();
       _scheduledJobs = await jobService.getScheduledJobs();
       
-      // Load notification dates (committed dates) and separate into future/past
+      // Update scheduled job dates in credits provider
       final creditsProvider = Provider.of<CreditsProvider>(context, listen: false);
+      final jobDates = _scheduledJobs.map((job) => _formatDate(job.date)).toList();
+      await creditsProvider.updateScheduledJobDates(jobDates);
+      
+      // Load notification dates (committed dates) and separate into future/past
       final allDates = creditsProvider.committedDates.toList();
       final now = DateTime.now();
       final today = DateTime(now.year, now.month, now.day);
@@ -96,10 +102,17 @@ class _ScheduleScreenState extends State<ScheduleScreen> {
 
   Color? _getDayColor(DateTime day) {
     final creditsProvider = Provider.of<CreditsProvider>(context, listen: false);
+    final filtersProvider = Provider.of<FiltersProvider>(context, listen: false);
     final dateStr = _formatDate(day);
 
+    // Priority: blue (has job) > orange (unique keywords) > green (credit committed) > red (excluded)
     if (creditsProvider.scheduledJobDates.contains(dateStr)) {
       return Colors.blue; // Has job
+    }
+    // Check for unique keywords (only if it's a notification day)
+    if (creditsProvider.committedDates.contains(dateStr) && 
+        filtersProvider.hasUniqueKeywords(dateStr)) {
+      return Colors.orange; // Has unique keywords
     }
     if (creditsProvider.committedDates.contains(dateStr)) {
       return Colors.green; // Credit committed
@@ -119,82 +132,101 @@ class _ScheduleScreenState extends State<ScheduleScreen> {
 
     final creditsProvider = Provider.of<CreditsProvider>(context, listen: false);
     final dateStr = _formatDate(day);
-
-    if (creditsProvider.excludedDates.contains(dateStr)) {
-      // Show confirmation dialog
-      final confirmed = await showDialog<bool>(
-        context: context,
-        builder: (context) => AlertDialog(
-          title: const Text('Remove Unavailable Day'),
-          content: const Text(
-            'You had marked yourself as unavailable on this day. '
-            'Are you sure you want to remove this "non-work" day and mark yourself now as available?',
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(context, false),
-              child: const Text('Cancel'),
-            ),
-            ElevatedButton(
-              onPressed: () => Navigator.pop(context, true),
-              child: const Text('Yes, Remove'),
-            ),
-          ],
-        ),
+    
+    // Find job for this date if it exists
+    Job? jobForDate;
+    try {
+      jobForDate = _scheduledJobs.firstWhere(
+        (job) => _formatDate(job.date) == dateStr,
       );
+    } catch (e) {
+      jobForDate = null;
+    }
 
-      if (confirmed == true) {
+    final isCommitted = creditsProvider.committedDates.contains(dateStr);
+    final isUnavailable = creditsProvider.excludedDates.contains(dateStr);
+    final hasJob = creditsProvider.scheduledJobDates.contains(dateStr);
+
+    // Show bottom sheet with day actions
+    final action = await showModalBottomSheet<String>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (context) => DayActionBottomSheet(
+        day: day,
+        isCommitted: isCommitted,
+        isUnavailable: isUnavailable,
+        hasJob: hasJob,
+        job: jobForDate,
+      ),
+    );
+
+    if (action == null || !mounted) return;
+
+    try {
+      if (action == 'mark_unavailable') {
+        // Mark as unavailable - credit will be moved automatically
+        await creditsProvider.excludeDate(dateStr);
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Day marked as unavailable. Credit moved to next available day.'),
+              backgroundColor: Colors.orange,
+              duration: Duration(seconds: 2),
+            ),
+          );
+        }
+        await _loadJobs(); // Reload to refresh UI
+      } else if (action == 'cancel_job' && jobForDate != null) {
+        // Cancel job - handle sequential credit management
+        final jobService = JobService();
+        await jobService.cancelJob(jobForDate.id);
+        await creditsProvider.handleJobCanceled(dateStr);
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Job canceled. Credit applied to maintain sequential order.'),
+              backgroundColor: Colors.orange,
+              duration: Duration(seconds: 2),
+            ),
+          );
+        }
+        await _loadJobs(); // Reload to refresh UI
+      } else if (action == 'remove_unavailable') {
+        // Remove unavailable status - handle sequential credit management
         await creditsProvider.removeExcludedDate(dateStr);
-        // Call backend to remove from ESS
-      }
-    } else if (creditsProvider.committedDates.contains(dateStr)) {
-      // Uncommit - this will automatically add the credit back
-      try {
-        await creditsProvider.uncommitDate(dateStr);
+        
+        // Auto-apply filters if date is now a notification day
+        final filtersProvider = Provider.of<FiltersProvider>(context, listen: false);
+        if (creditsProvider.committedDates.contains(dateStr) &&
+            !creditsProvider.excludedDates.contains(dateStr) &&
+            !creditsProvider.scheduledJobDates.contains(dateStr)) {
+          await filtersProvider.autoApplyToNewDates(
+            [dateStr],
+            isUnavailable: (d) => creditsProvider.excludedDates.contains(d),
+            hasJob: (d) => creditsProvider.scheduledJobDates.contains(d),
+          );
+        }
+        
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
-              content: Text('Credit returned'),
+              content: Text('Unavailable status removed. Credit applied to maintain sequential order.'),
               backgroundColor: Colors.green,
-              duration: Duration(seconds: 1),
+              duration: Duration(seconds: 2),
             ),
           );
         }
-      } catch (e) {
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text('Error: $e'),
-              backgroundColor: Colors.red,
-            ),
-          );
-        }
+        await _loadJobs(); // Reload to refresh UI
       }
-    } else if (creditsProvider.scheduledJobDates.contains(dateStr)) {
-      // Already has job, do nothing
-      return;
-    } else {
-      // Commit credit - this will automatically deduct the credit
-      try {
-        await creditsProvider.commitDate(dateStr);
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('Credit committed to this day'),
-              backgroundColor: Colors.green,
-              duration: Duration(seconds: 1),
-            ),
-          );
-        }
-      } catch (e) {
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text('Error: $e'),
-              backgroundColor: Colors.red,
-            ),
-          );
-        }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
       }
     }
   }

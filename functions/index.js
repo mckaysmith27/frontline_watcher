@@ -822,6 +822,18 @@ exports.getUserByShortname = functions.https.onCall(async (data, context) => {
 });
 
 /**
+ * Generate random order ID (7 alphanumeric characters)
+ */
+function generateOrderId() {
+  const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+  let result = '';
+  for (let i = 0; i < 7; i++) {
+    result += chars.charAt(Math.floor(Math.random() * chars.length));
+  }
+  return result;
+}
+
+/**
  * Cloud Function to create business card order
  */
 exports.createBusinessCardOrder = functions.https.onCall(async (data, context) => {
@@ -829,51 +841,61 @@ exports.createBusinessCardOrder = functions.https.onCall(async (data, context) =
     throw new functions.https.HttpsError('unauthenticated', 'User must be authenticated');
   }
 
-  const { quantity, shippingAddress, shortname } = data;
-  if (!quantity || !shippingAddress || !shortname) {
+  const { 
+    orderId, 
+    quantity, 
+    shortname, 
+    firstName, 
+    lastName, 
+    userPhone, 
+    userEmail,
+    shippingAddress, 
+    shippingOption,
+    basePrice,
+    discount,
+    totalPrice
+  } = data;
+  
+  if (!quantity || !shippingAddress || !shortname || !firstName || !lastName) {
     throw new functions.https.HttpsError('invalid-argument', 'Missing required fields');
   }
 
   const userId = context.auth.uid;
   const db = admin.firestore();
   
-  // Get user data
-  const userDoc = await db.collection('users').doc(userId).get();
-  const userData = userDoc.data();
+  // Generate order ID if not provided
+  const finalOrderId = orderId || generateOrderId();
   
-  // Check if user has credits or subscription
-  const hasCredits = (userData?.credits || 0) > 0;
-  const hasSubscription = userData?.subscriptionActive === true || 
-                          userData?.hasActiveSubscription === true;
-  const isFree = quantity === 5 && (hasCredits || hasSubscription);
-  
-  // Calculate price
-  const pricing = {
-    5: 0.0,
-    10: 5.99,
-    20: 9.99,
-    50: 19.00,
-    100: 34.99,
-    500: 89.99,
-  };
-  const price = isFree ? 0.0 : (pricing[quantity] || 0.0);
-  
-  // Calculate delivery date (10-14 days)
+  // Calculate shipping days based on option
+  const shippingDays = shippingOption === 'express' ? 7 : 14;
   const deliveryDate = new Date();
-  deliveryDate.setDate(deliveryDate.getDate() + 12);
+  deliveryDate.setDate(deliveryDate.getDate() + shippingDays);
   
-  // Create order
+  // TODO: Generate printable business card image
+  // This would typically use a library like canvas or call an image generation service
+  // For now, we'll store a placeholder URL that can be generated later
+  const cardImageUrl = null; // Will be generated and stored in Firebase Storage
+  
+  // Create order document
   const orderData = {
+    orderId: finalOrderId,
     userId: userId,
     shortname: shortname,
-    userName: userData?.shortname || userData?.nickname || 'User',
-    userPhone: userData?.phoneNumber || null,
-    userEmail: context.auth.email || null,
-    quantity: quantity,
-    price: price,
-    isFree: isFree,
+    firstName: firstName,
+    lastName: lastName,
+    userPhone: userPhone || null,
+    userEmail: userEmail || context.auth.email || null,
+    orderQuantity: quantity,
+    orderTimestamp: admin.firestore.FieldValue.serverTimestamp(),
+    basePrice: basePrice || 0.0,
+    discount: discount || 0.0,
+    discountedPrice: (basePrice || 0.0) * (1 - (discount || 0.0)),
+    shippingOption: shippingOption || 'standard',
+    shippingPrice: shippingOption === 'express' ? 3.99 : 0.0,
+    totalPrice: totalPrice || 0.0,
     shippingAddress: shippingAddress,
-    status: isFree ? 'confirmed' : 'pending_payment',
+    status: 'pending',
+    cardImageUrl: cardImageUrl, // Will be populated when image is generated
     estimatedDelivery: deliveryDate.toISOString().split('T')[0],
     createdAt: admin.firestore.FieldValue.serverTimestamp(),
   };
@@ -881,9 +903,142 @@ exports.createBusinessCardOrder = functions.https.onCall(async (data, context) =
   const orderRef = await db.collection('business_card_orders').add(orderData);
   
   return {
-    orderId: orderRef.id,
-    isFree: isFree,
-    price: price,
+    orderId: finalOrderId,
+    documentId: orderRef.id,
+    totalPrice: totalPrice,
     estimatedDelivery: orderData.estimatedDelivery,
+  };
+});
+
+/**
+ * Cloud Function to refund a business card order
+ */
+exports.refundBusinessCardOrder = functions.https.onCall(async (data, context) => {
+  if (!context.auth) {
+    throw new functions.https.HttpsError('unauthenticated', 'User must be authenticated');
+  }
+
+  const { orderId, userId, userEmail, totalPrice, refundNote } = data;
+  
+  if (!orderId || !userId || !userEmail || !refundNote) {
+    throw new functions.https.HttpsError('invalid-argument', 'Missing required fields');
+  }
+
+  // Check if user is admin
+  const adminDoc = await admin.firestore().collection('users').doc(context.auth.uid).get();
+  const adminData = adminDoc.data();
+  if (adminData?.role !== 'admin' && adminData?.isAdmin !== true) {
+    throw new functions.https.HttpsError('permission-denied', 'Admin access required');
+  }
+
+  const db = admin.firestore();
+  
+  // Get order document
+  const orderQuery = await db.collection('business_card_orders')
+    .where('orderId', '==', orderId)
+    .limit(1)
+    .get();
+  
+  if (orderQuery.empty) {
+    throw new functions.https.HttpsError('not-found', 'Order not found');
+  }
+  
+  const orderDoc = orderQuery.docs[0];
+  const orderData = orderDoc.data();
+  
+  // Check if order is already refunded
+  if (orderData.status === 'refunded') {
+    throw new functions.https.HttpsError('failed-precondition', 'Order already refunded');
+  }
+  
+  // Update order status
+  await orderDoc.ref.update({
+    status: 'refunded',
+    refundNote: refundNote,
+    refundedAt: admin.firestore.FieldValue.serverTimestamp(),
+    refundedBy: context.auth.uid,
+  });
+  
+  // Get user's FCM tokens for notification
+  const userDoc = await db.collection('users').doc(userId).get();
+  const userData = userDoc.data();
+  const fcmTokens = userData?.fcmTokens || [];
+  
+  // Send FCM notification to user
+  if (fcmTokens.length > 0) {
+    try {
+      const message = {
+        notification: {
+          title: 'Order Refunded',
+          body: `Your business card order (${orderId}) has been refunded. Check your email for details.`,
+        },
+        data: {
+          type: 'order_refunded',
+          orderId: orderId,
+          totalPrice: totalPrice.toString(),
+        },
+        tokens: fcmTokens,
+        android: {
+          priority: 'high',
+          notification: {
+            channelId: 'job_notifications',
+            sound: 'default',
+            priority: 'high',
+          },
+        },
+        apns: {
+          headers: {
+            'apns-priority': '10',
+          },
+          payload: {
+            aps: {
+              sound: 'default',
+              badge: 1,
+            },
+          },
+        },
+      };
+      
+      await admin.messaging().sendEachForMulticast(message);
+      console.log(`[Refund] Sent FCM notification to user ${userId}`);
+    } catch (error) {
+      console.error(`[Refund] Error sending FCM notification: ${error}`);
+      // Don't fail the refund if notification fails
+    }
+  }
+  
+  // Send email notification
+  try {
+    // TODO: Integrate with email service (SendGrid, Mailgun, etc.)
+    // For now, we'll create a document that can be processed by an email service
+    await db.collection('email_queue').add({
+      to: userEmail,
+      subject: 'Order Refund - Sub67 Business Cards',
+      template: 'order_refund',
+      data: {
+        orderId: orderId,
+        totalPrice: totalPrice,
+        refundNote: refundNote,
+        firstName: orderData.firstName || '',
+        lastName: orderData.lastName || '',
+      },
+      createdAt: admin.firestore.FieldValue.serverTimestamp(),
+    });
+    console.log(`[Refund] Queued email notification to ${userEmail}`);
+  } catch (error) {
+    console.error(`[Refund] Error queueing email: ${error}`);
+    // Don't fail the refund if email fails
+  }
+  
+  // TODO: Process actual refund through payment provider (Stripe, etc.)
+  // This would typically involve:
+  // 1. Creating a refund in Stripe
+  // 2. Handling the refund webhook
+  // 3. Updating order status based on refund result
+  
+  return {
+    success: true,
+    orderId: orderId,
+    message: 'Order refunded successfully. User has been notified.',
   };
 });

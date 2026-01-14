@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import '../../providers/auth_provider.dart';
 import '../../providers/theme_provider.dart';
 import '../../widgets/profile_app_bar.dart';
@@ -251,43 +252,84 @@ class ProfileScreen extends StatelessWidget {
 
     showDialog(
       context: context,
-      builder: (context) => WillPopScope(
-        onWillPop: () async {
-          controller.dispose();
-          return true;
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (context, setDialogState) {
+          return AlertDialog(
+            title: const Text('Change Shortname'),
+            content: TextField(
+              controller: controller,
+              decoration: const InputDecoration(
+                labelText: 'Shortname',
+                border: OutlineInputBorder(),
+              ),
+              autofocus: true,
+            ),
+            actions: [
+              TextButton(
+                onPressed: () {
+                  Navigator.pop(dialogContext);
+                  controller.dispose();
+                },
+                child: const Text('Cancel'),
+              ),
+              ElevatedButton(
+                onPressed: () async {
+                  final shortname = controller.text.trim();
+                  if (shortname.isEmpty) {
+                    ScaffoldMessenger.of(dialogContext).showSnackBar(
+                      const SnackBar(
+                        content: Text('Shortname cannot be empty'),
+                        backgroundColor: Colors.red,
+                      ),
+                    );
+                    return;
+                  }
+
+                  try {
+                    final user = authProvider.user;
+                    if (user != null) {
+                      // Update shortname in Firestore
+                      await FirebaseFirestore.instance
+                          .collection('users')
+                          .doc(user.uid)
+                          .update({
+                        'shortname': shortname.toLowerCase(),
+                      });
+
+                      if (dialogContext.mounted) {
+                        Navigator.pop(dialogContext);
+                        controller.dispose();
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(
+                            content: Text('Shortname updated'),
+                            backgroundColor: Colors.green,
+                          ),
+                        );
+                      }
+                    }
+                  } catch (e) {
+                    if (dialogContext.mounted) {
+                      ScaffoldMessenger.of(dialogContext).showSnackBar(
+                        SnackBar(
+                          content: Text('Error updating shortname: $e'),
+                          backgroundColor: Colors.red,
+                        ),
+                      );
+                    }
+                  }
+                },
+                child: const Text('Save'),
+              ),
+            ],
+          );
         },
-        child: AlertDialog(
-          title: const Text('Change Shortname'),
-          content: TextField(
-            controller: controller,
-            decoration: const InputDecoration(
-              labelText: 'Shortname',
-              border: OutlineInputBorder(),
-            ),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () {
-                controller.dispose();
-                Navigator.pop(context);
-              },
-              child: const Text('Cancel'),
-            ),
-            ElevatedButton(
-              onPressed: () async {
-                // Update shortname in Firestore
-                controller.dispose();
-                Navigator.pop(context);
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('Shortname updated')),
-                );
-              },
-              child: const Text('Save'),
-            ),
-          ],
-        ),
       ),
-    );
+    ).then((_) {
+      // Dispose controller when dialog is closed
+      if (controller.hasClients) {
+        controller.dispose();
+      }
+    });
   }
 
   void _showVerificationDialog(BuildContext context) {

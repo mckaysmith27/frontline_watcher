@@ -1,3 +1,4 @@
+import 'dart:math';
 import 'package:flutter/foundation.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -81,17 +82,21 @@ class AuthProvider extends ChangeNotifier {
       if (credential.user != null) {
         try {
           print('[AuthProvider] Saving user data to Firestore...');
+          
+          // Generate default shortname
+          final defaultShortname = await _generateDefaultShortname();
+          
           await _firestore.collection('users').doc(credential.user!.uid).set({
             'username': username,
             'email': email,
             'nickname': username,
-            'shortname': null, // Will be set later via business card screen
+            'shortname': defaultShortname,
             'credits': 0,
             'createdAt': FieldValue.serverTimestamp(),
             'premiumClassesUnlocked': false,
             'premiumWorkdaysUnlocked': false,
           });
-          print('[AuthProvider] User data saved to Firestore successfully');
+          print('[AuthProvider] User data saved to Firestore successfully with shortname: $defaultShortname');
         } catch (firestoreError) {
           print('[AuthProvider] Firestore error: $firestoreError');
           print('[AuthProvider] Firestore error type: ${firestoreError.runtimeType}');
@@ -243,6 +248,56 @@ class AuthProvider extends ChangeNotifier {
         key: 'ess_password_${_user!.uid}',
       ),
     };
+  }
+
+  /// Generate a default shortname: "sub" + 3 digits (3 attempts), then "sub" + 8 alphanumeric
+  Future<String> _generateDefaultShortname() async {
+    final random = Random();
+    
+    // Try "sub" + 3 random digits (3 attempts)
+    for (int attempt = 0; attempt < 3; attempt++) {
+      final threeDigits = (100 + random.nextInt(900)).toString(); // 100-999
+      final candidate = 'sub$threeDigits';
+      
+      if (await _checkShortnameAvailable(candidate)) {
+        print('[AuthProvider] Generated shortname: $candidate (attempt ${attempt + 1})');
+        return candidate.toLowerCase();
+      }
+    }
+    
+    // If all 3 attempts failed, use "sub" + 8 random alphanumeric characters (case-insensitive)
+    const chars = '0123456789abcdefghijklmnopqrstuvwxyz';
+    String shortname = 'sub';
+    
+    // Generate until we find an available one (max 10 retries)
+    int retryCount = 0;
+    do {
+      shortname = 'sub';
+      for (int i = 0; i < 8; i++) {
+        final index = random.nextInt(chars.length);
+        shortname += chars[index];
+      }
+      retryCount++;
+    } while (!await _checkShortnameAvailable(shortname) && retryCount < 10);
+    
+    print('[AuthProvider] Generated shortname with alphanumeric: $shortname');
+    return shortname.toLowerCase();
+  }
+
+  /// Check if a shortname is available (case-insensitive)
+  Future<bool> _checkShortnameAvailable(String shortname) async {
+    try {
+      final snapshot = await _firestore
+          .collection('users')
+          .where('shortname', isEqualTo: shortname.toLowerCase())
+          .limit(1)
+          .get();
+      return snapshot.docs.isEmpty;
+    } catch (e) {
+      print('Error checking shortname availability: $e');
+      // If check fails, assume it's available to avoid blocking signup
+      return true;
+    }
   }
 }
 

@@ -99,7 +99,16 @@ class _PaymentScreenState extends State<PaymentScreen> {
 
       // Add credits with error handling
       try {
-        await creditsProvider.addCredits(credits);
+        await creditsProvider.addCredits(credits, promoCode: _appliedPromo);
+        
+        // Auto-apply global filters to newly committed dates
+        final filtersProvider = Provider.of<FiltersProvider>(context, listen: false);
+        final newDates = creditsProvider.committedDates;
+        await filtersProvider.autoApplyToNewDates(
+          newDates,
+          isUnavailable: (dateStr) => creditsProvider.excludedDates.contains(dateStr),
+          hasJob: (dateStr) => creditsProvider.scheduledJobDates.contains(dateStr),
+        );
       } catch (e) {
         print('Error adding credits: $e');
         throw Exception('Failed to add credits: $e');

@@ -149,7 +149,7 @@ Proprietary - All rights reserved
 
 ## Support
 
-For support, email: sub67support@gmail.com
+For support, email: sub67reachout@gmail.com
 
 
 

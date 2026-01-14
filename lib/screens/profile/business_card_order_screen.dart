@@ -3,19 +3,24 @@ import 'package:provider/provider.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_functions/cloud_functions.dart';
+import 'package:qr_flutter/qr_flutter.dart';
+import 'dart:math';
 import '../../providers/credits_provider.dart';
 import '../../providers/auth_provider.dart';
+import '../../config/app_config.dart';
 
 class BusinessCardOrderScreen extends StatefulWidget {
   final String shortname;
-  final String userName;
+  final String firstName;
+  final String lastName;
   final String? userPhone;
   final String? userEmail;
 
   const BusinessCardOrderScreen({
     super.key,
     required this.shortname,
-    required this.userName,
+    required this.firstName,
+    required this.lastName,
     this.userPhone,
     this.userEmail,
   });
@@ -29,18 +34,44 @@ class _BusinessCardOrderScreenState extends State<BusinessCardOrderScreen> {
   final FirebaseAuth _auth = FirebaseAuth.instance;
   final FirebaseFunctions _functions = FirebaseFunctions.instance;
   
-  int _selectedQuantity = 5; // Default to free option
+  int _selectedQuantity = 20; // Default to recommended
+  String _selectedShipping = 'standard'; // 'standard' or 'express'
   bool _isProcessing = false;
   bool _hasCreditsOrSubscription = false;
   
-  // Business card pricing
-  static const Map<int, double> _pricing = {
-    5: 0.0,      // Free (if has credits/subscription)
+  // Promo code
+  final TextEditingController _promoController = TextEditingController();
+  String? _appliedPromo;
+  double _promoDiscount = 0.0;
+  
+  // Payment details
+  final TextEditingController _cardNumberController = TextEditingController();
+  final TextEditingController _expiryController = TextEditingController();
+  final TextEditingController _cvvController = TextEditingController();
+  final TextEditingController _cardNameController = TextEditingController();
+  
+  // Business card pricing (base prices)
+  static const Map<int, double> _basePricing = {
+    5: 0.0,
     10: 5.99,
     20: 9.99,
     50: 19.00,
     100: 34.99,
     500: 89.99,
+  };
+  
+  // Shipping options
+  static const Map<String, Map<String, dynamic>> _shippingOptions = {
+    'standard': {
+      'name': 'USPS 10-14 business days',
+      'price': 0.0,
+      'days': '10-14',
+    },
+    'express': {
+      'name': 'USPS 4-7 business days',
+      'price': 3.99,
+      'days': '4-7',
+    },
   };
   
   // Shipping address fields
@@ -66,6 +97,11 @@ class _BusinessCardOrderScreenState extends State<BusinessCardOrderScreen> {
     _cityController.dispose();
     _stateController.dispose();
     _zipController.dispose();
+    _promoController.dispose();
+    _cardNumberController.dispose();
+    _expiryController.dispose();
+    _cvvController.dispose();
+    _cardNameController.dispose();
     super.dispose();
   }
   
@@ -109,15 +145,118 @@ class _BusinessCardOrderScreenState extends State<BusinessCardOrderScreen> {
     }
   }
   
-  double get _totalPrice {
-    if (_selectedQuantity == 5 && _hasCreditsOrSubscription) {
-      return 0.0; // Free
+  // Calculate discount based on credits/subscription
+  double _getDiscount(int quantity) {
+    if (!_hasCreditsOrSubscription) return 0.0;
+    
+    if (quantity <= 20) {
+      return 0.10; // 10% off
+    } else if (quantity >= 50) {
+      return 0.20; // 20% off
     }
-    return _pricing[_selectedQuantity] ?? 0.0;
+    return 0.0;
   }
   
-  bool get _isFree {
-    return _selectedQuantity == 5 && _hasCreditsOrSubscription;
+  // Calculate promo code discount (can be combined with credits/subscription discount)
+  double _getPromoDiscount() {
+    return _promoDiscount;
+  }
+  
+  Future<void> _applyPromo() async {
+    final promo = _promoController.text.trim();
+    if (promo.isEmpty) return;
+
+    // Check if promo code is valid (using same codes as credit purchases)
+    final validPromos = AppConfig.creditPromoCodes;
+    final isValid = validPromos.any(
+      (p) => p.toLowerCase() == promo.toLowerCase(),
+    );
+
+    if (!isValid) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Invalid promo code'),
+          backgroundColor: Colors.red,
+        ),
+      );
+      return;
+    }
+    
+    // Check if promo code has already been used
+    final creditsProvider = Provider.of<CreditsProvider>(context, listen: false);
+    final hasUsed = await creditsProvider.hasUsedPromoCode(promo);
+
+    if (hasUsed) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('This promo code has already been used'),
+          backgroundColor: Colors.orange,
+        ),
+      );
+      return;
+    }
+
+    // Apply discount (10% off for business card orders)
+    setState(() {
+      _appliedPromo = promo;
+      _promoDiscount = 0.10; // 10% discount from promo code
+    });
+    
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('Promo code applied!'),
+        backgroundColor: Colors.green,
+      ),
+    );
+  }
+  
+  double _getBasePrice(int quantity) {
+    return _basePricing[quantity] ?? 0.0;
+  }
+  
+  double _getDiscountedPrice(int quantity) {
+    final basePrice = _getBasePrice(quantity);
+    final creditsDiscount = _getDiscount(quantity);
+    final promoDiscount = _getPromoDiscount();
+    
+    // Apply both discounts (multiplicative)
+    final totalDiscount = 1 - ((1 - creditsDiscount) * (1 - promoDiscount));
+    return basePrice * (1 - totalDiscount);
+  }
+  
+  double get _totalPrice {
+    final basePrice = _getBasePrice(_selectedQuantity);
+    final creditsDiscount = _getDiscount(_selectedQuantity);
+    final promoDiscount = _getPromoDiscount();
+    
+    // Apply both discounts (multiplicative)
+    final totalDiscount = 1 - ((1 - creditsDiscount) * (1 - promoDiscount));
+    final discountedPrice = basePrice * (1 - totalDiscount);
+    
+    final shippingPrice = _shippingOptions[_selectedShipping]!['price'] as double;
+    return discountedPrice + shippingPrice;
+  }
+  
+  double get _finalPriceAfterAllDiscounts {
+    final basePrice = _getBasePrice(_selectedQuantity);
+    final creditsDiscount = _getDiscount(_selectedQuantity);
+    final promoDiscount = _getPromoDiscount();
+    
+    // Apply both discounts (multiplicative)
+    final totalDiscount = 1 - ((1 - creditsDiscount) * (1 - promoDiscount));
+    final discountedPrice = basePrice * (1 - totalDiscount);
+    
+    final shippingPrice = _shippingOptions[_selectedShipping]!['price'] as double;
+    return discountedPrice + shippingPrice;
+  }
+  
+  String _generateOrderId() {
+    const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+    final random = Random();
+    return String.fromCharCodes(Iterable.generate(
+      7,
+      (_) => chars.codeUnitAt(random.nextInt(chars.length)),
+    ));
   }
   
   Future<void> _processOrder() async {
@@ -144,6 +283,8 @@ class _BusinessCardOrderScreenState extends State<BusinessCardOrderScreen> {
       final user = _auth.currentUser;
       if (user == null) throw Exception('User not authenticated');
       
+      final orderId = _generateOrderId();
+      
       // Save shipping address
       await _firestore.collection('users').doc(user.uid).update({
         'shippingAddress': {
@@ -156,90 +297,121 @@ class _BusinessCardOrderScreenState extends State<BusinessCardOrderScreen> {
         },
       });
       
-      // Use Cloud Function to create order
-      String? orderId;
+      // Create order document
+      final orderData = {
+        'orderId': orderId,
+        'userId': user.uid,
+        'shortname': widget.shortname,
+        'firstName': widget.firstName,
+        'lastName': widget.lastName,
+        'userPhone': widget.userPhone,
+        'userEmail': widget.userEmail,
+        'orderQuantity': _selectedQuantity,
+        'orderTimestamp': FieldValue.serverTimestamp(),
+        'basePrice': _getBasePrice(_selectedQuantity),
+        'discount': _getDiscount(_selectedQuantity),
+        'promoCode': _appliedPromo,
+        'promoDiscount': _promoDiscount,
+        'discountedPrice': _getDiscountedPrice(_selectedQuantity),
+        'shippingOption': _selectedShipping,
+        'shippingPrice': _shippingOptions[_selectedShipping]!['price'] as double,
+        'totalPrice': _finalPriceAfterAllDiscounts,
+        'shippingAddress': {
+          'name': _nameController.text,
+          'address1': _address1Controller.text,
+          'address2': _address2Controller.text,
+          'city': _cityController.text,
+          'state': _stateController.text,
+          'zip': _zipController.text,
+        },
+        'status': 'pending',
+        'createdAt': FieldValue.serverTimestamp(),
+      };
+      
+      // Process payment first
+      if (_totalPrice > 0) {
+        // Validate payment details
+        if (_cardNumberController.text.isEmpty ||
+            _expiryController.text.isEmpty ||
+            _cvvController.text.isEmpty ||
+            _cardNameController.text.isEmpty) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Please fill in all payment details'),
+              backgroundColor: Colors.red,
+            ),
+          );
+          setState(() => _isProcessing = false);
+          return;
+        }
+        
+        // Simulate payment processing (replace with actual Stripe/payment integration)
+        await Future.delayed(const Duration(seconds: 2));
+        
+        // TODO: Integrate with actual payment provider (Stripe, etc.)
+        // For now, we'll simulate successful payment
+      }
+      
+      // If promo code was used, mark it as used
+      if (_appliedPromo != null) {
+        try {
+          final creditsProvider = Provider.of<CreditsProvider>(context, listen: false);
+          await creditsProvider.markPromoCodeAsUsed(_appliedPromo!);
+        } catch (e) {
+          print('Error marking promo code as used: $e');
+          // Continue anyway - don't block the order
+        }
+      }
+      
+      // Use Cloud Function to create order (will handle image generation)
       try {
         final createOrder = _functions.httpsCallable('createBusinessCardOrder');
         
         final result = await createOrder.call({
+          'orderId': orderId,
           'quantity': _selectedQuantity,
           'shortname': widget.shortname,
-          'shippingAddress': {
-            'name': _nameController.text,
-            'address1': _address1Controller.text,
-            'address2': _address2Controller.text,
-            'city': _cityController.text,
-            'state': _stateController.text,
-            'zip': _zipController.text,
-          },
+          'firstName': widget.firstName,
+          'lastName': widget.lastName,
+          'userPhone': widget.userPhone,
+          'userEmail': widget.userEmail,
+          'shippingAddress': orderData['shippingAddress'],
+          'shippingOption': _selectedShipping,
+          'basePrice': orderData['basePrice'],
+          'discount': orderData['discount'],
+          'promoCode': _appliedPromo,
+          'promoDiscount': _promoDiscount,
+          'totalPrice': _finalPriceAfterAllDiscounts,
         });
         
-        final orderData = result.data as Map<String, dynamic>;
-        orderId = orderData['orderId'] as String;
-        final isFree = orderData['isFree'] as bool;
-        
-        if (isFree) {
-          // Free order - confirm immediately
-          if (mounted) {
-            Navigator.pop(context);
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(
-                content: Text(
-                  'Order confirmed! Your ${_selectedQuantity} business cards will arrive in 10-14 days via USPS.',
-                ),
-                backgroundColor: Colors.green,
-                duration: const Duration(seconds: 5),
+        if (mounted) {
+          Navigator.pop(context);
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(
+                'Order confirmed! Order ID: $orderId. Your ${_selectedQuantity} cards will arrive in ${_shippingOptions[_selectedShipping]!['days']} business days via USPS.',
               ),
-            );
-          }
-          return;
-        } else {
-          // Paid order - process payment
-          await _processPayment(orderId);
+              backgroundColor: Colors.green,
+              duration: const Duration(seconds: 5),
+            ),
+          );
         }
       } catch (e) {
         print('Error creating order via Cloud Function: $e');
-        // Fallback to direct Firestore if Cloud Function fails
-        final orderData = {
-          'userId': user.uid,
-          'shortname': widget.shortname,
-          'userName': widget.userName,
-          'userPhone': widget.userPhone,
-          'userEmail': widget.userEmail,
-          'quantity': _selectedQuantity,
-          'price': _totalPrice,
-          'isFree': _isFree,
-          'shippingAddress': {
-            'name': _nameController.text,
-            'address1': _address1Controller.text,
-            'address2': _address2Controller.text,
-            'city': _cityController.text,
-            'state': _stateController.text,
-            'zip': _zipController.text,
-          },
-          'status': _isFree ? 'confirmed' : 'pending_payment',
-          'estimatedDelivery': _calculateDeliveryDate(),
-          'createdAt': FieldValue.serverTimestamp(),
-        };
+        // Fallback: create order directly
+        await _firestore.collection('business_card_orders').add(orderData);
         
-        final orderRef = await _firestore.collection('business_card_orders').add(orderData);
-        orderId = orderRef.id;
-        
-        if (_isFree) {
-          if (mounted) {
-            Navigator.pop(context);
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(
-                content: Text(
-                  'Order confirmed! Your ${_selectedQuantity} business cards will arrive in 10-14 days via USPS.',
-                ),
-                backgroundColor: Colors.green,
-                duration: const Duration(seconds: 5),
+        if (mounted) {
+          Navigator.pop(context);
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(
+                'Order confirmed! Order ID: $orderId. Your ${_selectedQuantity} cards will arrive in ${_shippingOptions[_selectedShipping]!['days']} business days via USPS.',
               ),
-            );
-          }
-        } else {
-          await _processPayment(orderId);
+              backgroundColor: Colors.green,
+              duration: const Duration(seconds: 5),
+            ),
+          );
         }
       }
     } catch (e) {
@@ -259,62 +431,121 @@ class _BusinessCardOrderScreenState extends State<BusinessCardOrderScreen> {
     }
   }
   
-  Future<void> _processPayment(String orderId) async {
-    // TODO: Integrate with Stripe or payment provider
-    // For now, show payment screen or process payment
-    // In production, this would integrate with Stripe Checkout or similar
-    
-    // Simulate payment processing
-    await Future.delayed(const Duration(seconds: 2));
-    
-    // Update order status
-    await _firestore.collection('business_card_orders').doc(orderId).update({
-      'status': 'confirmed',
-      'paidAt': FieldValue.serverTimestamp(),
-    });
-    
-    if (mounted) {
-      Navigator.pop(context);
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            'Payment successful! Your ${_selectedQuantity} business cards will arrive in 10-14 days via USPS.',
+  Widget _buildBusinessCardPreview() {
+    return Container(
+      width: double.infinity,
+      constraints: const BoxConstraints(maxWidth: 400),
+      height: 230,
+      padding: const EdgeInsets.all(20.0),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.zero,
+        border: Border.all(color: Colors.grey[300]!, width: 1),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.1),
+            blurRadius: 8,
+            offset: const Offset(0, 2),
           ),
-          backgroundColor: Colors.green,
-          duration: const Duration(seconds: 5),
-        ),
-      );
-    }
-  }
-  
-  String _calculateDeliveryDate() {
-    final now = DateTime.now();
-    final deliveryDate = now.add(const Duration(days: 12)); // Average of 10-14 days
-    return '${deliveryDate.month}/${deliveryDate.day}/${deliveryDate.year}';
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  '${widget.firstName} ${widget.lastName}',
+                  style: const TextStyle(
+                    fontSize: 20,
+                    fontWeight: FontWeight.bold,
+                    color: Colors.black87,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 16),
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    if (widget.userPhone != null && widget.userPhone!.isNotEmpty)
+                      Text(
+                        widget.userPhone!,
+                        style: const TextStyle(
+                          fontSize: 14,
+                          color: Colors.black54,
+                        ),
+                      ),
+                    if (widget.userPhone != null && widget.userPhone!.isNotEmpty)
+                      const SizedBox(height: 8),
+                    if (widget.userEmail != null && widget.userEmail!.isNotEmpty)
+                      Text(
+                        widget.userEmail!,
+                        style: const TextStyle(
+                          fontSize: 14,
+                          color: Colors.black54,
+                        ),
+                      ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 16),
+              QrImageView(
+                data: 'https://sub67.com/${widget.shortname}',
+                version: QrVersions.auto,
+                size: 100,
+                backgroundColor: Colors.white,
+              ),
+            ],
+          ),
+          const Spacer(),
+          Text(
+            'sub67.com/${widget.shortname}',
+            style: const TextStyle(
+              fontSize: 14,
+              color: Colors.black87,
+              fontWeight: FontWeight.w500,
+            ),
+          ),
+        ],
+      ),
+    );
   }
   
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Order Business Cards'),
+        title: const Text('Order Cards'),
       ),
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(24.0),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
+            // Business Card Preview (non-editable)
+            _buildBusinessCardPreview(),
+            const SizedBox(height: 24),
+            
             // Quantity Selection
             Text(
               'Select Quantity',
               style: Theme.of(context).textTheme.titleLarge,
             ),
             const SizedBox(height: 16),
-            ..._pricing.entries.map((entry) {
+            ..._basePricing.entries.map((entry) {
               final quantity = entry.key;
-              final price = entry.value;
+              final basePrice = entry.value;
               final isSelected = _selectedQuantity == quantity;
-              final isFreeOption = quantity == 5 && _hasCreditsOrSubscription;
+              final discount = _getDiscount(quantity);
+              final discountedPrice = basePrice * (1 - discount);
+              final showDiscount = discount > 0;
               
               return Card(
                 margin: const EdgeInsets.only(bottom: 12),
@@ -322,23 +553,90 @@ class _BusinessCardOrderScreenState extends State<BusinessCardOrderScreen> {
                     ? Theme.of(context).colorScheme.primaryContainer
                     : null,
                 child: RadioListTile<int>(
-                  title: Text('$quantity Business Cards'),
-                  subtitle: Text(
-                    isFreeOption && quantity == 5
-                        ? 'Free* (with credits or subscription)'
-                        : '\$${price.toStringAsFixed(2)}',
-                    style: TextStyle(
-                      color: isFreeOption && quantity == 5
-                          ? Colors.green
-                          : null,
-                      fontWeight: FontWeight.bold,
-                    ),
+                  title: Row(
+                    children: [
+                      Text('$quantity Cards'),
+                      if (quantity == 20) ...[
+                        const SizedBox(width: 8),
+                        Text(
+                          '(recommended)',
+                          style: TextStyle(
+                            fontSize: 12,
+                            fontStyle: FontStyle.italic,
+                            color: Colors.grey[600],
+                          ),
+                        ),
+                      ],
+                    ],
                   ),
+                  subtitle: showDiscount
+                      ? Row(
+                          children: [
+                            Text(
+                              '\$${basePrice.toStringAsFixed(2)}',
+                              style: TextStyle(
+                                decoration: TextDecoration.lineThrough,
+                                color: Colors.grey[600],
+                              ),
+                            ),
+                            const SizedBox(width: 8),
+                            Text(
+                              '\$${discountedPrice.toStringAsFixed(2)}',
+                              style: const TextStyle(
+                                fontWeight: FontWeight.bold,
+                                color: Colors.green,
+                              ),
+                            ),
+                          ],
+                        )
+                      : Text(
+                          '\$${basePrice.toStringAsFixed(2)}',
+                          style: const TextStyle(fontWeight: FontWeight.bold),
+                        ),
                   value: quantity,
                   groupValue: _selectedQuantity,
                   onChanged: (value) {
                     setState(() {
                       _selectedQuantity = value!;
+                    });
+                  },
+                ),
+              );
+            }),
+            const SizedBox(height: 24),
+            
+            // Shipping Options
+            Text(
+              'Shipping Options',
+              style: Theme.of(context).textTheme.titleLarge,
+            ),
+            const SizedBox(height: 16),
+            ..._shippingOptions.entries.map((entry) {
+              final key = entry.key;
+              final option = entry.value;
+              final isSelected = _selectedShipping == key;
+              
+              return Card(
+                margin: const EdgeInsets.only(bottom: 12),
+                color: isSelected 
+                    ? Theme.of(context).colorScheme.primaryContainer
+                    : null,
+                child: RadioListTile<String>(
+                  title: Text(option['name'] as String),
+                  subtitle: Text(
+                    option['price'] == 0.0
+                        ? 'Free'
+                        : '\$${(option['price'] as double).toStringAsFixed(2)}',
+                    style: TextStyle(
+                      fontWeight: FontWeight.bold,
+                      color: option['price'] == 0.0 ? Colors.green : null,
+                    ),
+                  ),
+                  value: key,
+                  groupValue: _selectedShipping,
+                  onChanged: (value) {
+                    setState(() {
+                      _selectedShipping = value!;
                     });
                   },
                 ),
@@ -415,6 +713,115 @@ class _BusinessCardOrderScreenState extends State<BusinessCardOrderScreen> {
             ),
             const SizedBox(height: 24),
             
+            // Promo Code Section
+            Text(
+              'Promo Code',
+              style: Theme.of(context).textTheme.titleLarge,
+            ),
+            const SizedBox(height: 16),
+            Row(
+              children: [
+                Expanded(
+                  child: TextField(
+                    controller: _promoController,
+                    decoration: InputDecoration(
+                      hintText: 'Enter promo code',
+                      border: const OutlineInputBorder(),
+                      suffixIcon: _appliedPromo != null
+                          ? IconButton(
+                              icon: const Icon(Icons.check_circle, color: Colors.green),
+                              onPressed: () {
+                                setState(() {
+                                  _appliedPromo = null;
+                                  _promoDiscount = 0.0;
+                                  _promoController.clear();
+                                });
+                              },
+                            )
+                          : null,
+                    ),
+                    textCapitalization: TextCapitalization.characters,
+                    enabled: _appliedPromo == null,
+                  ),
+                ),
+                const SizedBox(width: 8),
+                ElevatedButton(
+                  onPressed: _appliedPromo == null ? _applyPromo : null,
+                  child: const Text('Apply'),
+                ),
+              ],
+            ),
+            if (_appliedPromo != null) ...[
+              const SizedBox(height: 8),
+              Text(
+                'Promo code "$_appliedPromo" applied!',
+                style: TextStyle(
+                  color: Colors.green[700],
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+            ],
+            const SizedBox(height: 24),
+            
+            // Payment Details Section
+            if (_finalPriceAfterAllDiscounts > 0) ...[
+              Text(
+                'Payment Details',
+                style: Theme.of(context).textTheme.titleLarge,
+              ),
+              const SizedBox(height: 16),
+              TextField(
+                controller: _cardNameController,
+                decoration: const InputDecoration(
+                  labelText: 'Cardholder Name *',
+                  border: OutlineInputBorder(),
+                ),
+              ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: _cardNumberController,
+                decoration: const InputDecoration(
+                  labelText: 'Card Number *',
+                  border: OutlineInputBorder(),
+                  hintText: '1234 5678 9012 3456',
+                ),
+                keyboardType: TextInputType.number,
+                maxLength: 19, // 16 digits + 3 spaces
+              ),
+              const SizedBox(height: 12),
+              Row(
+                children: [
+                  Expanded(
+                    child: TextField(
+                      controller: _expiryController,
+                      decoration: const InputDecoration(
+                        labelText: 'Expiry (MM/YY) *',
+                        border: OutlineInputBorder(),
+                        hintText: '12/25',
+                      ),
+                      keyboardType: TextInputType.number,
+                      maxLength: 5,
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: TextField(
+                      controller: _cvvController,
+                      decoration: const InputDecoration(
+                        labelText: 'CVV *',
+                        border: OutlineInputBorder(),
+                        hintText: '123',
+                      ),
+                      keyboardType: TextInputType.number,
+                      maxLength: 4,
+                      obscureText: true,
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 24),
+            ],
+            
             // Order Summary
             Card(
               child: Padding(
@@ -430,34 +837,104 @@ class _BusinessCardOrderScreenState extends State<BusinessCardOrderScreen> {
                     Row(
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
-                        Text('${_selectedQuantity} Business Cards'),
+                        Text('${_selectedQuantity} Cards'),
+                        (_hasCreditsOrSubscription && _getDiscount(_selectedQuantity) > 0) || 
+                        (_appliedPromo != null && _promoDiscount > 0)
+                            ? Column(
+                                crossAxisAlignment: CrossAxisAlignment.end,
+                                children: [
+                                  Text(
+                                    '\$${_getBasePrice(_selectedQuantity).toStringAsFixed(2)}',
+                                    style: TextStyle(
+                                      decoration: TextDecoration.lineThrough,
+                                      color: Colors.grey[600],
+                                    ),
+                                  ),
+                                  Text(
+                                    '\$${_getDiscountedPrice(_selectedQuantity).toStringAsFixed(2)}',
+                                    style: const TextStyle(
+                                      fontWeight: FontWeight.bold,
+                                      color: Colors.green,
+                                    ),
+                                  ),
+                                ],
+                              )
+                            : Text(
+                                '\$${_getBasePrice(_selectedQuantity).toStringAsFixed(2)}',
+                                style: const TextStyle(fontWeight: FontWeight.bold),
+                              ),
+                      ],
+                    ),
+                    if (_hasCreditsOrSubscription && _getDiscount(_selectedQuantity) > 0) ...[
+                      const SizedBox(height: 8),
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          Text('Discount (${(_getDiscount(_selectedQuantity) * 100).toStringAsFixed(0)}%)'),
+                          Text(
+                            '-\$${(_getBasePrice(_selectedQuantity) * _getDiscount(_selectedQuantity)).toStringAsFixed(2)}',
+                            style: const TextStyle(
+                              fontWeight: FontWeight.bold,
+                              color: Colors.green,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                    if (_appliedPromo != null && _promoDiscount > 0) ...[
+                      const SizedBox(height: 8),
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          Text('Promo Code: $_appliedPromo'),
+                          Text(
+                            '-\$${(_getBasePrice(_selectedQuantity) * _promoDiscount).toStringAsFixed(2)}',
+                            style: const TextStyle(
+                              fontWeight: FontWeight.bold,
+                              color: Colors.green,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                    const SizedBox(height: 8),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Text(_shippingOptions[_selectedShipping]!['name'] as String),
                         Text(
-                          _isFree
-                              ? 'Free*'
-                              : '\$${_totalPrice.toStringAsFixed(2)}',
-                          style: const TextStyle(fontWeight: FontWeight.bold),
+                          _shippingOptions[_selectedShipping]!['price'] == 0.0
+                              ? 'Free'
+                              : '\$${(_shippingOptions[_selectedShipping]!['price'] as double).toStringAsFixed(2)}',
+                          style: TextStyle(
+                            fontWeight: FontWeight.bold,
+                            color: _shippingOptions[_selectedShipping]!['price'] == 0.0
+                                ? Colors.green
+                                : null,
+                          ),
                         ),
                       ],
                     ),
-                    const SizedBox(height: 8),
-                    Text(
-                      'Shipping: USPS (10-14 business days)',
-                      style: TextStyle(
-                        fontSize: 12,
-                        color: Colors.grey[600],
-                      ),
-                    ),
-                    if (_isFree) ...[
-                      const SizedBox(height: 8),
-                      Text(
-                        '*Free with active credits or subscription',
-                        style: TextStyle(
-                          fontSize: 12,
-                          color: Colors.green[700],
-                          fontStyle: FontStyle.italic,
+                    const Divider(),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        const Text(
+                          'Total',
+                          style: TextStyle(
+                            fontSize: 18,
+                            fontWeight: FontWeight.bold,
+                          ),
                         ),
-                      ),
-                    ],
+                        Text(
+                          '\$${_finalPriceAfterAllDiscounts.toStringAsFixed(2)}',
+                          style: const TextStyle(
+                            fontSize: 18,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      ],
+                    ),
                   ],
                 ),
               ),
@@ -474,48 +951,11 @@ class _BusinessCardOrderScreenState extends State<BusinessCardOrderScreen> {
                 ),
                 child: _isProcessing
                     ? const CircularProgressIndicator()
-                    : Text(
-                        _isFree
-                            ? 'Order Free Business Cards'
-                            : 'Pay \$${_totalPrice.toStringAsFixed(2)} & Order',
-                      ),
+                    : Text(_finalPriceAfterAllDiscounts > 0
+                        ? 'Pay \$${_finalPriceAfterAllDiscounts.toStringAsFixed(2)} & Order'
+                        : 'Complete Order'),
               ),
             ),
-            if (!_hasCreditsOrSubscription && _selectedQuantity == 5) ...[
-              const SizedBox(height: 16),
-              Card(
-                color: Colors.blue[50],
-                child: Padding(
-                  padding: const EdgeInsets.all(16.0),
-                  child: Column(
-                    children: [
-                      const Text(
-                        'Get 5 Free Business Cards!',
-                        style: TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                      const SizedBox(height: 8),
-                      const Text(
-                        'Subscribe to any plan to receive 5 free business cards with your order.',
-                        textAlign: TextAlign.center,
-                        style: TextStyle(fontSize: 14),
-                      ),
-                      const SizedBox(height: 12),
-                      ElevatedButton(
-                        onPressed: () {
-                          Navigator.pop(context);
-                          // Navigate to subscription/payment screen
-                          // This would typically go to the payment/subscription screen
-                        },
-                        child: const Text('Subscribe Now'),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-            ],
           ],
         ),
       ),

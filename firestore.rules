@@ -106,8 +106,13 @@ service cloud.firestore {
       // Users can create their own orders
       allow create: if request.auth != null && 
                      request.resource.data.userId == request.auth.uid;
-      // Only admins can update orders (for fulfillment status)
+      // Only admins can update orders (for fulfillment status, refunds, etc.)
       allow update: if isAdmin();
+    }
+    
+    // Email queue collection (Cloud Functions only)
+    match /email_queue/{emailId} {
+      allow read, write: if false; // Internal only, accessed via Cloud Functions
     }
   }
 }

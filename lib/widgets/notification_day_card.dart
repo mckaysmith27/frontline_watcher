@@ -22,8 +22,8 @@ class NotificationDayCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final filtersProvider = Provider.of<FiltersProvider>(context);
-    final creditsProvider = Provider.of<CreditsProvider>(context);
+    return Consumer2<FiltersProvider, CreditsProvider>(
+      builder: (context, filtersProvider, creditsProvider, _) {
     
     // Get date-specific filters (if any)
     final dateFilters = filtersProvider.getDateFilters(dateStr);
@@ -51,14 +51,23 @@ class NotificationDayCard extends StatelessWidget {
     final hasJob = creditsProvider.scheduledJobDates.contains(dateStr);
     // Check if this is a notification day (green highlight)
     final isNotificationDay = creditsProvider.committedDates.contains(dateStr);
+    // Check if this date has unique keywords (orange highlight)
+    final hasUniqueKeywords = filtersProvider.hasUniqueKeywords(dateStr);
+    
+    // Get unique keywords (keywords that differ from global filters)
+    final uniqueKeywords = filtersProvider.getUniqueKeywords(dateStr);
+    final uniqueIncluded = uniqueKeywords['includedWords'] ?? [];
+    final uniqueExcluded = uniqueKeywords['excludedWords'] ?? [];
     
     // Get matched keywords from booked job if available
     final matchedKeywords = bookedJob != null ? _getMatchedKeywords(bookedJob!, includedWords) : [];
 
-    // Determine border color
+    // Determine border color (priority: blue > orange > green)
     Color? borderColor;
     if (hasJob) {
       borderColor = Colors.blue;
+    } else if (hasUniqueKeywords) {
+      borderColor = Colors.orange;
     } else if (isNotificationDay) {
       borderColor = Colors.green;
     }
@@ -167,71 +176,121 @@ class NotificationDayCard extends StatelessWidget {
                 ),
                 const SizedBox(height: 12),
               ],
-              if (includedWords.isEmpty && excludedWords.isEmpty)
+              // Show unique keywords section
+              if (hasUniqueKeywords) ...[
+                Row(
+                  children: [
+                    Text(
+                      'Unique Keywords',
+                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                            fontWeight: FontWeight.w600,
+                            color: isPast ? Colors.grey[600] : Colors.orange[700],
+                          ),
+                    ),
+                    const SizedBox(width: 4),
+                    Tooltip(
+                      message: 'These are keywords that are applied to just this specific day but which are different from the filter of keywords which was applied to all days',
+                      child: Icon(
+                        Icons.help_outline,
+                        size: 16,
+                        color: isPast ? Colors.grey[600] : Colors.orange[700],
+                      ),
+                    ),
+                    const Spacer(),
+                    if (!isPast)
+                      IconButton(
+                        icon: const Icon(Icons.clear, size: 18),
+                        color: Colors.orange[700],
+                        tooltip: 'Clear unique keywords',
+                        padding: EdgeInsets.zero,
+                        constraints: const BoxConstraints(),
+                        onPressed: () async {
+                          await filtersProvider.clearUniqueKeywords(dateStr);
+                          if (context.mounted) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(
+                                content: Text('Unique keywords cleared'),
+                                duration: Duration(seconds: 2),
+                              ),
+                            );
+                          }
+                        },
+                      ),
+                  ],
+                ),
+                const SizedBox(height: 4),
+                if (uniqueIncluded.isNotEmpty) ...[
+                  Wrap(
+                    spacing: 6,
+                    runSpacing: 6,
+                    children: uniqueIncluded.map((word) {
+                      return Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                        decoration: BoxDecoration(
+                          color: Colors.orange.withOpacity(0.2),
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(color: Colors.orange, width: 1),
+                        ),
+                        child: Text(
+                          word,
+                          style: TextStyle(
+                            color: Colors.orange[700],
+                            fontSize: 12,
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                      );
+                    }).toList(),
+                  ),
+                  const SizedBox(height: 4),
+                ],
+                if (uniqueExcluded.isNotEmpty) ...[
+                  Wrap(
+                    spacing: 6,
+                    runSpacing: 6,
+                    children: uniqueExcluded.map((word) {
+                      return Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                        decoration: BoxDecoration(
+                          color: Colors.red.withOpacity(0.2),
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(color: Colors.red, width: 1),
+                        ),
+                        child: Text(
+                          word,
+                          style: TextStyle(
+                            color: Colors.red[700],
+                            fontSize: 12,
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                      );
+                    }).toList(),
+                  ),
+                ],
+                if (uniqueIncluded.isEmpty && uniqueExcluded.isEmpty)
+                  Text(
+                    'No unique keywords',
+                    style: TextStyle(
+                      color: isPast ? Colors.grey[500] : Colors.grey[600],
+                      fontStyle: FontStyle.italic,
+                      fontSize: 12,
+                    ),
+                  ),
+              ] else if (includedWords.isEmpty && excludedWords.isEmpty)
                 Text(
                   'No filters set for this day',
                   style: TextStyle(
                     color: isPast ? Colors.grey[500] : Colors.grey[600],
                     fontStyle: FontStyle.italic,
                   ),
-                )
-              else ...[
-                if (includedWords.isNotEmpty) ...[
-                  Text(
-                    'Include:',
-                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                          fontWeight: FontWeight.w600,
-                          color: isPast ? Colors.grey[600] : null,
-                        ),
-                  ),
-                  const SizedBox(height: 4),
-                  Wrap(
-                    spacing: 6,
-                    runSpacing: 6,
-                    children: includedWords.map((word) {
-                      return TagChip(
-                        tag: word,
-                        state: TagState.green,
-                        isPremium: false,
-                        isUnlocked: true,
-                        isCustom: false,
-                        onTap: null, // Read-only in card view
-                        onDelete: null,
-                      );
-                    }).toList(),
-                  ),
-                  const SizedBox(height: 8),
-                ],
-                if (excludedWords.isNotEmpty) ...[
-                  Text(
-                    'Exclude:',
-                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                          fontWeight: FontWeight.w600,
-                          color: isPast ? Colors.grey[600] : null,
-                        ),
-                  ),
-                  const SizedBox(height: 4),
-                  Wrap(
-                    spacing: 6,
-                    runSpacing: 6,
-                    children: excludedWords.map((word) {
-                      return TagChip(
-                        tag: word,
-                        state: TagState.red,
-                        isPremium: false,
-                        isUnlocked: true,
-                        isCustom: false,
-                        onTap: null, // Read-only in card view
-                        onDelete: null,
-                      );
-                    }).toList(),
-                  ),
-                ],
-              ],
+                ),
             ],
           ),
         ),
       ),
+      );
+    },
     );
   }
 

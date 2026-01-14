@@ -15,10 +15,10 @@ class HelpScreen extends StatelessWidget {
             child: ListTile(
               leading: const Icon(Icons.email),
               title: const Text('Contact Support'),
-              subtitle: const Text('sub67support@gmail.com'),
+              subtitle: const Text('sub67reachout@gmail.com'),
               trailing: const Icon(Icons.chevron_right),
               onTap: () async {
-                final uri = Uri.parse('mailto:sub67support@gmail.com');
+                final uri = Uri.parse('mailto:sub67reachout@gmail.com');
                 if (await canLaunchUrl(uri)) {
                   await launchUrl(uri);
                 }
@@ -46,7 +46,7 @@ class HelpScreen extends StatelessWidget {
                 const Padding(
                   padding: EdgeInsets.all(16),
                   child: Text(
-                    'Credits are used when a job is successfully booked for you. Each day you commit to automation uses one credit only if a job is actually booked.',
+                    'Credits are days in which you still fall under an active subscription with us.',
                   ),
                 ),
               ],
@@ -67,12 +67,12 @@ class HelpScreen extends StatelessWidget {
           ),
           Card(
             child: ExpansionTile(
-              title: const Text('Is my ESS password secure?'),
+              title: const Text('Are my credentials/passwords secure?'),
               children: [
                 const Padding(
                   padding: EdgeInsets.all(16),
                   child: Text(
-                    'Yes, your ESS credentials are encrypted and stored securely. We never share or misuse your credentials.',
+                    'Yes, your credentials/passwords are safe as they are stored locally on your device or with the services operating your device. Sub67 or any of it\'s affiliates do not store any usernames or passwords.',
                   ),
                 ),
               ],
@@ -82,7 +82,7 @@ class HelpScreen extends StatelessWidget {
       ),
       floatingActionButton: FloatingActionButton.extended(
         onPressed: () async {
-          final uri = Uri.parse('mailto:sub67support@gmail.com');
+          final uri = Uri.parse('mailto:sub67reachout@gmail.com');
           if (await canLaunchUrl(uri)) {
             await launchUrl(uri);
           }

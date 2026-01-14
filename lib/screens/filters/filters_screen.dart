@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../providers/filters_provider.dart';
@@ -10,13 +11,62 @@ import '../../widgets/school_map_widget.dart';
 import '../../widgets/profile_app_bar.dart';
 import 'automation_bottom_sheet.dart';
 
-class FiltersScreen extends StatelessWidget {
+class FiltersScreen extends StatefulWidget {
   const FiltersScreen({super.key});
 
   @override
+  State<FiltersScreen> createState() => _FiltersScreenState();
+}
+
+class _FiltersScreenState extends State<FiltersScreen> {
+  Timer? _propagationTimer;
+  List<String> _lastIncluded = [];
+  List<String> _lastExcluded = [];
+  
+  @override
+  void dispose() {
+    _propagationTimer?.cancel();
+    super.dispose();
+  }
+  
+  void _schedulePropagation(FiltersProvider filtersProvider, CreditsProvider creditsProvider) {
+    // Cancel existing timer
+    _propagationTimer?.cancel();
+    
+    // Schedule new propagation after a short delay (debounce)
+    _propagationTimer = Timer(const Duration(milliseconds: 500), () {
+      if (mounted) {
+        filtersProvider.onGlobalFiltersChanged(
+          creditsProvider.committedDates,
+          isUnavailable: (dateStr) => creditsProvider.excludedDates.contains(dateStr),
+          hasJob: (dateStr) => creditsProvider.scheduledJobDates.contains(dateStr),
+        );
+      }
+    });
+  }
+  
+  @override
   Widget build(BuildContext context) {
-    final filtersProvider = Provider.of<FiltersProvider>(context);
-    final creditsProvider = Provider.of<CreditsProvider>(context);
+    return Consumer2<FiltersProvider, CreditsProvider>(
+      builder: (context, filtersProvider, creditsProvider, _) {
+        // Check if filters changed and schedule propagation
+        final currentIncluded = filtersProvider.includedLs.toSet();
+        final currentExcluded = filtersProvider.excludeLs.toSet();
+        final lastIncludedSet = _lastIncluded.toSet();
+        final lastExcludedSet = _lastExcluded.toSet();
+        
+        if (currentIncluded != lastIncludedSet || currentExcluded != lastExcludedSet) {
+          _lastIncluded = filtersProvider.includedLs.toList();
+          _lastExcluded = filtersProvider.excludeLs.toList();
+          _schedulePropagation(filtersProvider, creditsProvider);
+        }
+        
+        return _buildFiltersScreen(context, filtersProvider, creditsProvider);
+      },
+    );
+  }
+  
+  Widget _buildFiltersScreen(BuildContext context, FiltersProvider filtersProvider, CreditsProvider creditsProvider) {
 
     return Scaffold(
       appBar: ProfileAppBar(
@@ -134,7 +184,7 @@ class FiltersScreen extends StatelessWidget {
       ),
     );
   }
-
+  
   void _showPurchaseOptions(BuildContext context) {
     showModalBottomSheet(
       context: context,
@@ -185,6 +235,13 @@ class FiltersScreen extends StatelessWidget {
         excludedWords: excludedWords,
         committedDates: creditsProvider.committedDates,
         notifyEnabled: !isLocked, // Disable notifications when locked
+      );
+      
+      // Propagate global filter changes to all notification days
+      await filtersProvider.onGlobalFiltersChanged(
+        creditsProvider.committedDates,
+        isUnavailable: (dateStr) => creditsProvider.excludedDates.contains(dateStr),
+        hasJob: (dateStr) => creditsProvider.scheduledJobDates.contains(dateStr),
       );
       
       if (context.mounted) {

@@ -1414,7 +1414,9 @@ class _SchoolMapWidgetState extends State<SchoolMapWidget> {
                       if (!_filterByTime) {
                         _maxTravelTimeMinutes = null;
                       } else {
-                        _maxTravelTimeMinutes = 60.0; // Default to 60 minutes
+                        // Ensure value is within bounds - clamp to available range
+                        final defaultTime = 60.0;
+                        _maxTravelTimeMinutes = defaultTime.clamp(5.0, _maxTravelTimeAvailable);
                       }
                     });
                     _updateMap();
@@ -1458,7 +1460,7 @@ class _SchoolMapWidgetState extends State<SchoolMapWidget> {
                 const Text('Max Travel Time: '),
                 Expanded(
                   child: Slider(
-                    value: _maxTravelTimeMinutes ?? 60.0,
+                    value: (_maxTravelTimeMinutes ?? 60.0).clamp(5.0, _maxTravelTimeAvailable),
                     min: 5.0,
                     max: _maxTravelTimeAvailable,
                     divisions: ((_maxTravelTimeAvailable - 5.0) / 5).round(),
@@ -1467,7 +1469,7 @@ class _SchoolMapWidgetState extends State<SchoolMapWidget> {
                         : 'No limit',
                     onChanged: (value) {
                       setState(() {
-                        _maxTravelTimeMinutes = value;
+                        _maxTravelTimeMinutes = value.clamp(5.0, _maxTravelTimeAvailable);
                       });
                       _updateMap();
                       _updateSchoolsInRadius();
@@ -1498,16 +1500,7 @@ class _SchoolMapWidgetState extends State<SchoolMapWidget> {
                 ],
               ),
             ),
-          // Schools within radius/time as tags in a drawer (show first)
-          _buildSchoolsWithinDrawer(context, filtersProvider),
-          const SizedBox(height: 8),
-          // Schools not within radius/time as tags in a drawer
-          _buildSchoolsNotWithinDrawer(context, filtersProvider),
-          const SizedBox(height: 8),
-          // Non-addressed schools (type "other") in a drawer
-          _buildNonAddressedSchoolsDrawer(context, filtersProvider),
-          const SizedBox(height: 12),
-          // Map (show after drawers)
+          // Map (show before drawers)
           if (!_isLoading && _selectedPosition != null)
             SizedBox(
               height: 400,
@@ -1529,6 +1522,15 @@ class _SchoolMapWidgetState extends State<SchoolMapWidget> {
                 myLocationButtonEnabled: false,
               ),
             ),
+          const SizedBox(height: 12),
+          // Schools within radius/time as tags in a drawer (show after map)
+          _buildSchoolsWithinDrawer(context, filtersProvider),
+          const SizedBox(height: 8),
+          // Schools not within radius/time as tags in a drawer
+          _buildSchoolsNotWithinDrawer(context, filtersProvider),
+          const SizedBox(height: 8),
+          // Non-addressed schools (type "other") in a drawer
+          _buildNonAddressedSchoolsDrawer(context, filtersProvider),
         ],
       ),
     );

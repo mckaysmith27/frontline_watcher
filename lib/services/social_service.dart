@@ -297,21 +297,6 @@ class SocialService {
       
       return posts;
     });
-      
-      // Filter by category if specified
-      if (categoryTag != null && categoryTag != 'ALL') {
-        posts.removeWhere((post) => post.categoryTag != categoryTag);
-      }
-      
-      // Sort by (upvotes - downvotes) descending
-      posts.sort((a, b) {
-        final scoreA = a.upvotes - a.downvotes;
-        final scoreB = b.upvotes - b.downvotes;
-        return scoreB.compareTo(scoreA);
-      });
-      
-      return posts;
-    });
   }
 
   // Social Links Management

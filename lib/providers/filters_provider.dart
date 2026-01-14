@@ -256,6 +256,19 @@ class FiltersProvider extends ChangeNotifier {
           data['customTags'] ?? {},
         );
         
+        // Load date-specific filters
+        final dateFiltersData = data['dateFilters'] as Map<String, dynamic>?;
+        if (dateFiltersData != null) {
+          dateFiltersData.forEach((dateStr, filters) {
+            if (filters is Map<String, dynamic>) {
+              _dateFilters[dateStr] = {
+                'includedWords': List<String>.from(filters['includedWords'] ?? []),
+                'excludedWords': List<String>.from(filters['excludedWords'] ?? []),
+              };
+            }
+          });
+        }
+        
         notifyListeners();
       }
     } catch (e) {
@@ -273,6 +286,179 @@ class FiltersProvider extends ChangeNotifier {
       'includedWords': _includedLs,
       'excludedWords': _excludeLs,
     };
+  }
+
+  // Get unique keywords for a specific date (keywords that differ from global filters)
+  Map<String, List<String>> getUniqueKeywords(String dateStr) {
+    final dateFilters = getDateFilters(dateStr);
+    final globalIncluded = _includedLs.toSet();
+    final globalExcluded = _excludeLs.toSet();
+    
+    final dateIncluded = (dateFilters['includedWords'] ?? []).toSet();
+    final dateExcluded = (dateFilters['excludedWords'] ?? []).toSet();
+    
+    // Find unique included keywords (in date but not in global, or different state)
+    final uniqueIncluded = <String>[];
+    for (var keyword in dateIncluded) {
+      // Skip date keywords (format: "1_15_2024" or similar)
+      if (_isDateKeyword(keyword)) continue;
+      
+      // If keyword is in date included but not in global included, it's unique
+      if (!globalIncluded.contains(keyword)) {
+        uniqueIncluded.add(keyword);
+      }
+    }
+    
+    // Also check if global keywords are missing from date (but this means date has fewer, not unique)
+    // We only want keywords that are in date but not in global
+    
+    // Find unique excluded keywords (in date but not in global)
+    final uniqueExcluded = <String>[];
+    for (var keyword in dateExcluded) {
+      // Skip date keywords
+      if (_isDateKeyword(keyword)) continue;
+      
+      // If keyword is in date excluded but not in global excluded, it's unique
+      if (!globalExcluded.contains(keyword)) {
+        uniqueExcluded.add(keyword);
+      }
+    }
+    
+    return {
+      'includedWords': uniqueIncluded,
+      'excludedWords': uniqueExcluded,
+    };
+  }
+
+  // Check if a keyword is a date keyword (format: "1_15_2024" or similar)
+  bool _isDateKeyword(String keyword) {
+    // Date keywords typically have format: "month_day_year" with underscores
+    // Pattern: digits_digits_digits (e.g., "1_15_2024", "12_25_2024")
+    final datePattern = RegExp(r'^\d{1,2}_\d{1,2}_\d{4}$');
+    return datePattern.hasMatch(keyword);
+  }
+
+  // Check if a date has unique keywords
+  bool hasUniqueKeywords(String dateStr) {
+    final unique = getUniqueKeywords(dateStr);
+    return (unique['includedWords']?.isNotEmpty ?? false) ||
+           (unique['excludedWords']?.isNotEmpty ?? false);
+  }
+
+  // Auto-apply global filters to a specific date (only if date doesn't have unique keywords)
+  // Also checks if date is unavailable or has job - won't apply in those cases
+  Future<void> autoApplyFiltersToDate(String dateStr, {
+    required bool isNotificationDay,
+    required bool isUnavailable,
+    required bool hasJob,
+  }) async {
+    // Don't apply filters if:
+    // 1. Date is not a notification day
+    // 2. Date is marked unavailable
+    // 3. Date has a job booked
+    if (!isNotificationDay || isUnavailable || hasJob) {
+      return;
+    }
+    
+    // If date already has unique keywords, merge global filters but keep unique keywords
+    if (hasUniqueKeywords(dateStr)) {
+      // Get current unique keywords
+      final unique = getUniqueKeywords(dateStr);
+      final uniqueIncluded = (unique['includedWords'] ?? []).toSet();
+      final uniqueExcluded = (unique['excludedWords'] ?? []).toSet();
+      
+      // Merge: global filters + unique keywords
+      final mergedIncluded = <String>[..._includedLs, ...uniqueIncluded].toSet().toList();
+      final mergedExcluded = <String>[..._excludeLs, ...uniqueExcluded].toSet().toList();
+      
+      _dateFilters[dateStr] = {
+        'includedWords': mergedIncluded,
+        'excludedWords': mergedExcluded,
+      };
+    } else {
+      // No unique keywords, just apply global filters
+      _dateFilters[dateStr] = {
+        'includedWords': _includedLs.toList(),
+        'excludedWords': _excludeLs.toList(),
+      };
+    }
+    
+    await _saveToFirebase();
+    notifyListeners();
+  }
+
+  // Clear unique keywords for a date (reset to global filters)
+  Future<void> clearUniqueKeywords(String dateStr) async {
+    // Remove date-specific filters, which will make it use global filters
+    _dateFilters.remove(dateStr);
+    await _saveToFirebase();
+    notifyListeners();
+  }
+
+  // Apply global filter changes to all notification days (except unique keywords)
+  Future<void> propagateGlobalFiltersToAllDates(
+    List<String> committedDates, {
+    required bool Function(String) isUnavailable,
+    required bool Function(String) hasJob,
+  }) async {
+    for (var dateStr in committedDates) {
+      // Skip if date is unavailable or has job
+      if (isUnavailable(dateStr) || hasJob(dateStr)) {
+        continue;
+      }
+      
+      // Skip if date has unique keywords (user has customized it)
+      if (hasUniqueKeywords(dateStr)) {
+        // Still apply global filters, but keep unique keywords
+        final dateFilters = _dateFilters[dateStr] ?? {
+          'includedWords': [],
+          'excludedWords': [],
+        };
+        
+        final unique = getUniqueKeywords(dateStr);
+        final uniqueIncluded = (unique['includedWords'] ?? []).toSet();
+        final uniqueExcluded = (unique['excludedWords'] ?? []).toSet();
+        
+        // Merge: global filters + unique keywords
+        final mergedIncluded = <String>[..._includedLs, ...uniqueIncluded].toSet().toList();
+        final mergedExcluded = <String>[..._excludeLs, ...uniqueExcluded].toSet().toList();
+        
+        dateFilters['includedWords'] = mergedIncluded;
+        dateFilters['excludedWords'] = mergedExcluded;
+        
+        _dateFilters[dateStr] = dateFilters;
+      } else {
+        // No unique keywords, just apply global filters
+        await autoApplyFiltersToDate(
+          dateStr,
+          isNotificationDay: true,
+          isUnavailable: isUnavailable(dateStr),
+          hasJob: hasJob(dateStr),
+        );
+      }
+    }
+    
+    await _saveToFirebase();
+    notifyListeners();
+  }
+  
+  // Auto-apply filters to newly committed dates (called when credits are added)
+  Future<void> autoApplyToNewDates(
+    List<String> newDates, {
+    required bool Function(String) isUnavailable,
+    required bool Function(String) hasJob,
+  }) async {
+    for (var dateStr in newDates) {
+      // Only apply if date is a notification day and not unavailable/has job
+      if (!isUnavailable(dateStr) && !hasJob(dateStr)) {
+        await autoApplyFiltersToDate(
+          dateStr,
+          isNotificationDay: true,
+          isUnavailable: false,
+          hasJob: false,
+        );
+      }
+    }
   }
 
   // Get tag state for a specific date (date-specific or default)
@@ -371,6 +557,10 @@ class FiltersProvider extends ChangeNotifier {
   Future<void> toggleTag(String category, String tag) async {
     final currentState = _tagStates[tag] ?? TagState.gray;
     TagState newState;
+    
+    // Store old included/excluded lists to detect changes
+    final oldIncluded = _includedLs.toSet();
+    final oldExcluded = _excludeLs.toSet();
 
     // Regular tags: green -> gray -> red -> green
     switch (currentState) {
@@ -393,7 +583,7 @@ class FiltersProvider extends ChangeNotifier {
     }
 
     _tagStates[tag] = newState;
-    
+
     // If this is a nested category and the tag is a city name, update all schools under it
     final categoryValue = _filtersDict[category];
     if (categoryValue is Map && categoryValue.containsKey(tag)) {
@@ -403,7 +593,7 @@ class FiltersProvider extends ChangeNotifier {
         for (var school in schools) {
           // Set all schools to the same state as the city
           _tagStates[school] = newState;
-          
+
           // Update included/excluded lists accordingly
           if (newState == TagState.green) {
             if (!_includedLs.contains(school)) {
@@ -423,9 +613,26 @@ class FiltersProvider extends ChangeNotifier {
         }
       }
     }
-    
+
     await _saveToFirebase();
+    
+    // Propagate global filter changes to all notification days (except unique keywords)
+    // Note: This requires access to CreditsProvider, which we'll handle via callback or listener
+    // For now, we'll add a method that can be called with committed dates
+    
     notifyListeners();
+  }
+  
+  // Method to be called when global filters change - propagates to all notification days
+  // This should be called from the screen that has access to both providers
+  Future<void> onGlobalFiltersChanged(List<String> committedDates, {
+    required bool Function(String) isUnavailable,
+    required bool Function(String) hasJob,
+  }) async {
+    await propagateGlobalFiltersToAllDates(committedDates, 
+      isUnavailable: isUnavailable,
+      hasJob: hasJob,
+    );
   }
 
   Future<void> addCustomTag(String category, String tag) async {
