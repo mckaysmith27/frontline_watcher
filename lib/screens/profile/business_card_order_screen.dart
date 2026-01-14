@@ -114,12 +114,12 @@ class _BusinessCardOrderScreenState extends State<BusinessCardOrderScreen> {
     final userData = userDoc.data();
     
     // Check if user has credits or subscription
-    final hasCredits = creditsProvider.credits > 0;
+    final hasActiveSubscription = creditsProvider.hasActiveSubscription;
     final hasSubscription = userData?['subscriptionActive'] == true || 
                            userData?['hasActiveSubscription'] == true;
     
     setState(() {
-      _hasCreditsOrSubscription = hasCredits || hasSubscription;
+      _hasCreditsOrSubscription = hasActiveSubscription || hasSubscription;
     });
   }
   

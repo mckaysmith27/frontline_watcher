@@ -15,6 +15,33 @@ class CreditsProvider extends ChangeNotifier {
   List<String> get committedDates => _committedDates;
   List<String> get excludedDates => _excludedDates;
   List<String> get scheduledJobDates => _scheduledJobDates;
+  
+  /// Check if subscription is active (has credits OR has future committed dates)
+  bool get hasActiveSubscription {
+    // Has credits available
+    if (_credits > 0) return true;
+    
+    // Has committed dates that are today or in the future
+    if (_committedDates.isNotEmpty) {
+      final now = DateTime.now();
+      final today = DateTime(now.year, now.month, now.day);
+      
+      for (final dateStr in _committedDates) {
+        final dateParts = dateStr.split('-');
+        final date = DateTime(
+          int.parse(dateParts[0]),
+          int.parse(dateParts[1]),
+          int.parse(dateParts[2]),
+        );
+        // If any committed date is today or in the future, subscription is active
+        if (date.isAtSameMomentAs(today) || date.isAfter(today)) {
+          return true;
+        }
+      }
+    }
+    
+    return false;
+  }
 
   CreditsProvider() {
     _loadFromFirebase();
@@ -62,6 +89,14 @@ class CreditsProvider extends ChangeNotifier {
             'notifyEnabled': false,
           });
           print('[CreditsProvider] Auto-disabled notifications: no credits and no green days');
+        }
+        
+        // Update subscriptionActive field in Firestore
+        final subscriptionActive = hasActiveSubscription;
+        if (data['subscriptionActive'] != subscriptionActive) {
+          await _firestore.collection('users').doc(user.uid).update({
+            'subscriptionActive': subscriptionActive,
+          });
         }
         
         notifyListeners();
@@ -169,6 +204,7 @@ class CreditsProvider extends ChangeNotifier {
         'credits': FieldValue.increment(amount),
         'committedDates': FieldValue.arrayUnion(datesToCommit),
         'purchaseActions': FieldValue.arrayUnion([purchaseAction]),
+        'subscriptionActive': true, // Adding credits makes subscription active
       });
       
       // Auto-apply global filters to newly committed dates
@@ -244,9 +280,11 @@ class CreditsProvider extends ChangeNotifier {
       notifyListeners(); // Update UI immediately
 
       // Update Firestore
+      final subscriptionActive = _credits > 1 || (_credits == 1 && !_committedDates.contains(date));
       await _firestore.collection('users').doc(user.uid).update({
         'committedDates': FieldValue.arrayUnion([date]),
         'credits': FieldValue.increment(-1),
+        'subscriptionActive': subscriptionActive,
       });
     } catch (e) {
       // Rollback local state on error
@@ -297,9 +335,11 @@ class CreditsProvider extends ChangeNotifier {
       notifyListeners(); // Update UI immediately
 
       // Update Firestore - remove old date, add new date
+      final subscriptionActive = hasActiveSubscription;
       await _firestore.collection('users').doc(user.uid).update({
         'committedDates': FieldValue.arrayRemove([date]),
         'committedDates': FieldValue.arrayUnion([nextWorkdayStr]),
+        'subscriptionActive': subscriptionActive,
       });
       
       // Check if we need to disable notifications after uncommitting date
@@ -332,8 +372,10 @@ class CreditsProvider extends ChangeNotifier {
     }
 
     _excludedDates.add(date);
+    final subscriptionActive = hasActiveSubscription;
     await _firestore.collection('users').doc(user.uid).update({
       'excludedDates': FieldValue.arrayUnion([date]),
+      'subscriptionActive': subscriptionActive,
     });
     notifyListeners();
   }
@@ -365,9 +407,11 @@ class CreditsProvider extends ChangeNotifier {
     
     final user = _auth.currentUser;
     if (user != null) {
+      final subscriptionActive = hasActiveSubscription;
       await _firestore.collection('users').doc(user.uid).update({
         'committedDates': FieldValue.arrayRemove([fromDate]),
         'committedDates': FieldValue.arrayUnion([nextWorkdayStr]),
+        'subscriptionActive': subscriptionActive,
       });
     }
   }
@@ -408,9 +452,11 @@ class CreditsProvider extends ChangeNotifier {
         _committedDates.add(dateStr);
         _committedDates.sort();
         
+        final subscriptionActive = hasActiveSubscription;
         await _firestore.collection('users').doc(user.uid).update({
           'committedDates': FieldValue.arrayRemove([furthestDate]),
           'committedDates': FieldValue.arrayUnion([dateStr]),
+          'subscriptionActive': subscriptionActive,
         });
         notifyListeners();
       }
@@ -432,8 +478,10 @@ class CreditsProvider extends ChangeNotifier {
     await handleUnavailableRemoved(date);
 
     _excludedDates.remove(date);
+    final subscriptionActive = hasActiveSubscription;
     await _firestore.collection('users').doc(user.uid).update({
       'excludedDates': FieldValue.arrayRemove([date]),
+      'subscriptionActive': subscriptionActive,
     });
     notifyListeners();
   }
@@ -445,8 +493,10 @@ class CreditsProvider extends ChangeNotifier {
     if (user == null) return;
 
     _credits -= 1;
+    final subscriptionActive = hasActiveSubscription;
     await _firestore.collection('users').doc(user.uid).update({
       'credits': FieldValue.increment(-1),
+      'subscriptionActive': subscriptionActive,
     });
     
     // Check if we need to disable notifications after using credit

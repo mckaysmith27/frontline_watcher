@@ -23,7 +23,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
       ),
       body: Consumer2<NotificationsProvider, CreditsProvider>(
         builder: (context, notificationsProvider, creditsProvider, _) {
-          final hasCredits = creditsProvider.credits > 0 || creditsProvider.committedDates.isNotEmpty;
+          final hasActiveSubscription = creditsProvider.hasActiveSubscription;
           final termsAccepted = notificationsProvider.termsAccepted;
           
           return ListView(
@@ -45,11 +45,11 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
                 Opacity(
                   opacity: 0.5,
                   child: IgnorePointer(
-                    child: _buildToggles(context, notificationsProvider, creditsProvider, hasCredits),
+                    child: _buildToggles(context, notificationsProvider, creditsProvider, hasActiveSubscription),
                   ),
                 )
               else
-                _buildToggles(context, notificationsProvider, creditsProvider, hasCredits),
+                _buildToggles(context, notificationsProvider, creditsProvider, hasActiveSubscription),
             ],
           );
         },
@@ -57,7 +57,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
     );
   }
 
-  Widget _buildToggles(BuildContext context, NotificationsProvider notificationsProvider, CreditsProvider creditsProvider, bool hasCredits) {
+  Widget _buildToggles(BuildContext context, NotificationsProvider notificationsProvider, CreditsProvider creditsProvider, bool hasActiveSubscription) {
     return Column(
       children: [
         // Enable Notifications toggle
@@ -90,16 +90,16 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
                     fontStyle: FontStyle.italic,
                   ),
                 ),
-                const Spacer(),
-                if (!hasCredits)
-                  IconButton(
-                    icon: const Icon(Icons.lock),
-                    color: Colors.orange,
-                    onPressed: () {
-                      _showPurchaseOptions(context);
-                    },
-                    tooltip: 'Requires subscription',
-                  ),
+                      const Spacer(),
+                      if (!hasActiveSubscription)
+                        IconButton(
+                          icon: const Icon(Icons.lock),
+                          color: Colors.orange,
+                          onPressed: () {
+                            _showPurchaseOptions(context);
+                          },
+                          tooltip: 'Requires subscription',
+                        ),
               ],
             ),
             subtitle: Row(
@@ -119,7 +119,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
             ),
             value: notificationsProvider.fastNotificationsEnabled,
             onChanged: notificationsProvider.termsAccepted
-                ? (hasCredits
+                ? (hasActiveSubscription
                     ? (value) {
                         notificationsProvider.setFastNotificationsEnabled(value);
                       }
@@ -127,7 +127,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
                         _showPurchaseOptions(context);
                       })
                 : null,
-            secondary: !hasCredits
+            secondary: !hasActiveSubscription
                 ? const Icon(Icons.lock, color: Colors.orange)
                 : null,
           ),
@@ -140,16 +140,16 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
             title: Row(
               children: [
                 const Text("Enable 'FAST Job Accept'"),
-                const Spacer(),
-                if (!hasCredits)
-                  IconButton(
-                    icon: const Icon(Icons.lock),
-                    color: Colors.orange,
-                    onPressed: () {
-                      _showPurchaseOptions(context);
-                    },
-                    tooltip: 'Requires subscription',
-                  ),
+                      const Spacer(),
+                      if (!hasActiveSubscription)
+                        IconButton(
+                          icon: const Icon(Icons.lock),
+                          color: Colors.orange,
+                          onPressed: () {
+                            _showPurchaseOptions(context);
+                          },
+                          tooltip: 'Requires subscription',
+                        ),
               ],
             ),
             subtitle: Row(
@@ -169,7 +169,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
             ),
             value: notificationsProvider.fastJobAcceptEnabled,
             onChanged: notificationsProvider.termsAccepted
-                ? (hasCredits
+                ? (hasActiveSubscription
                     ? (value) {
                         notificationsProvider.setFastJobAcceptEnabled(value);
                       }
@@ -177,7 +177,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
                         _showPurchaseOptions(context);
                       })
                 : null,
-            secondary: !hasCredits
+            secondary: !hasActiveSubscription
                 ? const Icon(Icons.lock, color: Colors.orange)
                 : null,
           ),
@@ -210,22 +210,22 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
                     ),
                   ),
                 ),
-                const Spacer(),
-                if (!hasCredits)
-                  IconButton(
-                    icon: const Icon(Icons.lock),
-                    color: Colors.orange,
-                    onPressed: () {
-                      _showPurchaseOptions(context);
-                    },
-                    tooltip: 'Requires subscription',
-                  ),
+                      const Spacer(),
+                      if (!hasActiveSubscription)
+                        IconButton(
+                          icon: const Icon(Icons.lock),
+                          color: Colors.orange,
+                          onPressed: () {
+                            _showPurchaseOptions(context);
+                          },
+                          tooltip: 'Requires subscription',
+                        ),
               ],
             ),
             subtitle: const Text('Apply your keyword filters to job notifications'),
             value: notificationsProvider.applyFilterEnabled,
             onChanged: notificationsProvider.termsAccepted
-                ? (hasCredits
+                ? (hasActiveSubscription
                     ? (value) {
                         notificationsProvider.setApplyFilterEnabled(value);
                       }
@@ -233,7 +233,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
                         _showPurchaseOptions(context);
                       })
                 : null,
-            secondary: !hasCredits
+            secondary: !hasActiveSubscription
                 ? const Icon(Icons.lock, color: Colors.orange)
                 : null,
           ),
