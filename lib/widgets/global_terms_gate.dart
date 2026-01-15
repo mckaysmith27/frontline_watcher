@@ -212,25 +212,25 @@ const String _termsText = '''
 SUB67 — TERMS & CONDITIONS (SUMMARY)
 
 1) What Sub67 does
-Sub67 helps you monitor substitute job postings, set preferences, and receive notifications. Sub67 is not affiliated with or endorsed by Frontline Education.
+Sub67 helps you monitor substitute job postings, set preferences, receive notifications, and other features. Sub67 and its affiliates are not affiliated with or endorsed by Frontline Education or ESS.
 
 2) Notifications & “FAST” features
-When enabled, Sub67 can send notifications when new jobs are posted. Some “FAST” features may be subscription-only. If you don’t have an active subscription, you may still receive notifications, but advanced filtering/features may be limited.
+When enabled, Sub67 can send notifications when new jobs are posted. Some “FAST” features may be subscription-only. If you don’t have an active subscription, you may still receive notifications, but some features such as advanced filtering may be limited.
 
 3) Filters (keywords)
 You can choose keyword preferences. Keyword filtering only applies when you enable it in the Notifications settings (and when subscription requirements are met).
 
 4) Credentials (Frontline / third‑party)
-If you enter a third‑party username/password (e.g., Frontline), those credentials are stored locally on your device (device keychain / secure storage) and are used only to help you log in and navigate within the in-app experience. Sub67 does not store your third‑party passwords in Firestore.
+If you enter a third‑party username/password (e.g., Frontline), those credentials are stored locally on your device (device keychain / secure storage) and used to log you in, you retrieve the district name(s) and the schools listed within the district(s) that are available for you to teach at, and may also be used to retrieve job postings information. Sub67 does NOT store the third-party username and password credentials in our database.
 
 5) Performance techniques
 To reduce delays, we may reuse session cookies and warm-load sessions so you don’t have to sign in from scratch every time. This can improve speed and reliability.
 
 6) Payments
-If you make a purchase, you agree to the pricing displayed at checkout. Subscription access is time-based (days). Purchases may be subject to platform rules (Apple/Google) and any refund policy you publish.
+If you make a purchase, you agree to the pricing displayed at checkout. Subscription access is time-based (days). Purchases may be subject to platform rules (Apple/Google), adhering to any refund policy published by those platforms.
 
 7) Limitations
-We do our best, but we can’t guarantee you’ll receive every job notification or successfully book every job. Frontline changes, connectivity, and high demand may affect results.
+Sub67 and its affiliates do not guarantee that you will receive every job notification or that you will be able to successfully book every job. It is actually likely that many or even most new jobs you will not be notified about or be able to successfully book. These limitations are due to many factors with some due to the limitations of not having global access to 3rd party systems beyond that of individual users. 3rd-party changes, connectivity, high demand, and/or low supply for job postings may also affect results.
 
 By accepting, you confirm you’ve read and agree to these Terms & Conditions.
 ''';
