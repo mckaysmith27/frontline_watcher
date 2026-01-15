@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
@@ -51,25 +52,43 @@ class _GlobalTermsGateState extends State<GlobalTermsGate> {
     }
   }
 
-  Future<void> _accept() async {
+  Future<void> _persistAcceptance() async {
     final user = _auth.currentUser;
     if (user == null) return;
 
-    await _firestore.collection('users').doc(user.uid).set(
-      {
-        'globalTermsAccepted': true,
-        'globalTermsAcceptedAt': FieldValue.serverTimestamp(),
-        // Ensure the app can receive district notifications (current MVP uses a single district)
-        'districtIds': FieldValue.arrayUnion(['alpine_school_district']),
-      },
-      SetOptions(merge: true),
-    );
+    try {
+      await _firestore
+          .collection('users')
+          .doc(user.uid)
+          .set(
+            {
+              'globalTermsAccepted': true,
+              'globalTermsAcceptedAt': FieldValue.serverTimestamp(),
+              // Ensure the app can receive district notifications (current MVP uses a single district)
+              'districtIds': FieldValue.arrayUnion(['alpine_school_district']),
+            },
+            SetOptions(merge: true),
+          )
+          // Don't let acceptance UI hang on slow network/DNS issues.
+          .timeout(const Duration(seconds: 2));
+    } catch (_) {
+      // Intentionally swallow: user should be able to proceed instantly.
+      // If this fails, they may be asked again next time if Firestore never persisted.
+    }
+  }
 
+  Future<void> _acceptFast() async {
+    // Make the UI instant: mark accepted locally first, then persist in background.
     if (mounted) {
       setState(() {
         _accepted = true;
       });
     }
+
+    // Fire-and-forget persistence so the button doesn't spin forever.
+    unawaited(_persistAcceptance());
+
+    return;
   }
 
   Future<void> _ensureDialogShown() async {
@@ -81,7 +100,7 @@ class _GlobalTermsGateState extends State<GlobalTermsGate> {
       barrierDismissible: false,
       builder: (context) => _GlobalTermsDialog(
         onAccept: () async {
-          await _accept();
+          await _acceptFast();
           if (context.mounted) Navigator.of(context).pop();
         },
       ),
@@ -132,7 +151,7 @@ class _GlobalTermsDialogState extends State<_GlobalTermsDialog> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               const Text(
-                'Quick heads-up: Sub67 helps you track job postings and manage your preferences. '
+                'Quick heads-up: Sub67 helps you track job postings and manage your preferences among other features. '
                 'Please review and accept the terms to continue.',
               ),
               const SizedBox(height: 12),
