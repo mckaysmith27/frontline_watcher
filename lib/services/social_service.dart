@@ -9,6 +9,13 @@ class SocialService {
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
   final FirebaseAuth _auth = FirebaseAuth.instance;
 
+  static String? normalizeCategoryTag(String? tag) {
+    if (tag == null) return null;
+    if (tag == 'random-thought') return 'question';
+    if (tag == 'happy') return null; // removed
+    return tag;
+  }
+
   Future<void> createPost({
     required String content,
     List<String> imageUrls = const [],
@@ -46,7 +53,7 @@ class SocialService {
       'views': 0,
       'isPinned': false,
       'pinOrder': 0,
-      'categoryTag': categoryTag,
+      'categoryTag': normalizeCategoryTag(categoryTag),
       'approvalStatus': approvalStatus,
       'imageBlocked': null,
       'contentBlocked': null,
@@ -285,7 +292,8 @@ class SocialService {
       
       // Filter by category if specified
       if (categoryTag != null && categoryTag != 'ALL') {
-        posts.removeWhere((post) => post.categoryTag != categoryTag);
+        final selected = normalizeCategoryTag(categoryTag);
+        posts.removeWhere((post) => normalizeCategoryTag(post.categoryTag) != selected);
       }
       
       // Sort by (upvotes - downvotes) descending

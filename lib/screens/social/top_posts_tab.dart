@@ -16,9 +16,8 @@ class _TopPostsTabState extends State<TopPostsTab> {
   
   // Category tags with emojis
   static const Map<String, String> categoryTags = {
-    'happy': '😊',
     'funny': '😂',
-    'random-thought': '🤔',
+    'question': '🤔',
     'heart-warming': '😄',
     'sad': '😢',
   };

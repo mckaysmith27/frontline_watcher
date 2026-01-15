@@ -28,8 +28,17 @@ class _PostCardState extends State<PostCard> {
   final SocialService _socialService = SocialService();
   bool _showComments = false;
 
+  String? _normalizeCategoryTag(String? tag) {
+    if (tag == null) return null;
+    if (tag == 'random-thought') return 'question';
+    if (tag == 'happy') return null; // removed
+    return tag;
+  }
+
   @override
   Widget build(BuildContext context) {
+    final normalizedTag = _normalizeCategoryTag(widget.post.categoryTag);
+
     return Card(
       margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
       color: widget.isTopPost ? Colors.amber[50] : null,
@@ -133,7 +142,7 @@ class _PostCardState extends State<PostCard> {
             ),
             const SizedBox(height: 12),
             // Show category tag if present
-            if (widget.post.categoryTag != null) ...[
+            if (normalizedTag != null) ...[
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                 margin: const EdgeInsets.only(bottom: 8),
@@ -145,12 +154,12 @@ class _PostCardState extends State<PostCard> {
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     Text(
-                      _getCategoryEmoji(widget.post.categoryTag!),
+                      _getCategoryEmoji(normalizedTag),
                       style: const TextStyle(fontSize: 16),
                     ),
                     const SizedBox(width: 4),
                     Text(
-                      widget.post.categoryTag!.replaceAll('-', ' '),
+                      normalizedTag.replaceAll('-', ' '),
                       style: TextStyle(
                         color: Theme.of(context).colorScheme.onPrimaryContainer,
                         fontWeight: FontWeight.w500,
@@ -247,9 +256,8 @@ class _PostCardState extends State<PostCard> {
 
   String _getCategoryEmoji(String categoryTag) {
     const emojis = {
-      'happy': '😊',
       'funny': '😂',
-      'random-thought': '🤔',
+      'question': '🤔',
       'heart-warming': '😄',
       'sad': '😢',
     };

@@ -22,9 +22,8 @@ class _PostComposerState extends State<PostComposer> {
   
   // Category tags with emojis
   static const Map<String, String> categoryTags = {
-    'happy': '😊',
     'funny': '😂',
-    'random-thought': '🤔',
+    'question': '🤔',
     'heart-warming': '😄',
     'sad': '😢',
   };
@@ -33,7 +32,12 @@ class _PostComposerState extends State<PostComposer> {
   void initState() {
     super.initState();
     if (widget.initialTag != null) {
-      _selectedCategoryTag = widget.initialTag;
+      // Back-compat for old tag values
+      _selectedCategoryTag = widget.initialTag == 'random-thought'
+          ? 'question'
+          : widget.initialTag == 'happy'
+              ? null
+              : widget.initialTag;
     }
   }
 
@@ -266,6 +270,13 @@ class _PostComposerState extends State<PostComposer> {
                   scrollDirection: Axis.horizontal,
                   child: Row(
                     children: [
+                      Text(
+                        'Topics',
+                        style: Theme.of(context).textTheme.labelLarge?.copyWith(
+                              fontWeight: FontWeight.w600,
+                            ),
+                      ),
+                      const SizedBox(width: 10),
                       // ALL button
                       _buildCategoryButton('ALL', null, isSelected: _selectedCategoryTag == null),
                       const SizedBox(width: 8),

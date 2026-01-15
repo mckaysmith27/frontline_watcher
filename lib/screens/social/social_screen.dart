@@ -138,16 +138,12 @@ class _SocialScreenState extends State<SocialScreen>
                   scrollDirection: Axis.horizontal,
                   child: Row(
                     children: [
-                      _buildTagButton(context, '😊', 'happy', () {
-                        _openComposerWithTag(context, 'happy');
-                      }),
-                      const SizedBox(width: 8),
                       _buildTagButton(context, '😂', 'funny', () {
                         _openComposerWithTag(context, 'funny');
                       }),
                       const SizedBox(width: 8),
-                      _buildTagButton(context, '🤔', 'random-thought', () {
-                        _openComposerWithTag(context, 'random-thought');
+                      _buildTagButton(context, '🤔', 'question', () {
+                        _openComposerWithTag(context, 'question');
                       }),
                       const SizedBox(width: 8),
                       _buildTagButton(context, '😄', 'heart-warming', () {
