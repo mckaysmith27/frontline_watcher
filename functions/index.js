@@ -831,7 +831,11 @@ exports.getUserByShortname = functions.https.onCall(async (data, context) => {
 
   // Return public profile data only
   return {
-    name: userData.shortname || userData.nickname || 'Substitute Teacher',
+    shortname: userData.shortname || null,
+    firstName: userData.firstName || null,
+    lastName: userData.lastName || null,
+    bio: userData.bio || null,
+    cardInstructions: userData.cardInstructions || null,
     phone: userData.phoneNumber || null,
     email: email,
     photoUrl: userData.photoUrl || null,

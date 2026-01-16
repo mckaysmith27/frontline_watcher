@@ -1,13 +1,12 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
-import 'package:provider/provider.dart';
+import 'package:flutter/services.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_functions/cloud_functions.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:firebase_storage/firebase_storage.dart';
-import '../../providers/auth_provider.dart';
 import '../../services/user_role_service.dart';
 import 'business_card_order_screen.dart';
 import 'profile_screen.dart';
@@ -25,6 +24,8 @@ class _BusinessCardScreenState extends State<BusinessCardScreen> {
   final TextEditingController _phoneController = TextEditingController();
   final TextEditingController _emailController = TextEditingController();
   final TextEditingController _shortnameController = TextEditingController();
+  final TextEditingController _instructionsController = TextEditingController();
+  final TextEditingController _bioController = TextEditingController();
   
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
   final FirebaseAuth _auth = FirebaseAuth.instance;
@@ -38,6 +39,11 @@ class _BusinessCardScreenState extends State<BusinessCardScreen> {
   bool _isFormComplete = false;
   String? _profilePhotoUrl;
 
+  static const String _defaultInstructions =
+      "Scan the QR code to add me to add me as a 'preferred sub' with a single click! You can also keep this card and re-scan to quickly request me for a specific day.";
+  static const String _defaultBio =
+      'An experienced sub who can who can manage a classroom and accomplish the mission.';
+
   @override
   void initState() {
     super.initState();
@@ -48,6 +54,8 @@ class _BusinessCardScreenState extends State<BusinessCardScreen> {
     _phoneController.addListener(_checkFormComplete);
     _emailController.addListener(_checkFormComplete);
     _shortnameController.addListener(_checkFormComplete);
+    _instructionsController.addListener(_checkFormComplete);
+    _bioController.addListener(_checkFormComplete);
   }
 
   @override
@@ -57,6 +65,8 @@ class _BusinessCardScreenState extends State<BusinessCardScreen> {
     _phoneController.dispose();
     _emailController.dispose();
     _shortnameController.dispose();
+    _instructionsController.dispose();
+    _bioController.dispose();
     super.dispose();
   }
 
@@ -70,6 +80,8 @@ class _BusinessCardScreenState extends State<BusinessCardScreen> {
       setState(() {
         _currentShortname = data['shortname'];
         _shortnameController.text = _currentShortname ?? '';
+        _validationMessage = (_currentShortname ?? '').isNotEmpty ? 'available!' : null;
+        _isAvailable = (_currentShortname ?? '').isNotEmpty;
         
         // Load existing user data
         final fullName = user.displayName ?? '';
@@ -81,6 +93,12 @@ class _BusinessCardScreenState extends State<BusinessCardScreen> {
         _phoneController.text = data['phoneNumber'] ?? '';
         _emailController.text = user.email ?? '';
         _profilePhotoUrl = user.photoURL ?? data['photoUrl'];
+        _instructionsController.text = (data['cardInstructions'] as String?)?.trim().isNotEmpty == true
+            ? (data['cardInstructions'] as String)
+            : _defaultInstructions;
+        _bioController.text = (data['bio'] as String?)?.trim().isNotEmpty == true
+            ? (data['bio'] as String)
+            : _defaultBio;
       });
       
       // Auto-save existing data
@@ -88,6 +106,8 @@ class _BusinessCardScreenState extends State<BusinessCardScreen> {
       _saveField('lastName', _lastNameController.text);
       _saveField('phoneNumber', _phoneController.text);
       _saveField('email', _emailController.text);
+      _saveField('cardInstructions', _instructionsController.text);
+      _saveField('bio', _bioController.text);
       
       _checkFormComplete();
     }
@@ -217,6 +237,17 @@ class _BusinessCardScreenState extends State<BusinessCardScreen> {
       return;
     }
 
+    // If unchanged from current shortname, treat as valid/available instantly.
+    if (_currentShortname != null && shortname == _currentShortname) {
+      setState(() {
+        _validationMessage = 'available!';
+        _isAvailable = true;
+        _isValidating = false;
+      });
+      _checkFormComplete();
+      return;
+    }
+
     // Check format: at least 3 characters, 1 number
     final hasMinLength = shortname.length >= 3;
     final hasNumber = RegExp(r'\d').hasMatch(shortname);
@@ -301,6 +332,29 @@ class _BusinessCardScreenState extends State<BusinessCardScreen> {
           children: [
             // Business Card Form
             _buildBusinessCardForm(),
+            const SizedBox(height: 12),
+            const Text(
+              'NOTE: Text elements as well as the QR code will adjust to proper alignment. Final card before print viewable on the next page.',
+              style: TextStyle(
+                fontStyle: FontStyle.italic,
+                color: Colors.black54,
+              ),
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: 24),
+
+            // Teacher preview
+            Align(
+              alignment: Alignment.centerLeft,
+              child: Text(
+                'What the teacher will see:',
+                style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                      fontWeight: FontWeight.bold,
+                    ),
+              ),
+            ),
+            const SizedBox(height: 12),
+            _buildTeacherPreviewPhone(),
             const SizedBox(height: 24),
             
             // Terms and Conditions
@@ -340,7 +394,7 @@ class _BusinessCardScreenState extends State<BusinessCardScreen> {
     return Container(
       width: double.infinity,
       constraints: const BoxConstraints(maxWidth: 400),
-      height: 230, // Approximate business card height
+      height: 280, // Slightly taller to fit instructions cleanly
       padding: const EdgeInsets.all(20.0),
       decoration: BoxDecoration(
         color: Colors.white,
@@ -405,7 +459,7 @@ class _BusinessCardScreenState extends State<BusinessCardScreen> {
           ),
           const SizedBox(height: 16),
           
-          // Second row: Phone and Email
+          // Second row: Phone/Email/Link + QR
           Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
@@ -427,12 +481,64 @@ class _BusinessCardScreenState extends State<BusinessCardScreen> {
                         color: Colors.black54,
                       ),
                       keyboardType: TextInputType.phone,
+                      inputFormatters: [
+                        FilteringTextInputFormatter.digitsOnly,
+                        UsPhoneNumberTextInputFormatter(),
+                      ],
                       onChanged: (value) {
                         _saveField('phoneNumber', value);
                         _checkFormComplete();
                       },
                     ),
                     const SizedBox(height: 8),
+                    TextField(
+                      controller: _shortnameController,
+                      decoration: InputDecoration(
+                        prefixText: 'sub67.com/',
+                        prefixStyle: const TextStyle(
+                          fontSize: 14,
+                          color: Colors.black87,
+                          fontWeight: FontWeight.w500,
+                        ),
+                        hintText: 'shortname',
+                        border: InputBorder.none,
+                        contentPadding: EdgeInsets.zero,
+                        isDense: true,
+                        suffixIcon: _isValidating
+                            ? const SizedBox(
+                                width: 16,
+                                height: 16,
+                                child: Padding(
+                                  padding: EdgeInsets.all(4.0),
+                                  child: CircularProgressIndicator(strokeWidth: 2),
+                                ),
+                              )
+                            : null,
+                      ),
+                      style: const TextStyle(
+                        fontSize: 14,
+                        color: Colors.black87,
+                        fontWeight: FontWeight.w500,
+                      ),
+                      textCapitalization: TextCapitalization.none,
+                      onChanged: (_) {
+                        _validateShortname();
+                        _checkFormComplete();
+                      },
+                    ),
+                    if (_validationMessage != null)
+                      Padding(
+                        padding: const EdgeInsets.only(top: 4.0),
+                        child: Text(
+                          _validationMessage!,
+                          style: TextStyle(
+                            color: _isAvailable ? Colors.green : Colors.red,
+                            fontSize: 12,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      ),
+                    const SizedBox(height: 6),
                     TextField(
                       controller: _emailController,
                       decoration: const InputDecoration(
@@ -486,121 +592,249 @@ class _BusinessCardScreenState extends State<BusinessCardScreen> {
               ),
             ],
           ),
-          const Spacer(),
-          // Profile Photo (before shortname/link field)
-          Row(
-            children: [
-              GestureDetector(
-                onTap: _pickProfilePhoto,
-                child: Stack(
-                  children: [
-                    CircleAvatar(
-                      radius: 30,
-                      backgroundImage: _profilePhotoUrl != null
-                          ? NetworkImage(_profilePhotoUrl!)
-                          : null,
-                      child: _profilePhotoUrl == null
-                          ? Text(
-                              _auth.currentUser?.email?[0].toUpperCase() ?? 'U',
-                              style: const TextStyle(fontSize: 24),
-                            )
-                          : null,
+          const SizedBox(height: 12),
+          Expanded(
+            child: _buildInstructionsBox(),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildInstructionsBox() {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: Colors.grey[50],
+        border: Border.all(color: Colors.grey[300]!),
+      ),
+      child: Stack(
+        children: [
+          Center(
+            child: TextField(
+              controller: _instructionsController,
+              maxLines: null,
+              style: const TextStyle(
+                fontStyle: FontStyle.italic,
+                fontSize: 12,
+                color: Colors.black54,
+              ),
+              textAlign: TextAlign.center,
+              decoration: const InputDecoration(
+                border: InputBorder.none,
+                isDense: true,
+                contentPadding: EdgeInsets.zero,
+              ),
+              onChanged: (value) {
+                _saveField('cardInstructions', value);
+              },
+            ),
+          ),
+          Positioned(
+            top: 0,
+            right: 0,
+            child: IconButton(
+              tooltip: 'Reset instructions',
+              icon: const Icon(Icons.refresh, size: 18),
+              onPressed: () async {
+                final confirmed = await showDialog<bool>(
+                  context: context,
+                  builder: (context) => AlertDialog(
+                    title: const Text('Reset Instructions?'),
+                    content: const Text(
+                      'Are you sure you want to reset instructions section to its default?',
                     ),
-                    Positioned(
-                      bottom: 0,
-                      right: 0,
-                      child: CircleAvatar(
-                        radius: 12,
-                        backgroundColor: Theme.of(context).colorScheme.primary,
-                        child: const Icon(
-                          Icons.camera_alt,
-                          size: 14,
-                          color: Colors.white,
-                        ),
+                    actions: [
+                      TextButton(
+                        onPressed: () => Navigator.pop(context, false),
+                        child: const Text('Cancel'),
                       ),
-                    ),
-                  ],
+                      ElevatedButton(
+                        onPressed: () => Navigator.pop(context, true),
+                        child: const Text('Reset'),
+                      ),
+                    ],
+                  ),
+                );
+
+                if (confirmed == true) {
+                  setState(() {
+                    _instructionsController.text = _defaultInstructions;
+                  });
+                  await _saveField('cardInstructions', _defaultInstructions);
+                }
+              },
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildTeacherPreviewPhone() {
+    final url = _getBusinessCardUrl().replaceFirst('https://', '');
+    final fullName = '${_firstNameController.text} ${_lastNameController.text}'.trim();
+
+    return Container(
+      width: double.infinity,
+      constraints: const BoxConstraints(maxWidth: 420),
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Theme.of(context).colorScheme.surface,
+        borderRadius: BorderRadius.circular(28),
+        border: Border.all(color: Theme.of(context).colorScheme.outline.withOpacity(0.2)),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.06),
+            blurRadius: 12,
+            offset: const Offset(0, 6),
+          ),
+        ],
+      ),
+      child: Column(
+        children: [
+          GestureDetector(
+            onTap: _pickProfilePhoto,
+            child: Stack(
+              alignment: Alignment.center,
+              children: [
+                CircleAvatar(
+                  radius: 56,
+                  backgroundImage: _profilePhotoUrl != null ? NetworkImage(_profilePhotoUrl!) : null,
+                  child: _profilePhotoUrl == null
+                      ? Text(
+                          _auth.currentUser?.email?[0].toUpperCase() ?? 'U',
+                          style: const TextStyle(fontSize: 28),
+                        )
+                      : null,
+                ),
+                Positioned(
+                  bottom: 0,
+                  right: 0,
+                  child: CircleAvatar(
+                    radius: 14,
+                    backgroundColor: Theme.of(context).colorScheme.primary,
+                    child: const Icon(Icons.camera_alt, size: 16, color: Colors.white),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 12),
+          _copyRow(label: fullName.isEmpty ? 'Name' : fullName, valueToCopy: fullName),
+          const SizedBox(height: 8),
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Expanded(
+                child: TextField(
+                  controller: _bioController,
+                  maxLength: 500,
+                  maxLines: null,
+                  decoration: const InputDecoration(
+                    counterText: '',
+                    hintText: 'Quick bio (max 500 chars)',
+                    border: OutlineInputBorder(),
+                    isDense: true,
+                    contentPadding: EdgeInsets.all(12),
+                  ),
+                  style: const TextStyle(fontStyle: FontStyle.italic),
+                  onChanged: (value) => _saveField('bio', value),
                 ),
               ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      'Profile Photo',
-                      style: TextStyle(
-                        fontSize: 11,
-                        color: Colors.grey[600],
-                        fontWeight: FontWeight.w500,
-                      ),
+              const SizedBox(width: 8),
+              IconButton(
+                tooltip: 'Reset bio',
+                icon: const Icon(Icons.refresh),
+                onPressed: () async {
+                  final confirmed = await showDialog<bool>(
+                    context: context,
+                    builder: (context) => AlertDialog(
+                      title: const Text('Reset Bio?'),
+                      content: const Text('Are you sure you want to reset bio to its default?'),
+                      actions: [
+                        TextButton(
+                          onPressed: () => Navigator.pop(context, false),
+                          child: const Text('Cancel'),
+                        ),
+                        ElevatedButton(
+                          onPressed: () => Navigator.pop(context, true),
+                          child: const Text('Reset'),
+                        ),
+                      ],
                     ),
-                    const SizedBox(height: 2),
-                    Text(
-                      'Tap to upload or change',
-                      style: TextStyle(
-                        fontSize: 10,
-                        color: Colors.grey[500],
-                      ),
-                    ),
-                  ],
-                ),
+                  );
+                  if (confirmed == true) {
+                    setState(() {
+                      _bioController.text = _defaultBio;
+                    });
+                    await _saveField('bio', _defaultBio);
+                  }
+                },
               ),
             ],
           ),
-          const SizedBox(height: 12),
-          // Bottom: URL field
-          TextField(
-            controller: _shortnameController,
-            decoration: InputDecoration(
-              prefixText: 'sub67.com/',
-              prefixStyle: const TextStyle(
-                fontSize: 14,
-                color: Colors.black87,
-                fontWeight: FontWeight.w500,
-              ),
-              hintText: 'shortname',
-              border: InputBorder.none,
-              contentPadding: EdgeInsets.zero,
-              isDense: true,
-              suffixIcon: _isValidating
-                  ? const SizedBox(
-                      width: 16,
-                      height: 16,
-                      child: Padding(
-                        padding: EdgeInsets.all(4.0),
-                        child: CircularProgressIndicator(strokeWidth: 2),
-                      ),
-                    )
-                  : null,
-            ),
-            style: const TextStyle(
-              fontSize: 14,
-              color: Colors.black87,
-              fontWeight: FontWeight.w500,
-            ),
-            textCapitalization: TextCapitalization.none,
-            onChanged: (value) {
-              _validateShortname();
-              _checkFormComplete();
-            },
-          ),
-          if (_validationMessage != null)
-            Padding(
-              padding: const EdgeInsets.only(top: 4.0),
-              child: Text(
-                _validationMessage!,
-                style: TextStyle(
-                  color: _isAvailable ? Colors.green : Colors.red,
-                  fontSize: 12,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-            ),
+          const SizedBox(height: 8),
+          _copyRow(label: _phoneController.text.isEmpty ? 'Phone' : _phoneController.text, valueToCopy: _phoneController.text),
+          _copyRow(label: _emailController.text.isEmpty ? 'Email' : _emailController.text, valueToCopy: _emailController.text),
+          _copyRow(label: url.isEmpty ? 'sub67.com/<shortname>' : url, valueToCopy: url),
         ],
       ),
+    );
+  }
+
+  Widget _copyRow({required String label, required String valueToCopy}) {
+    return Row(
+      children: [
+        Expanded(
+          child: Text(
+            label,
+            style: const TextStyle(fontSize: 14),
+          ),
+        ),
+        IconButton(
+          tooltip: 'Copy',
+          icon: const Icon(Icons.copy, size: 18),
+          onPressed: valueToCopy.trim().isEmpty
+              ? null
+              : () async {
+                  await Clipboard.setData(ClipboardData(text: valueToCopy.trim()));
+                  if (mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(content: Text('Copied')),
+                    );
+                  }
+                },
+        ),
+      ],
     );
   }
 }
 
 // Business card terms were consolidated into the global one-time Terms & Conditions gate.
+
+class UsPhoneNumberTextInputFormatter extends TextInputFormatter {
+  @override
+  TextEditingValue formatEditUpdate(TextEditingValue oldValue, TextEditingValue newValue) {
+    final digits = newValue.text.replaceAll(RegExp(r'[^0-9]'), '');
+    final capped = digits.length > 10 ? digits.substring(0, 10) : digits;
+
+    String formatted;
+    if (capped.isEmpty) {
+      formatted = '';
+    } else if (capped.length <= 3) {
+      formatted = '(${capped}';
+    } else if (capped.length <= 6) {
+      formatted = '(${capped.substring(0, 3)}) ${capped.substring(3)}';
+    } else {
+      formatted =
+          '(${capped.substring(0, 3)}) ${capped.substring(3, 6)}-${capped.substring(6)}';
+    }
+
+    return TextEditingValue(
+      text: formatted,
+      selection: TextSelection.collapsed(offset: formatted.length),
+    );
+  }
+}

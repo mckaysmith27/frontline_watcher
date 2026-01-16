@@ -14,6 +14,7 @@ import 'screens/auth/login_screen.dart';
 import 'screens/main_navigation.dart';
 import 'screens/job/job_webview_screen.dart';
 import 'widgets/global_terms_gate.dart';
+import 'screens/booking/teacher_landing_screen.dart';
 
 // Background message handler must be top-level function
 @pragma('vm:entry-point')
@@ -79,6 +80,8 @@ class _Sub67AppState extends State<Sub67App> {
 
   @override
   Widget build(BuildContext context) {
+    final initialPublicShortname = _getPublicShortnameFromUrl();
+
     return MultiProvider(
       providers: [
         ChangeNotifierProvider(create: (_) => ThemeProvider()),
@@ -110,7 +113,9 @@ class _Sub67AppState extends State<Sub67App> {
               textTheme: GoogleFonts.interTextTheme(ThemeData.dark().textTheme),
             ),
             themeMode: themeProvider.themeMode,
-            home: const AuthWrapper(),
+            home: initialPublicShortname != null
+                ? TeacherLandingScreen(shortname: initialPublicShortname)
+                : const AuthWrapper(),
             routes: {
               '/job': (context) {
                 final args = ModalRoute.of(context)!.settings.arguments as Map<String, dynamic>?;
@@ -122,6 +127,20 @@ class _Sub67AppState extends State<Sub67App> {
         },
       ),
     );
+  }
+
+  String? _getPublicShortnameFromUrl() {
+    // Support public booking links: sub67.com/<shortname>
+    // Only relevant for web; on mobile this will typically be "/".
+    final segments = Uri.base.pathSegments.where((s) => s.trim().isNotEmpty).toList();
+    if (segments.length == 1) {
+      final shortname = segments.first.toLowerCase();
+      // avoid routing collisions with known top-level paths
+      const reserved = {'job'};
+      if (reserved.contains(shortname)) return null;
+      return shortname;
+    }
+    return null;
   }
 
   @override
