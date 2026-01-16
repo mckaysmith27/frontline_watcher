@@ -64,6 +64,49 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
           ),
         ),
         const SizedBox(height: 16),
+
+        // Set Times toggle
+        Card(
+          child: SwitchListTile(
+            title: const Text('Set Times'),
+            subtitle: const Text('Only receive notifications during specified time windows'),
+            value: notificationsProvider.setTimesEnabled,
+            onChanged: (value) {
+              notificationsProvider.setSetTimesEnabled(value);
+            },
+          ),
+        ),
+        
+        // Time windows (shown when setTimesEnabled is true)
+        if (notificationsProvider.setTimesEnabled) ...[
+          const SizedBox(height: 16),
+          ...notificationsProvider.timeWindows.map((window) {
+            return Padding(
+              padding: const EdgeInsets.only(bottom: 12),
+              child: TimeWindowWidget(
+                timeWindow: window,
+                onUpdate: (updatedWindow) {
+                  notificationsProvider.updateTimeWindow(window.id, updatedWindow);
+                },
+                onDelete: () {
+                  notificationsProvider.removeTimeWindow(window.id);
+                },
+              ),
+            );
+          }),
+          
+          // Add time window button
+          Padding(
+            padding: const EdgeInsets.only(top: 8),
+            child: OutlinedButton.icon(
+              onPressed: () {
+                _addTimeWindow(context, notificationsProvider);
+              },
+              icon: const Icon(Icons.add),
+              label: const Text('Add Time Window'),
+            ),
+          ),
+        ],
         
         // Enable FAST Notifications toggle (paid feature)
         Card(
@@ -175,49 +218,6 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
           ),
         ),
         const SizedBox(height: 16),
-        
-        // Set Times toggle
-        Card(
-          child: SwitchListTile(
-            title: const Text('Set Times'),
-            subtitle: const Text('Only receive notifications during specified time windows'),
-            value: notificationsProvider.setTimesEnabled,
-            onChanged: (value) {
-              notificationsProvider.setSetTimesEnabled(value);
-            },
-          ),
-        ),
-        
-        // Time windows (shown when setTimesEnabled is true)
-        if (notificationsProvider.setTimesEnabled) ...[
-          const SizedBox(height: 16),
-          ...notificationsProvider.timeWindows.map((window) {
-            return Padding(
-              padding: const EdgeInsets.only(bottom: 12),
-              child: TimeWindowWidget(
-                timeWindow: window,
-                onUpdate: (updatedWindow) {
-                  notificationsProvider.updateTimeWindow(window.id, updatedWindow);
-                },
-                onDelete: () {
-                  notificationsProvider.removeTimeWindow(window.id);
-                },
-              ),
-            );
-          }),
-          
-          // Add time window button
-          Padding(
-            padding: const EdgeInsets.only(top: 8),
-            child: OutlinedButton.icon(
-              onPressed: () {
-                _addTimeWindow(context, notificationsProvider);
-              },
-              icon: const Icon(Icons.add),
-              label: const Text('Add Time Window'),
-            ),
-          ),
-        ],
       ],
     );
   }
