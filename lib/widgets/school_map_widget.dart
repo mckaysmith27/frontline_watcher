@@ -125,6 +125,13 @@ class _SchoolMapWidgetState extends State<SchoolMapWidget> {
     
     if (!hasFiltersAccess) {
       // User doesn't have access to this feature, don't request permissions
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+          _isGeocoding = false;
+          _isCalculatingDistances = false;
+        });
+      }
       return;
     }
     
@@ -136,6 +143,9 @@ class _SchoolMapWidgetState extends State<SchoolMapWidget> {
           const SnackBar(content: Text('Location services are disabled.')),
         );
       }
+      // Fall back to default location so the map still works.
+      await _setDefaultToLehi();
+      await _loadSchools();
       return;
     }
 
@@ -148,6 +158,9 @@ class _SchoolMapWidgetState extends State<SchoolMapWidget> {
             const SnackBar(content: Text('Location permissions are denied.')),
           );
         }
+        // Fall back to default location so the map still works.
+        await _setDefaultToLehi();
+        await _loadSchools();
         return;
       }
     }
@@ -160,6 +173,9 @@ class _SchoolMapWidgetState extends State<SchoolMapWidget> {
           ),
         );
       }
+      // Fall back to default location so the map still works.
+      await _setDefaultToLehi();
+      await _loadSchools();
       return;
     }
 
