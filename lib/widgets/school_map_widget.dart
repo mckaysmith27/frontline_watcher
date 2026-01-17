@@ -25,6 +25,7 @@ class _SchoolMapWidgetState extends State<SchoolMapWidget> {
   final SchoolService _schoolService = SchoolService();
   List<School> _allSchools = [];
   List<School> _schoolsInRadius = [];
+  Position? _userPosition;
   Position? _selectedPosition;
   double _radiusMiles = 10.0;
   double _maxRadiusMiles = 50.0; // Will be calculated based on furthest school
