@@ -395,13 +395,13 @@ class FiltersProvider extends ChangeNotifier {
     notifyListeners();
   }
 
-  // Apply global filter changes to all notification days (except unique keywords)
+  // Apply global filter changes to all relevant dates (except unique keywords)
   Future<void> propagateGlobalFiltersToAllDates(
-    List<String> committedDates, {
+    List<String> relevantDates, {
     required bool Function(String) isUnavailable,
     required bool Function(String) hasJob,
   }) async {
-    for (var dateStr in committedDates) {
+    for (var dateStr in relevantDates) {
       // Skip if date is unavailable or has job
       if (isUnavailable(dateStr) || hasJob(dateStr)) {
         continue;
@@ -442,7 +442,7 @@ class FiltersProvider extends ChangeNotifier {
     notifyListeners();
   }
   
-  // Auto-apply filters to newly committed dates (called when credits are added)
+  // Auto-apply filters to newly added dates (legacy helper)
   Future<void> autoApplyToNewDates(
     List<String> newDates, {
     required bool Function(String) isUnavailable,
@@ -558,10 +558,6 @@ class FiltersProvider extends ChangeNotifier {
     final currentState = _tagStates[tag] ?? TagState.gray;
     TagState newState;
     
-    // Store old included/excluded lists to detect changes
-    final oldIncluded = _includedLs.toSet();
-    final oldExcluded = _excludeLs.toSet();
-
     // Regular tags: green -> gray -> red -> green
     switch (currentState) {
       case TagState.green:
@@ -625,11 +621,11 @@ class FiltersProvider extends ChangeNotifier {
   
   // Method to be called when global filters change - propagates to all notification days
   // This should be called from the screen that has access to both providers
-  Future<void> onGlobalFiltersChanged(List<String> committedDates, {
+  Future<void> onGlobalFiltersChanged(List<String> relevantDates, {
     required bool Function(String) isUnavailable,
     required bool Function(String) hasJob,
   }) async {
-    await propagateGlobalFiltersToAllDates(committedDates, 
+    await propagateGlobalFiltersToAllDates(relevantDates, 
       isUnavailable: isUnavailable,
       hasJob: hasJob,
     );

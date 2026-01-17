@@ -1,12 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../providers/filters_provider.dart';
-import '../providers/credits_provider.dart';
+import '../providers/availability_provider.dart';
 import '../screens/filters/date_filter_editor.dart';
-import '../widgets/tag_chip.dart';
-import '../services/job_service.dart';
 import '../models/job.dart';
-import '../utils/keyword_mapper.dart';
 
 class NotificationDayCard extends StatelessWidget {
   final String dateStr; // Format: "YYYY-MM-DD"
@@ -22,8 +19,8 @@ class NotificationDayCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Consumer2<FiltersProvider, CreditsProvider>(
-      builder: (context, filtersProvider, creditsProvider, _) {
+    return Consumer2<FiltersProvider, AvailabilityProvider>(
+      builder: (context, filtersProvider, availabilityProvider, _) {
     
     // Get date-specific filters (if any)
     final dateFilters = filtersProvider.getDateFilters(dateStr);
@@ -48,10 +45,10 @@ class NotificationDayCard extends StatelessWidget {
     final day = date.day;
 
     // Check if this date has a job (blue highlight)
-    final hasJob = creditsProvider.scheduledJobDates.contains(dateStr);
-    // Check if this is a notification day (green highlight)
-    final isNotificationDay = creditsProvider.committedDates.contains(dateStr);
-    // Check if this date has unique keywords (orange highlight)
+    final hasJob = availabilityProvider.scheduledJobDates.contains(dateStr);
+    final isUnavailable = availabilityProvider.unavailableDates.contains(dateStr);
+    final hasPartialAvailability = availabilityProvider.partialAvailabilityByDate.containsKey(dateStr);
+    // Check if this date has unique keywords (orange accent)
     final hasUniqueKeywords = filtersProvider.hasUniqueKeywords(dateStr);
     
     // Get unique keywords (keywords that differ from global filters)
@@ -62,14 +59,16 @@ class NotificationDayCard extends StatelessWidget {
     // Get matched keywords from booked job if available
     final matchedKeywords = bookedJob != null ? _getMatchedKeywords(bookedJob!, includedWords) : [];
 
-    // Determine border color (priority: blue > orange > green)
+    // Determine border color (priority: blue > red > mustard > orange)
     Color? borderColor;
     if (hasJob) {
       borderColor = Colors.blue;
+    } else if (isUnavailable) {
+      borderColor = Colors.red;
+    } else if (hasPartialAvailability) {
+      borderColor = const Color(0xFFBFA100);
     } else if (hasUniqueKeywords) {
       borderColor = Colors.orange;
-    } else if (isNotificationDay) {
-      borderColor = Colors.green;
     }
 
     return Card(
@@ -134,6 +133,42 @@ class NotificationDayCard extends StatelessWidget {
                         'Has Job',
                         style: TextStyle(
                           color: Colors.blue[700],
+                          fontSize: 12,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ),
+                  if (!hasJob && isUnavailable)
+                    Container(
+                      margin: const EdgeInsets.only(left: 8),
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                      decoration: BoxDecoration(
+                        color: Colors.red.withOpacity(0.2),
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(color: Colors.red, width: 1),
+                      ),
+                      child: Text(
+                        'Unavailable',
+                        style: TextStyle(
+                          color: Colors.red[700],
+                          fontSize: 12,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ),
+                  if (!hasJob && !isUnavailable && hasPartialAvailability)
+                    Container(
+                      margin: const EdgeInsets.only(left: 8),
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFBFA100).withOpacity(0.18),
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(color: const Color(0xFFBFA100), width: 1),
+                      ),
+                      child: const Text(
+                        'Partial',
+                        style: TextStyle(
+                          color: Color(0xFF8B6F00),
                           fontSize: 12,
                           fontWeight: FontWeight.bold,
                         ),

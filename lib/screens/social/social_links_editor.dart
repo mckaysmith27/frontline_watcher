@@ -143,7 +143,6 @@ class _SocialLinksEditorState extends State<SocialLinksEditor> {
 
   Widget _buildLinkEditor(int index) {
     final link = _links[index];
-    final platformController = TextEditingController(text: link.platform);
     final urlController = TextEditingController(text: link.url);
 
     return Container(

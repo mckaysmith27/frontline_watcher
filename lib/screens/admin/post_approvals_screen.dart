@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:intl/intl.dart';
 import '../../services/admin_service.dart';
 import '../../models/post.dart';
@@ -190,9 +189,7 @@ class _PostApprovalsScreenState extends State<PostApprovalsScreen> {
 
   Widget _buildPostCard(Post post) {
     final dateFormat = DateFormat('MMM dd, yyyy HH:mm');
-    final dateStr = post.createdAt != null
-        ? dateFormat.format(post.createdAt!)
-        : 'Unknown date';
+    final dateStr = dateFormat.format(post.createdAt);
 
     return Card(
       margin: const EdgeInsets.only(bottom: 16),
@@ -263,9 +260,9 @@ class _PostApprovalsScreenState extends State<PostApprovalsScreen> {
             const SizedBox(height: 12),
             
             // Post content
-            if (post.content != null && post.content!.isNotEmpty)
+            if (post.content.isNotEmpty)
               Text(
-                post.content!,
+                post.content,
                 style: const TextStyle(fontSize: 14),
               ),
             

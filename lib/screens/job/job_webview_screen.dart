@@ -23,7 +23,6 @@ class _JobWebViewScreenState extends State<JobWebViewScreen> {
   bool _hasShownAcceptSuccess = false;
   bool _isLoggedIn = false;
   bool _showAcceptGuidance = false;
-  Map<String, dynamic>? _acceptButtonPosition;
 
   @override
   void initState() {
@@ -113,15 +112,12 @@ class _JobWebViewScreenState extends State<JobWebViewScreen> {
         })();
       ''');
       
-      if (mounted && result != null) {
-        final data = result.toString();
-        if (data.contains('"found":true')) {
-          // Parse position data (simplified - in production use proper JSON parsing)
-          setState(() {
-            _showAcceptGuidance = true;
-            _acceptButtonPosition = {'found': true};
-          });
-        }
+      if (!mounted) return;
+      final data = result.toString();
+      if (data.contains('"found":true')) {
+        setState(() {
+          _showAcceptGuidance = true;
+        });
       }
     } catch (e) {
       print('[WebView] Error finding accept button: $e');
@@ -262,7 +258,7 @@ class _JobWebViewScreenState extends State<JobWebViewScreen> {
         ''');
         
         if (!mounted) return;
-        final status = result?.toString().toLowerCase() ?? 'none';
+        final status = result.toString().toLowerCase();
         if (status.contains('attempt') && !_hasShownAcceptAttempt) {
           _showAcceptAttempt();
         } else if (status.contains('success') && !_hasShownAcceptSuccess) {

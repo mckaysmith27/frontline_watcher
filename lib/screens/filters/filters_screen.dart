@@ -2,9 +2,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../providers/filters_provider.dart';
-import '../../providers/credits_provider.dart';
-import '../../services/automation_service.dart';
-import '../../utils/keyword_mapper.dart';
+import '../../providers/availability_provider.dart';
 import '../../widgets/filter_column.dart';
 import '../../widgets/nested_filter_column.dart';
 import '../../widgets/school_map_widget.dart';
@@ -29,26 +27,10 @@ class _FiltersScreenState extends State<FiltersScreen> {
     super.dispose();
   }
   
-  void _schedulePropagation(FiltersProvider filtersProvider, CreditsProvider creditsProvider) {
-    // Cancel existing timer
-    _propagationTimer?.cancel();
-    
-    // Schedule new propagation after a short delay (debounce)
-    _propagationTimer = Timer(const Duration(milliseconds: 500), () {
-      if (mounted) {
-        filtersProvider.onGlobalFiltersChanged(
-          creditsProvider.committedDates,
-          isUnavailable: (dateStr) => creditsProvider.excludedDates.contains(dateStr),
-          hasJob: (dateStr) => creditsProvider.scheduledJobDates.contains(dateStr),
-        );
-      }
-    });
-  }
-  
   @override
   Widget build(BuildContext context) {
-    return Consumer2<FiltersProvider, CreditsProvider>(
-      builder: (context, filtersProvider, creditsProvider, _) {
+    return Consumer2<FiltersProvider, AvailabilityProvider>(
+      builder: (context, filtersProvider, availabilityProvider, _) {
         // Check if filters changed and schedule propagation
         final currentIncluded = filtersProvider.includedLs.toSet();
         final currentExcluded = filtersProvider.excludeLs.toSet();
@@ -58,15 +40,28 @@ class _FiltersScreenState extends State<FiltersScreen> {
         if (currentIncluded != lastIncludedSet || currentExcluded != lastExcludedSet) {
           _lastIncluded = filtersProvider.includedLs.toList();
           _lastExcluded = filtersProvider.excludeLs.toList();
-          _schedulePropagation(filtersProvider, creditsProvider);
+          _schedulePropagation(filtersProvider, availabilityProvider);
         }
         
-        return _buildFiltersScreen(context, filtersProvider, creditsProvider);
+        return _buildFiltersScreen(context, filtersProvider, availabilityProvider);
       },
     );
   }
   
-  Widget _buildFiltersScreen(BuildContext context, FiltersProvider filtersProvider, CreditsProvider creditsProvider) {
+  void _schedulePropagation(FiltersProvider filtersProvider, AvailabilityProvider availabilityProvider) {
+    _propagationTimer?.cancel();
+    _propagationTimer = Timer(const Duration(milliseconds: 500), () {
+      if (!mounted) return;
+      final relevantDates = availabilityProvider.computeRelevantWorkdaysForKeywords();
+      filtersProvider.onGlobalFiltersChanged(
+        relevantDates,
+        isUnavailable: (dateStr) => availabilityProvider.unavailableDates.contains(dateStr),
+        hasJob: (dateStr) => availabilityProvider.scheduledJobDates.contains(dateStr),
+      );
+    });
+  }
+  
+  Widget _buildFiltersScreen(BuildContext context, FiltersProvider filtersProvider, AvailabilityProvider availabilityProvider) {
 
     return Scaffold(
       appBar: ProfileAppBar(

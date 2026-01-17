@@ -7,7 +7,8 @@ import 'firebase_options.dart';
 import 'providers/theme_provider.dart';
 import 'providers/auth_provider.dart';
 import 'providers/filters_provider.dart';
-import 'providers/credits_provider.dart';
+import 'providers/subscription_provider.dart';
+import 'providers/availability_provider.dart';
 import 'providers/notifications_provider.dart';
 import 'services/push_notification_service.dart';
 import 'screens/auth/login_screen.dart';
@@ -87,7 +88,8 @@ class _Sub67AppState extends State<Sub67App> {
         ChangeNotifierProvider(create: (_) => ThemeProvider()),
         ChangeNotifierProvider(create: (_) => AuthProvider()),
         ChangeNotifierProvider(create: (_) => FiltersProvider()),
-        ChangeNotifierProvider(create: (_) => CreditsProvider()),
+        ChangeNotifierProvider(create: (_) => SubscriptionProvider()),
+        ChangeNotifierProvider(create: (_) => AvailabilityProvider()),
         ChangeNotifierProvider(create: (_) => NotificationsProvider()),
       ],
       child: Consumer<ThemeProvider>(

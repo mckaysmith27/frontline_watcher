@@ -4,22 +4,26 @@ import '../models/job.dart';
 
 class DayActionBottomSheet extends StatelessWidget {
   final DateTime day;
-  final bool isCommitted; // Green - notification day
-  final bool isUnavailable; // Red - excluded
-  final bool hasJob; // Blue - has scheduled job
+  final bool isUnavailable; // Red - unavailable
+  final bool hasPartialAvailability; // Mustard - partial availability
+  final bool hasJob; // Blue - has scheduled job (may overlap with partial availability)
   final Job? job; // Job details if hasJob is true
 
   const DayActionBottomSheet({
     super.key,
     required this.day,
-    required this.isCommitted,
     required this.isUnavailable,
+    required this.hasPartialAvailability,
     required this.hasJob,
     this.job,
   });
 
   @override
   Widget build(BuildContext context) {
+    final titleStyle = Theme.of(context).textTheme.titleLarge?.copyWith(
+          fontWeight: FontWeight.bold,
+        );
+
     return Container(
       padding: const EdgeInsets.all(24),
       decoration: BoxDecoration(
@@ -45,35 +49,11 @@ class DayActionBottomSheet extends StatelessWidget {
           // Day header
           Text(
             DateFormat('EEEE, MMMM d, yyyy').format(day),
-            style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                  fontWeight: FontWeight.bold,
-                ),
+            style: titleStyle,
           ),
           const SizedBox(height: 24),
           // Status indicator
-          if (isCommitted)
-            Container(
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                color: Colors.green.withOpacity(0.1),
-                borderRadius: BorderRadius.circular(8),
-                border: Border.all(color: Colors.green, width: 2),
-              ),
-              child: Row(
-                children: [
-                  Icon(Icons.notifications_active, color: Colors.green),
-                  const SizedBox(width: 8),
-                  Text(
-                    'Notification Day (Credit Applied)',
-                    style: TextStyle(
-                      color: Colors.green[700],
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                ],
-              ),
-            )
-          else if (hasJob && job != null)
+          if (hasJob && job != null)
             Container(
               padding: const EdgeInsets.all(12),
               decoration: BoxDecoration(
@@ -127,6 +107,28 @@ class DayActionBottomSheet extends StatelessWidget {
                 ],
               ),
             )
+          else if (hasPartialAvailability)
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: const Color(0xFFBFA100).withOpacity(0.12),
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: const Color(0xFFBFA100), width: 2),
+              ),
+              child: const Row(
+                children: [
+                  Icon(Icons.access_time, color: Color(0xFFBFA100)),
+                  SizedBox(width: 8),
+                  Text(
+                    'Partial Availability',
+                    style: TextStyle(
+                      color: Color(0xFF8B6F00),
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ],
+              ),
+            )
           else
             Container(
               padding: const EdgeInsets.all(12),
@@ -140,7 +142,7 @@ class DayActionBottomSheet extends StatelessWidget {
                   Icon(Icons.calendar_today, color: Colors.grey),
                   const SizedBox(width: 8),
                   Text(
-                    'No Credit Applied',
+                    'No status set',
                     style: TextStyle(
                       color: Colors.grey[700],
                       fontWeight: FontWeight.bold,
@@ -151,21 +153,7 @@ class DayActionBottomSheet extends StatelessWidget {
             ),
           const SizedBox(height: 24),
           // Action buttons
-          if (isCommitted)
-            SizedBox(
-              width: double.infinity,
-              child: ElevatedButton.icon(
-                onPressed: () => Navigator.pop(context, 'mark_unavailable'),
-                icon: const Icon(Icons.block),
-                label: const Text('Mark as Unavailable'),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.red,
-                  foregroundColor: Colors.white,
-                  padding: const EdgeInsets.symmetric(vertical: 16),
-                ),
-              ),
-            )
-          else if (hasJob)
+          if (hasJob)
             SizedBox(
               width: double.infinity,
               child: ElevatedButton.icon(
@@ -185,14 +173,80 @@ class DayActionBottomSheet extends StatelessWidget {
               child: ElevatedButton.icon(
                 onPressed: () => Navigator.pop(context, 'remove_unavailable'),
                 icon: const Icon(Icons.check_circle),
-                label: const Text('Remove Unavailable Status'),
+                label: const Text('Mark Available'),
                 style: ElevatedButton.styleFrom(
                   backgroundColor: Colors.green,
                   foregroundColor: Colors.white,
                   padding: const EdgeInsets.symmetric(vertical: 16),
                 ),
               ),
+            )
+          else if (hasPartialAvailability) ...[
+            SizedBox(
+              width: double.infinity,
+              child: ElevatedButton.icon(
+                onPressed: () => Navigator.pop(context, 'edit_time_window'),
+                icon: const Icon(Icons.edit),
+                label: const Text('Edit Time Window'),
+                style: ElevatedButton.styleFrom(
+                  padding: const EdgeInsets.symmetric(vertical: 16),
+                ),
+              ),
             ),
+            const SizedBox(height: 12),
+            SizedBox(
+              width: double.infinity,
+              child: OutlinedButton.icon(
+                onPressed: () => Navigator.pop(context, 'clear_time_window'),
+                icon: const Icon(Icons.close),
+                label: const Text('Clear Time Window'),
+                style: OutlinedButton.styleFrom(
+                  padding: const EdgeInsets.symmetric(vertical: 16),
+                ),
+              ),
+            ),
+            const SizedBox(height: 12),
+            SizedBox(
+              width: double.infinity,
+              child: OutlinedButton.icon(
+                onPressed: () => Navigator.pop(context, 'mark_unavailable'),
+                icon: const Icon(Icons.block),
+                label: const Text('Mark Unavailable'),
+                style: OutlinedButton.styleFrom(
+                  padding: const EdgeInsets.symmetric(vertical: 16),
+                  foregroundColor: Colors.red,
+                ),
+              ),
+            ),
+          ]
+          else ...[
+            SizedBox(
+              width: double.infinity,
+              child: ElevatedButton.icon(
+                // Default action per your spec: assume marking unavailable unless user chooses time window
+                onPressed: () => Navigator.pop(context, 'mark_unavailable'),
+                icon: const Icon(Icons.block),
+                label: const Text('Mark Unavailable'),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.red,
+                  foregroundColor: Colors.white,
+                  padding: const EdgeInsets.symmetric(vertical: 16),
+                ),
+              ),
+            ),
+            const SizedBox(height: 12),
+            SizedBox(
+              width: double.infinity,
+              child: OutlinedButton.icon(
+                onPressed: () => Navigator.pop(context, 'add_time_window'),
+                icon: const Icon(Icons.access_time),
+                label: const Text('Add Time Window'),
+                style: OutlinedButton.styleFrom(
+                  padding: const EdgeInsets.symmetric(vertical: 16),
+                ),
+              ),
+            ),
+          ],
           const SizedBox(height: 12),
           SizedBox(
             width: double.infinity,

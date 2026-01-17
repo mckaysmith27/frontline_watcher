@@ -1,9 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../providers/auth_provider.dart';
-import '../../providers/credits_provider.dart';
-import '../../services/social_service.dart';
-import '../../models/post.dart';
 import 'post_composer.dart';
 import 'my_page_tab.dart';
 import 'feed_tab.dart';
@@ -41,7 +38,6 @@ class _SocialScreenState extends State<SocialScreen>
   @override
   Widget build(BuildContext context) {
     final authProvider = Provider.of<AuthProvider>(context);
-    final creditsProvider = Provider.of<CreditsProvider>(context);
 
     return Scaffold(
       appBar: AppBar(

@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../providers/notifications_provider.dart';
-import '../../providers/credits_provider.dart';
+import '../../providers/subscription_provider.dart';
 import '../filters/automation_bottom_sheet.dart';
 import '../profile/profile_screen.dart';
 import 'time_window_widget.dart';
@@ -34,14 +34,14 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
           ),
         ],
       ),
-      body: Consumer2<NotificationsProvider, CreditsProvider>(
-        builder: (context, notificationsProvider, creditsProvider, _) {
-          final hasActiveSubscription = creditsProvider.hasActiveSubscription;
+      body: Consumer2<NotificationsProvider, SubscriptionProvider>(
+        builder: (context, notificationsProvider, subscriptionProvider, _) {
+          final hasActiveSubscription = subscriptionProvider.hasActiveSubscription;
           
           return ListView(
             padding: const EdgeInsets.all(16),
             children: [
-              _buildToggles(context, notificationsProvider, creditsProvider, hasActiveSubscription),
+              _buildToggles(context, notificationsProvider, hasActiveSubscription),
             ],
           );
         },
@@ -49,7 +49,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
     );
   }
 
-  Widget _buildToggles(BuildContext context, NotificationsProvider notificationsProvider, CreditsProvider creditsProvider, bool hasActiveSubscription) {
+  Widget _buildToggles(BuildContext context, NotificationsProvider notificationsProvider, bool hasActiveSubscription) {
     return Column(
       children: [
         // Enable Notifications toggle

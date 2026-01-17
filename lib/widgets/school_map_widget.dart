@@ -25,7 +25,6 @@ class _SchoolMapWidgetState extends State<SchoolMapWidget> {
   final SchoolService _schoolService = SchoolService();
   List<School> _allSchools = [];
   List<School> _schoolsInRadius = [];
-  Position? _userPosition;
   Position? _selectedPosition;
   double _radiusMiles = 10.0;
   double _maxRadiusMiles = 50.0; // Will be calculated based on furthest school
@@ -1066,7 +1065,6 @@ class _SchoolMapWidgetState extends State<SchoolMapWidget> {
 
   // Get schools not within the selected area, filtered by school type and sorted alphabetically
   List<School> _getSchoolsNotWithinArea() {
-    final filtersProvider = Provider.of<FiltersProvider>(context, listen: false);
     final schoolsWithin = _getSchoolsWithinArea();
     final schoolsWithinNames = schoolsWithin.map((s) => s.name).toSet();
     
@@ -1154,9 +1152,6 @@ class _SchoolMapWidgetState extends State<SchoolMapWidget> {
 
   Widget _buildSchoolsNotWithinDrawer(BuildContext context, FiltersProvider filtersProvider) {
     final schoolsNotWithin = _getSchoolsNotWithinArea();
-    final title = _filterByTime
-        ? 'Schools not within ${_maxTravelTimeMinutes?.round() ?? 60} minutes'
-        : 'Schools not within ${_radiusMiles.toStringAsFixed(1)} miles';
 
     return ExpansionTile(
       initiallyExpanded: false, // Collapsed by default

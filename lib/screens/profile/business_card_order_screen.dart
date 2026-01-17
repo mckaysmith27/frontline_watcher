@@ -5,8 +5,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_functions/cloud_functions.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 import 'dart:math';
-import '../../providers/credits_provider.dart';
-import '../../providers/auth_provider.dart';
+import '../../providers/subscription_provider.dart';
 import '../../config/app_config.dart';
 
 class BusinessCardOrderScreen extends StatefulWidget {
@@ -109,17 +108,16 @@ class _BusinessCardOrderScreenState extends State<BusinessCardOrderScreen> {
     final user = _auth.currentUser;
     if (user == null) return;
     
-    final creditsProvider = Provider.of<CreditsProvider>(context, listen: false);
+    final subscriptionProvider = Provider.of<SubscriptionProvider>(context, listen: false);
     final userDoc = await _firestore.collection('users').doc(user.uid).get();
     final userData = userDoc.data();
     
-    // Check if user has credits or subscription
-    final hasActiveSubscription = creditsProvider.hasActiveSubscription;
-    final hasSubscription = userData?['subscriptionActive'] == true || 
-                           userData?['hasActiveSubscription'] == true;
+    // Check if user has an active timestamp-based subscription.
+    final hasActiveSubscription = subscriptionProvider.hasActiveSubscription;
+    final hasSubscriptionFlag = userData?['subscriptionActive'] == true;
     
     setState(() {
-      _hasCreditsOrSubscription = hasActiveSubscription || hasSubscription;
+      _hasCreditsOrSubscription = hasActiveSubscription || hasSubscriptionFlag;
     });
   }
   
@@ -183,8 +181,7 @@ class _BusinessCardOrderScreenState extends State<BusinessCardOrderScreen> {
     }
     
     // Check if promo code has already been used
-    final creditsProvider = Provider.of<CreditsProvider>(context, listen: false);
-    final hasUsed = await creditsProvider.hasUsedPromoCode(promo);
+    final hasUsed = await _hasUsedPromoCode(promo);
 
     if (hasUsed) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -208,6 +205,24 @@ class _BusinessCardOrderScreenState extends State<BusinessCardOrderScreen> {
         backgroundColor: Colors.green,
       ),
     );
+  }
+
+  Future<bool> _hasUsedPromoCode(String promoCode) async {
+    final user = _auth.currentUser;
+    if (user == null) return false;
+    final doc = await _firestore.collection('users').doc(user.uid).get();
+    if (!doc.exists) return false;
+    final data = doc.data();
+    final usedPromoCodes = List<String>.from(data?['usedPromoCodes'] ?? const []);
+    return usedPromoCodes.contains(promoCode.toUpperCase());
+  }
+
+  Future<void> _markPromoCodeAsUsed(String promoCode) async {
+    final user = _auth.currentUser;
+    if (user == null) return;
+    await _firestore.collection('users').doc(user.uid).set({
+      'usedPromoCodes': FieldValue.arrayUnion([promoCode.toUpperCase()]),
+    }, SetOptions(merge: true));
   }
   
   double _getBasePrice(int quantity) {
@@ -355,8 +370,7 @@ class _BusinessCardOrderScreenState extends State<BusinessCardOrderScreen> {
       // If promo code was used, mark it as used
       if (_appliedPromo != null) {
         try {
-          final creditsProvider = Provider.of<CreditsProvider>(context, listen: false);
-          await creditsProvider.markPromoCodeAsUsed(_appliedPromo!);
+          await _markPromoCodeAsUsed(_appliedPromo!);
         } catch (e) {
           print('Error marking promo code as used: $e');
           // Continue anyway - don't block the order
@@ -367,7 +381,7 @@ class _BusinessCardOrderScreenState extends State<BusinessCardOrderScreen> {
       try {
         final createOrder = _functions.httpsCallable('createBusinessCardOrder');
         
-        final result = await createOrder.call({
+        await createOrder.call({
           'orderId': orderId,
           'quantity': _selectedQuantity,
           'shortname': widget.shortname,

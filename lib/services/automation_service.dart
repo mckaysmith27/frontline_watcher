@@ -15,7 +15,7 @@ class AutomationService {
   Future<void> startAutomation({
     required List<String> includedWords,
     required List<String> excludedWords,
-    required List<String> committedDates,
+    required List<String> availableDates,
     bool notifyEnabled = true,
   }) async {
     final user = _auth.currentUser;
@@ -29,12 +29,12 @@ class AutomationService {
       'automationConfig': {
         'includedWords': includedWords,
         'excludedWords': excludedWords,
-        'committedDates': committedDates,
+        'availableDates': availableDates,
         'startedAt': FieldValue.serverTimestamp(),
       },
       // Required for Cloud Functions Dispatcher
       'districtIds': FieldValue.arrayUnion(['alpine_school_district']), // Add district ID
-      'notifyEnabled': notifyEnabled, // Enable/disable notifications based on credits/green days
+      'notifyEnabled': notifyEnabled,
       // Note: essUsername and essPassword are NOT stored here
       // They remain in device keychain (FlutterSecureStorage) only
     });

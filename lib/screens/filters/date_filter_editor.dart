@@ -1,10 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../providers/filters_provider.dart';
-import '../../providers/credits_provider.dart';
 import '../../widgets/filter_column.dart';
 import '../../widgets/nested_filter_column.dart';
-import '../../utils/keyword_mapper.dart';
 
 class DateFilterEditor extends StatefulWidget {
   final String dateStr; // Format: "YYYY-MM-DD"
@@ -22,10 +20,6 @@ class _DateFilterEditorState extends State<DateFilterEditor> {
   @override
   Widget build(BuildContext context) {
     final filtersProvider = Provider.of<FiltersProvider>(context);
-    final creditsProvider = Provider.of<CreditsProvider>(context);
-    
-    // Get current date-specific filters
-    final dateFilters = filtersProvider.getDateFilters(widget.dateStr);
     
     // Parse date for display
     final dateParts = widget.dateStr.split('-');

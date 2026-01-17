@@ -93,10 +93,18 @@ class AuthProvider extends ChangeNotifier {
             'nickname': username,
             'shortname': defaultShortname,
             'userRoles': [userRole], // Array of roles, starting with selected role
-            'credits': 0,
             'createdAt': FieldValue.serverTimestamp(),
             'premiumClassesUnlocked': false,
             'premiumWorkdaysUnlocked': false,
+            // Subscription model (timestamp-based)
+            'subscriptionActive': false,
+            'subscriptionStartsAt': null,
+            'subscriptionEndsAt': null,
+            'subscriptionAutoRenewing': false,
+            // Availability model
+            'excludedDates': <String>[],
+            'partialAvailabilityByDate': <String, dynamic>{},
+            'scheduledJobDates': <String>[],
           });
           print('[AuthProvider] User data saved to Firestore successfully with shortname: $defaultShortname');
         } catch (firestoreError) {

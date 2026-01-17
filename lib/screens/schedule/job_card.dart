@@ -61,23 +61,50 @@ class JobCard extends StatelessWidget {
                         icon: const Icon(Icons.cancel),
                         color: Colors.red,
                         onPressed: () async {
-                          final confirmed = await showDialog<bool>(
+                          final confirmed = await showModalBottomSheet<bool>(
                             context: context,
-                            builder: (context) => AlertDialog(
-                              title: const Text('Cancel Job'),
-                              content: const Text(
-                                'Are you sure you want to cancel this job?',
+                            isScrollControlled: true,
+                            backgroundColor: Colors.transparent,
+                            builder: (context) => Container(
+                              padding: const EdgeInsets.all(24),
+                              decoration: BoxDecoration(
+                                color: Theme.of(context).colorScheme.surface,
+                                borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
                               ),
-                              actions: [
-                                TextButton(
-                                  onPressed: () => Navigator.pop(context, false),
-                                  child: const Text('No'),
-                                ),
-                                ElevatedButton(
-                                  onPressed: () => Navigator.pop(context, true),
-                                  child: const Text('Yes, Cancel'),
-                                ),
-                              ],
+                              child: Column(
+                                mainAxisSize: MainAxisSize.min,
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  const Text(
+                                    'Cancel Job',
+                                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                                  ),
+                                  const SizedBox(height: 8),
+                                  Text('${job.title} • ${job.location}'),
+                                  const SizedBox(height: 8),
+                                  const Text('Are you sure you want to cancel this job?'),
+                                  const SizedBox(height: 16),
+                                  Row(
+                                    children: [
+                                      Expanded(
+                                        child: OutlinedButton(
+                                          onPressed: () => Navigator.pop(context, false),
+                                          child: const Text('Keep Job'),
+                                        ),
+                                      ),
+                                      const SizedBox(width: 12),
+                                      Expanded(
+                                        child: ElevatedButton.icon(
+                                          onPressed: () => Navigator.pop(context, true),
+                                          icon: const Icon(Icons.cancel),
+                                          label: const Text('Cancel Job'),
+                                          style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ],
+                              ),
                             ),
                           );
 

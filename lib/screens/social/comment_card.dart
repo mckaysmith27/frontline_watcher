@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import '../../models/comment.dart';
 import '../../services/social_service.dart';
 import 'user_page_viewer.dart';
@@ -16,7 +17,8 @@ class CommentCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final socialService = SocialService();
-    final isOwnComment = false; // Could check against current user
+    final currentUid = FirebaseAuth.instance.currentUser?.uid;
+    final isOwnComment = currentUid != null && comment.userId == currentUid;
 
     return Container(
       margin: const EdgeInsets.only(bottom: 8),

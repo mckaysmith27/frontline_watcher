@@ -15,6 +15,14 @@ exports.onJobEventCreated = functions.firestore
     
     console.log(`[Dispatcher] Processing job event: ${eventId}`);
     console.log(`[Dispatcher] District: ${event.districtId}, Job ID: ${event.jobId}`);
+
+    // Update analytics histogram (15-minute buckets, start time).
+    // This is incremental; use the backfill function once to include historical data.
+    try {
+      await updateJobStartTimeHistogram(event);
+    } catch (e) {
+      console.warn('[Analytics] Failed to update start-time histogram:', e);
+    }
     
     // Skip if already processed (safety check)
     const deliveriesRef = snap.ref.collection('deliveries');
@@ -77,6 +85,101 @@ exports.onJobEventCreated = functions.firestore
     console.log(`[Dispatcher] Complete: ${successCount} sent, ${failureCount} failed`);
     return { successCount, failureCount };
   });
+
+// -------------------------
+// Analytics: start time histogram (15-minute buckets)
+// -------------------------
+
+function histogramDocId(scope, districtId) {
+  if (scope === 'district' && districtId) return `district_${districtId}`;
+  return 'global';
+}
+
+function timeToBucketIdx(startMinutes) {
+  if (!Number.isFinite(startMinutes)) return null;
+  const idx = Math.floor(startMinutes / 15);
+  if (idx < 0 || idx >= 96) return null;
+  return idx;
+}
+
+async function updateJobStartTimeHistogram(event) {
+  const db = admin.firestore();
+  const districtId = event.districtId || event.jobData?.districtId || null;
+  const startMinutes = parseTimeToMinutes(event.jobData?.startTime || event.jobData?.start || event.startTime);
+  const idx = timeToBucketIdx(startMinutes);
+  if (idx == null) return;
+
+  const updates = {
+    [`buckets.${idx}`]: admin.firestore.FieldValue.increment(1),
+    updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+  };
+
+  // global
+  await db.collection('job_time_histograms').doc(histogramDocId('global')).set(updates, { merge: true });
+  // per district
+  if (districtId) {
+    await db.collection('job_time_histograms').doc(histogramDocId('district', districtId)).set(updates, { merge: true });
+  }
+}
+
+exports.getJobStartTimeHistogram = functions.https.onCall(async (data, context) => {
+  const db = admin.firestore();
+  const scope = data?.scope === 'district' ? 'district' : 'global';
+  const districtId = typeof data?.districtId === 'string' ? data.districtId : null;
+
+  const docId = histogramDocId(scope, districtId);
+  const snap = await db.collection('job_time_histograms').doc(docId).get();
+  const bucketsMap = snap.exists ? (snap.data()?.buckets || {}) : {};
+
+  const buckets = [];
+  for (let i = 0; i < 96; i++) {
+    const v = bucketsMap?.[String(i)] ?? bucketsMap?.[i] ?? 0;
+    buckets.push(typeof v === 'number' ? v : 0);
+  }
+
+  return {
+    scope,
+    districtId,
+    buckets,
+  };
+});
+
+// Optional admin-only backfill (paged). Call repeatedly until {done:true}.
+exports.backfillJobStartTimeHistogram = functions.https.onCall(async (data, context) => {
+  if (!context.auth) {
+    throw new functions.https.HttpsError('unauthenticated', 'User must be authenticated');
+  }
+
+  const adminDoc = await admin.firestore().collection('users').doc(context.auth.uid).get();
+  const adminData = adminDoc.data();
+  if (adminData?.role !== 'admin' && adminData?.isAdmin !== true) {
+    throw new functions.https.HttpsError('permission-denied', 'Admin access required');
+  }
+
+  const db = admin.firestore();
+  const scope = data?.scope === 'district' ? 'district' : 'global';
+  const districtId = typeof data?.districtId === 'string' ? data.districtId : null;
+  const pageSize = Math.min(Math.max(parseInt(data?.pageSize || 500, 10), 50), 1000);
+  const startAfterId = typeof data?.startAfterId === 'string' ? data.startAfterId : null;
+
+  let q = db.collection('job_events').orderBy(admin.firestore.FieldPath.documentId()).limit(pageSize);
+  if (startAfterId) q = q.startAfter(startAfterId);
+
+  const snap = await q.get();
+  let processed = 0;
+  let lastId = null;
+
+  for (const doc of snap.docs) {
+    lastId = doc.id;
+    const event = doc.data();
+    if (scope === 'district' && districtId && event.districtId !== districtId) continue;
+    await updateJobStartTimeHistogram(event);
+    processed += 1;
+  }
+
+  const done = snap.empty || snap.size < pageSize;
+  return { processed, lastId, done };
+});
 
 /**
  * Find users that match the job event based on district and filters
@@ -202,9 +305,38 @@ function matchesKeyword(text, keywords, term) {
  * Check if a job event matches a user's filter preferences
  */
 function matchesUserFilters(event, user) {
+  // ---- Availability gating ----
+  const jobDateStr = normalizeJobDate(event.jobData?.date);
+
+  // Fully unavailable day (red)
+  if (jobDateStr && Array.isArray(user.excludedDates) && user.excludedDates.includes(jobDateStr)) {
+    return false;
+  }
+
+  // Already has a job that day (blue)
+  if (jobDateStr && Array.isArray(user.scheduledJobDates) && user.scheduledJobDates.includes(jobDateStr)) {
+    return false;
+  }
+
+  // Partial availability (mustard): exclude jobs that overlap the user's unavailable window.
+  if (jobDateStr && user.partialAvailabilityByDate && user.partialAvailabilityByDate[jobDateStr]) {
+    const window = user.partialAvailabilityByDate[jobDateStr];
+    const startMinutes = window?.startMinutes;
+    const endMinutes = window?.endMinutes;
+    if (Number.isInteger(startMinutes) && Number.isInteger(endMinutes)) {
+      const jobStart = parseTimeToMinutes(event.jobData?.startTime || event.jobData?.start || event.startTime);
+      const jobEnd = parseTimeToMinutes(event.jobData?.endTime || event.jobData?.end || event.endTime);
+      if (jobStart != null && jobEnd != null) {
+        if (rangesOverlap(jobStart, jobEnd, startMinutes, endMinutes)) {
+          return false;
+        }
+      }
+    }
+  }
+
   // Keyword filtering is opt-in via Notifications UI.
   // If not enabled (or not subscribed), match everything in the district.
-  const applyFilterEnabled = user.applyFilterEnabled === true && user.subscriptionActive === true;
+  const applyFilterEnabled = user.applyFilterEnabled === true && isSubscriptionActive(user);
   if (!applyFilterEnabled) {
     return true;
   }
@@ -250,6 +382,52 @@ function matchesUserFilters(event, user) {
   return true; // Passed all filters
 }
 
+function isSubscriptionActive(user) {
+  const endsAt = user.subscriptionEndsAt;
+  if (!endsAt || typeof endsAt.toDate !== 'function') return false;
+  return endsAt.toDate().getTime() > Date.now();
+}
+
+function normalizeJobDate(v) {
+  if (!v || typeof v !== 'string') return null;
+  const s = v.trim();
+  const m = s.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (m) return s;
+  const d = new Date(s);
+  if (Number.isNaN(d.getTime())) return null;
+  const yyyy = d.getFullYear();
+  const mm = String(d.getMonth() + 1).padStart(2, '0');
+  const dd = String(d.getDate()).padStart(2, '0');
+  return `${yyyy}-${mm}-${dd}`;
+}
+
+function parseTimeToMinutes(v) {
+  if (!v) return null;
+  if (typeof v === 'number' && Number.isFinite(v)) return v;
+  if (typeof v !== 'string') return null;
+  const s = v.trim();
+  let m = s.match(/^(\d{1,2}):(\d{2})$/);
+  if (m) return parseInt(m[1], 10) * 60 + parseInt(m[2], 10);
+  m = s.match(/^(\d{1,2}):(\d{2})\s*([AaPp][Mm])$/);
+  if (m) {
+    let h = parseInt(m[1], 10);
+    const min = parseInt(m[2], 10);
+    const ampm = m[3].toUpperCase();
+    if (ampm === 'PM' && h !== 12) h += 12;
+    if (ampm === 'AM' && h === 12) h = 0;
+    return h * 60 + min;
+  }
+  return null;
+}
+
+function rangesOverlap(aStart, aEnd, bStart, bEnd) {
+  const a0 = Math.min(aStart, aEnd);
+  const a1 = Math.max(aStart, aEnd);
+  const b0 = Math.min(bStart, bEnd);
+  const b1 = Math.max(bStart, bEnd);
+  return a0 < b1 && b0 < a1;
+}
+
 /**
  * Create user-level job event record in users/{uid}/matched_jobs/{eventId}
  */
@@ -269,7 +447,7 @@ async function createUserJobEventRecord(userId, eventId, event) {
   const keywords = new Set((event.keywords || []).map(k => k.toLowerCase()));
   
   // Find which included keywords matched
-  const applyFilterEnabled = user.applyFilterEnabled === true && user.subscriptionActive === true;
+  const applyFilterEnabled = user.applyFilterEnabled === true && isSubscriptionActive(user);
   if (applyFilterEnabled) {
     for (const term of includedWords) {
       if (matchesKeyword(text, keywords, term)) {
@@ -364,7 +542,7 @@ async function sendFCMNotification(user, event, eventId) {
   const text = (event.snapshotText || '').toLowerCase();
   const keywords = new Set((event.keywords || []).map(k => k.toLowerCase()));
   
-  const applyFilterEnabled = user.applyFilterEnabled === true && user.subscriptionActive === true;
+  const applyFilterEnabled = user.applyFilterEnabled === true && isSubscriptionActive(user);
   if (applyFilterEnabled) {
     for (const term of includedWords) {
       if (matchesKeyword(text, keywords, term)) {

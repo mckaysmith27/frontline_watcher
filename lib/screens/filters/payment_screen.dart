@@ -1,8 +1,6 @@
 import 'package:flutter/material.dart';
-import 'package:provider/provider.dart';
-import '../../providers/credits_provider.dart';
-import '../../providers/filters_provider.dart';
-import '../../providers/auth_provider.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import '../../config/app_config.dart';
 
 class PaymentScreen extends StatefulWidget {
@@ -20,6 +18,9 @@ class PaymentScreen extends StatefulWidget {
 }
 
 class _PaymentScreenState extends State<PaymentScreen> {
+  final FirebaseFirestore _firestore = FirebaseFirestore.instance;
+  final FirebaseAuth _auth = FirebaseAuth.instance;
+
   final TextEditingController _promoController = TextEditingController();
   String? _appliedPromo;
   bool _isProcessing = false;
@@ -55,8 +56,7 @@ class _PaymentScreenState extends State<PaymentScreen> {
     }
 
     // Check if promo code has already been used
-    final creditsProvider = Provider.of<CreditsProvider>(context, listen: false);
-    final hasUsed = await creditsProvider.hasUsedPromoCode(promo);
+    final hasUsed = await _hasUsedPromoCode(promo);
 
     if (hasUsed) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -82,13 +82,15 @@ class _PaymentScreenState extends State<PaymentScreen> {
     setState(() => _isProcessing = true);
 
     try {
-      final creditsProvider = Provider.of<CreditsProvider>(context, listen: false);
-      final credits = widget.tierData['credits'] as int;
+      final user = _auth.currentUser;
+      if (user == null) throw Exception('Not authenticated');
+
+      final days = (widget.tierData['days'] as num).toInt();
       
       // If promo code was used, mark it as used before adding credits
       if (_appliedPromo != null) {
         try {
-          await creditsProvider.markPromoCodeAsUsed(_appliedPromo!);
+          await _markPromoCodeAsUsed(_appliedPromo!);
         } catch (e) {
           print('Error marking promo code as used: $e');
           // Continue anyway - don't block the purchase
@@ -98,28 +100,44 @@ class _PaymentScreenState extends State<PaymentScreen> {
       // Simulate payment processing
       await Future.delayed(const Duration(seconds: 2));
 
-      // Add credits with error handling
-      try {
-        await creditsProvider.addCredits(credits, promoCode: _appliedPromo);
-        
-        // Auto-apply global filters to newly committed dates
-        final filtersProvider = Provider.of<FiltersProvider>(context, listen: false);
-        final newDates = creditsProvider.committedDates;
-        await filtersProvider.autoApplyToNewDates(
-          newDates,
-          isUnavailable: (dateStr) => creditsProvider.excludedDates.contains(dateStr),
-          hasJob: (dateStr) => creditsProvider.scheduledJobDates.contains(dateStr),
-        );
-      } catch (e) {
-        print('Error adding credits: $e');
-        throw Exception('Failed to add credits: $e');
+      // Timestamp-based subscription (single source of truth).
+      // NOTE: In production this should be written/verified from store receipt events.
+      final userDocRef = _firestore.collection('users').doc(user.uid);
+      final userSnap = await userDocRef.get();
+      final data = userSnap.data();
+
+      DateTime baseUtc = DateTime.now().toUtc();
+      final existingEnds = data?['subscriptionEndsAt'];
+      if (existingEnds is Timestamp) {
+        final existingEndsUtc = existingEnds.toDate().toUtc();
+        if (existingEndsUtc.isAfter(baseUtc)) {
+          baseUtc = existingEndsUtc;
+        }
       }
+
+      final startsAtUtc = DateTime.now().toUtc();
+      final endsAtUtc = baseUtc.add(Duration(days: days));
+
+      final purchaseAction = <String, dynamic>{
+        'timestamp': FieldValue.serverTimestamp(),
+        'promotion': _appliedPromo,
+        'subscriptionDays': days,
+        'tier': widget.tier,
+      };
+
+      await userDocRef.set({
+        'subscriptionStartsAt': Timestamp.fromDate(startsAtUtc),
+        'subscriptionEndsAt': Timestamp.fromDate(endsAtUtc),
+        'subscriptionAutoRenewing': true, // placeholder; should be driven by store renewal state
+        'subscriptionActive': true, // derived; kept for compatibility
+        'purchaseActions': FieldValue.arrayUnion([purchaseAction]),
+      }, SetOptions(merge: true));
 
       if (mounted) {
         Navigator.pop(context);
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Successfully purchased $credits credits!'),
+            content: Text('Subscription active for $days days.'),
             backgroundColor: Colors.green,
           ),
         );
@@ -182,7 +200,7 @@ class _PaymentScreenState extends State<PaymentScreen> {
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
                         Text('${widget.tierData['days']} days'),
-                        Text('${widget.tierData['credits']} credits'),
+                        const Text('Subscription'),
                       ],
                     ),
                     if (_appliedPromo != null) ...[
@@ -274,6 +292,24 @@ class _PaymentScreenState extends State<PaymentScreen> {
         ),
       ),
     );
+  }
+
+  Future<bool> _hasUsedPromoCode(String promoCode) async {
+    final user = _auth.currentUser;
+    if (user == null) return false;
+    final doc = await _firestore.collection('users').doc(user.uid).get();
+    if (!doc.exists) return false;
+    final data = doc.data();
+    final usedPromoCodes = List<String>.from(data?['usedPromoCodes'] ?? const []);
+    return usedPromoCodes.contains(promoCode.toUpperCase());
+  }
+
+  Future<void> _markPromoCodeAsUsed(String promoCode) async {
+    final user = _auth.currentUser;
+    if (user == null) return;
+    await _firestore.collection('users').doc(user.uid).set({
+      'usedPromoCodes': FieldValue.arrayUnion([promoCode.toUpperCase()]),
+    }, SetOptions(merge: true));
   }
 }
 

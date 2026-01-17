@@ -1,8 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../providers/auth_provider.dart';
-import '../../providers/credits_provider.dart';
-import '../../providers/filters_provider.dart';
 import 'payment_screen.dart';
 
 class AutomationBottomSheet extends StatefulWidget {
@@ -16,11 +14,12 @@ class _AutomationBottomSheetState extends State<AutomationBottomSheet> {
   String? _selectedTier;
 
   final Map<String, Map<String, dynamic>> _tiers = {
-    'daily': {'days': 1, 'price': 1.99, 'credits': 1},
-    'weekly': {'days': 5, 'price': 4.99, 'credits': 5},
-    'bi-weekly': {'days': 10, 'price': 8.99, 'credits': 10},
-    'monthly': {'days': 20, 'price': 15.99, 'credits': 20},
-    'annually': {'days': 180, 'price': 89.99, 'credits': 180},
+    // Subscription durations are continuous days (include weekends) and are timestamp-based.
+    'daily': {'days': 1, 'price': 1.99},
+    'weekly': {'days': 7, 'price': 4.99},
+    'bi-weekly': {'days': 14, 'price': 8.99},
+    'monthly': {'days': 30, 'price': 15.99},
+    'annually': {'days': 365, 'price': 89.99},
   };
 
   @override
@@ -103,7 +102,7 @@ class _AutomationBottomSheetState extends State<AutomationBottomSheet> {
                                         ),
                                       ),
                                       Text(
-                                        '${entry.value['days']} days • \$${entry.value['price']} • ${entry.value['credits']} credits',
+                                        '${entry.value['days']} days • \$${entry.value['price']}',
                                         style: TextStyle(
                                           fontSize: 12,
                                           color: Colors.grey[600],

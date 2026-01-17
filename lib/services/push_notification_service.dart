@@ -154,7 +154,6 @@ class PushNotificationService {
     
     // Show local notification for foreground messages
     final notification = message.notification;
-    final android = message.notification?.android;
     
     if (notification != null) {
       _localNotifications.show(

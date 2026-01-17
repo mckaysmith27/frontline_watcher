@@ -41,12 +41,12 @@ class HelpScreen extends StatelessWidget {
           ),
           Card(
             child: ExpansionTile(
-              title: const Text('How do credits work?'),
+              title: const Text('How does my subscription work?'),
               children: [
                 const Padding(
                   padding: EdgeInsets.all(16),
                   child: Text(
-                    'Credits are days in which you still fall under an active subscription with us.',
+                    'Your subscription is timestamp-based. For example, a weekly subscription started at a specific time stays active for 7 continuous days and renews (unless canceled) at that same time.',
                   ),
                 ),
               ],

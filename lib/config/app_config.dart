@@ -46,13 +46,13 @@ class AppConfig {
     '4Kim<3',
   ];
   
-  // Credit tier pricing
-  static const Map<String, Map<String, dynamic>> creditTiers = {
-    'daily': {'days': 1, 'price': 1.99, 'credits': 1},
-    'weekly': {'days': 5, 'price': 4.99, 'credits': 5},
-    'bi-weekly': {'days': 10, 'price': 8.99, 'credits': 10},
-    'monthly': {'days': 20, 'price': 15.99, 'credits': 20},
-    'annually': {'days': 180, 'price': 89.99, 'credits': 180},
+  // Subscription tier pricing (continuous days; timestamp-based)
+  static const Map<String, Map<String, dynamic>> subscriptionTiers = {
+    'daily': {'days': 1, 'price': 1.99},
+    'weekly': {'days': 7, 'price': 4.99},
+    'bi-weekly': {'days': 14, 'price': 8.99},
+    'monthly': {'days': 30, 'price': 15.99},
+    'annually': {'days': 365, 'price': 89.99},
   };
   
   // Default filters dictionary

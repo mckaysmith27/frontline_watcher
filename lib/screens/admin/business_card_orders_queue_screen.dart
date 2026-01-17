@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_functions/cloud_functions.dart';
 import 'package:intl/intl.dart';
 import '../../services/admin_service.dart';
@@ -147,7 +146,7 @@ class _BusinessCardOrdersQueueScreenState extends State<BusinessCardOrdersQueueS
       // Call Cloud Function to process refund
       final refundOrder = _functions.httpsCallable('refundBusinessCardOrder');
       
-      final result = await refundOrder.call({
+      await refundOrder.call({
         'orderId': orderId,
         'userId': userId,
         'userEmail': userEmail,
@@ -275,7 +274,6 @@ class _BusinessCardOrdersQueueScreenState extends State<BusinessCardOrdersQueueS
     final shortname = data['shortname'] as String? ?? '';
     final totalPrice = data['totalPrice'] as double? ?? 0.0;
     final shippingAddress = data['shippingAddress'] as Map<String, dynamic>?;
-    final status = data['status'] as String? ?? 'pending';
     final cardImageUrl = data['cardImageUrl'] as String?;
     final userId = data['userId'] as String? ?? '';
     final userEmail = data['userEmail'] as String? ?? '';

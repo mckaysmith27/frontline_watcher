@@ -76,7 +76,7 @@ class _LoginScreenState extends State<LoginScreen> {
       if (error != null) {
         print('[LoginScreen] Error returned: $error');
         if (mounted) {
-          final errorMessage = error!; // We know it's not null here
+          final errorMessage = error; // non-null inside this branch
           // Show error in a dialog for multi-line messages, or SnackBar for short ones
           if (errorMessage.contains('\n')) {
             showDialog(

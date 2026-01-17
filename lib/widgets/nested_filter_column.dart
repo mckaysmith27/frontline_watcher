@@ -66,17 +66,6 @@ class _NestedFilterColumnState extends State<NestedFilterColumn> {
         .join(' ');
   }
 
-  // Get all schools from all cities (flattened)
-  List<String> _getAllSchools() {
-    final allSchools = <String>[];
-    widget.nestedData.forEach((city, schools) {
-      if (schools is List) {
-        allSchools.addAll(schools.cast<String>());
-      }
-    });
-    return allSchools;
-  }
-
   // Get filtered schools-by-city (school-types filtering now handled in map widget)
   Map<String, List<String>> _getFilteredSchoolsByCity() {
     final filtersProvider = Provider.of<FiltersProvider>(context, listen: true);
