@@ -139,6 +139,9 @@ class _NestedFilterColumnState extends State<NestedFilterColumn> {
           });
           _saveExpansionState(expanded);
         },
+        trailing: Icon(
+          _isExpanded ? Icons.keyboard_arrow_down : Icons.keyboard_arrow_left,
+        ),
         title: Text(
           _getTitle(),
           style: Theme.of(context).textTheme.titleMedium?.copyWith(

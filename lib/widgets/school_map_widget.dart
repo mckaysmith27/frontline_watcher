@@ -49,6 +49,11 @@ class _SchoolMapWidgetState extends State<SchoolMapWidget> {
   bool _useCurrentLocation = true;
   bool _currentLocationButtonVisible = true; // Show button until location is successfully loaded
 
+  // Drawer/expansion states (for custom chevrons)
+  bool _schoolsWithinExpanded = true;
+  bool _schoolsNotWithinExpanded = false;
+  bool _nonAddressedExpanded = false;
+
   @override
   void initState() {
     super.initState();
@@ -1092,6 +1097,12 @@ class _SchoolMapWidgetState extends State<SchoolMapWidget> {
 
     return ExpansionTile(
       initiallyExpanded: true, // Expanded by default
+      onExpansionChanged: (expanded) {
+        setState(() => _schoolsWithinExpanded = expanded);
+      },
+      trailing: Icon(
+        _schoolsWithinExpanded ? Icons.keyboard_arrow_down : Icons.keyboard_arrow_left,
+      ),
       title: Text(
         title,
         style: Theme.of(context).textTheme.titleSmall?.copyWith(
@@ -1149,6 +1160,12 @@ class _SchoolMapWidgetState extends State<SchoolMapWidget> {
 
     return ExpansionTile(
       initiallyExpanded: false, // Collapsed by default
+      onExpansionChanged: (expanded) {
+        setState(() => _schoolsNotWithinExpanded = expanded);
+      },
+      trailing: Icon(
+        _schoolsNotWithinExpanded ? Icons.keyboard_arrow_down : Icons.keyboard_arrow_left,
+      ),
       title: RichText(
         text: TextSpan(
           style: Theme.of(context).textTheme.titleSmall?.copyWith(
@@ -1217,6 +1234,12 @@ class _SchoolMapWidgetState extends State<SchoolMapWidget> {
 
     return ExpansionTile(
       initiallyExpanded: false, // Collapsed by default
+      onExpansionChanged: (expanded) {
+        setState(() => _nonAddressedExpanded = expanded);
+      },
+      trailing: Icon(
+        _nonAddressedExpanded ? Icons.keyboard_arrow_down : Icons.keyboard_arrow_left,
+      ),
       title: Row(
         children: [
           Text(

@@ -142,6 +142,10 @@ class _FilterColumnState extends State<FilterColumn> {
           });
           _saveExpansionState(expanded);
         },
+        trailing: Icon(
+          _isExpanded ? Icons.keyboard_arrow_down : Icons.keyboard_arrow_left,
+          color: widget.isPremium && !widget.isUnlocked ? Colors.grey : null,
+        ),
         title: Row(
           children: [
             if (widget.isPremium && !widget.isUnlocked)
