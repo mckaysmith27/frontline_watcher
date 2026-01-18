@@ -43,6 +43,8 @@ class AvailabilityProvider extends ChangeNotifier {
   List<String> _scheduledJobDates = []; // YYYY-MM-DD
 
   String? _lastSyncedAvailableDatesFingerprint;
+  DateTime? _lastSyncedAvailableDatesAt;
+  bool _syncingAvailableDates = false;
 
   List<String> get unavailableDates => _unavailableDates;
   Map<String, String> get unavailableReasonsByDate => _unavailableReasonsByDate;
@@ -57,8 +59,12 @@ class AvailabilityProvider extends ChangeNotifier {
     _auth.authStateChanges().listen((user) {
       if (user == null) {
         _unavailableDates = [];
+        _unavailableReasonsByDate = {};
         _partialAvailabilityByDate = {};
         _scheduledJobDates = [];
+        _lastSyncedAvailableDatesFingerprint = null;
+        _lastSyncedAvailableDatesAt = null;
+        _syncingAvailableDates = false;
         notifyListeners();
         return;
       }
@@ -147,10 +153,22 @@ class AvailabilityProvider extends ChangeNotifier {
   }
 
   Future<void> _maybeSyncAvailableDates(String uid) async {
+    if (_syncingAvailableDates) return;
+
+    // Throttle to avoid write-stream exhaustion on slow devices/emulators.
+    final now = DateTime.now();
+    final last = _lastSyncedAvailableDatesAt;
+    if (last != null && now.difference(last) < const Duration(minutes: 30)) {
+      return;
+    }
+
     final dates = computeRelevantWorkdaysForKeywords();
     final fingerprint = dates.isEmpty ? '0' : '${dates.length}:${dates.first}:${dates.last}';
     if (_lastSyncedAvailableDatesFingerprint == fingerprint) return;
+
+    _syncingAvailableDates = true;
     _lastSyncedAvailableDatesFingerprint = fingerprint;
+    _lastSyncedAvailableDatesAt = now;
     try {
       await _firestore.collection('users').doc(uid).update({
         'availableDates': dates,
@@ -158,6 +176,7 @@ class AvailabilityProvider extends ChangeNotifier {
     } catch (_) {
       // Don't crash UI on rules/network issues; this is an optimization for backend use.
     }
+    _syncingAvailableDates = false;
   }
 
   Future<void> updateScheduledJobDates(List<String> jobDates) async {

@@ -50,15 +50,6 @@ class SubscriptionProvider extends ChangeNotifier {
         final autoRenewingValue = data['subscriptionAutoRenewing'];
         _autoRenewing = autoRenewingValue == true;
 
-        // Optional compatibility: keep a boolean field in sync for older code/queries.
-        // This is NOT the source of truth.
-        final active = hasActiveSubscription;
-        if (data['subscriptionActive'] != active) {
-          _firestore.collection('users').doc(user.uid).update({
-            'subscriptionActive': active,
-          });
-        }
-
         notifyListeners();
       });
     });
