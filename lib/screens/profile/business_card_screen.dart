@@ -7,6 +7,7 @@ import 'package:cloud_functions/cloud_functions.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:firebase_storage/firebase_storage.dart';
+import 'package:table_calendar/table_calendar.dart';
 import '../../services/user_role_service.dart';
 import '../../widgets/app_bar_quick_toggles.dart';
 import 'business_card_order_screen.dart';
@@ -18,6 +19,8 @@ class BusinessCardScreen extends StatefulWidget {
   @override
   State<BusinessCardScreen> createState() => _BusinessCardScreenState();
 }
+
+enum TeacherPreviewAction { preferred, specificDay }
 
 class _BusinessCardScreenState extends State<BusinessCardScreen> {
   final TextEditingController _firstNameController = TextEditingController();
@@ -40,6 +43,13 @@ class _BusinessCardScreenState extends State<BusinessCardScreen> {
   bool _isFormComplete = false;
   String? _profilePhotoUrl;
 
+  // Teacher-flow preview state (mirrors TeacherLandingScreen "page 1")
+  TeacherPreviewAction _teacherPreviewAction = TeacherPreviewAction.preferred;
+  DateTime _teacherPreviewFocusedDay = DateTime.now();
+  DateTime? _teacherPreviewSelectedDay;
+  bool _teacherPreviewTermsAccepted = false;
+  bool _teacherPreviewDownloadAppChecked = true;
+
   static const String _defaultInstructions =
       "Scan the QR code to add me to add me as a 'preferred sub' with a single click! You can also keep this card and re-scan to quickly request me for a specific day.";
   static const String _defaultBio =
@@ -57,6 +67,47 @@ class _BusinessCardScreenState extends State<BusinessCardScreen> {
     _shortnameController.addListener(_checkFormComplete);
     _instructionsController.addListener(_checkFormComplete);
     _bioController.addListener(_checkFormComplete);
+  }
+
+  bool get _teacherPreviewCanContinue {
+    if (!_teacherPreviewTermsAccepted) return false;
+    if (_teacherPreviewAction == TeacherPreviewAction.specificDay && _teacherPreviewSelectedDay == null) return false;
+    return true;
+  }
+
+  Future<void> _showTeacherTermsPreview() async {
+    await showDialog<void>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Terms & Conditions'),
+        content: SingleChildScrollView(
+          child: Text.rich(
+            TextSpan(
+              style: Theme.of(context).textTheme.bodyMedium,
+              children: const [
+                TextSpan(
+                  text: 'Sub67 quickly connects teachers to a sub quickly, utilizing existing systems and infrastructure.\n\n',
+                  style: TextStyle(fontWeight: FontWeight.bold),
+                ),
+                TextSpan(
+                  text:
+                      'To proceed, teachers may enter third‑party credentials (such as Frontline/ESS) to sign in and submit actions on their behalf. '
+                      'Credentials are intended to be stored locally on the teacher’s device (not in the Sub67 database). '
+                      'We may collect limited app usage data to improve user experience. '
+                      'Automations may run scripts to fill specific fields on the third‑party site based on selections.\n',
+                ),
+              ],
+            ),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Close'),
+          ),
+        ],
+      ),
+    );
   }
 
   @override
@@ -826,6 +877,123 @@ class _BusinessCardScreenState extends State<BusinessCardScreen> {
           _copyRow(label: _phoneController.text.isEmpty ? 'Phone' : _phoneController.text, valueToCopy: _phoneController.text),
           _copyRow(label: _emailController.text.isEmpty ? 'Email' : _emailController.text, valueToCopy: _emailController.text),
           _copyRow(label: url.isEmpty ? 'sub67.com/<shortname>' : url, valueToCopy: url),
+
+          const SizedBox(height: 12),
+          Divider(color: Theme.of(context).colorScheme.outline.withOpacity(0.2)),
+          const SizedBox(height: 8),
+          Align(
+            alignment: Alignment.centerLeft,
+            child: Text(
+              'This is what teachers will see after scanning your QR code:',
+              style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                    fontStyle: FontStyle.italic,
+                    color: Theme.of(context).colorScheme.onSurface.withOpacity(0.65),
+                  ),
+            ),
+          ),
+          const SizedBox(height: 10),
+          Align(
+            alignment: Alignment.centerLeft,
+            child: Text(
+              'Choose what you’d like to do:',
+              style: Theme.of(context).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.bold),
+            ),
+          ),
+          const SizedBox(height: 8),
+          Card(
+            child: RadioListTile<TeacherPreviewAction>(
+              value: TeacherPreviewAction.preferred,
+              groupValue: _teacherPreviewAction,
+              onChanged: (v) => setState(() => _teacherPreviewAction = v!),
+              title: Text('Add $fullName (${_phoneController.text.isEmpty ? 'no phone' : _phoneController.text}) to preferred teaching list?*'),
+            ),
+          ),
+          Card(
+            child: RadioListTile<TeacherPreviewAction>(
+              value: TeacherPreviewAction.specificDay,
+              groupValue: _teacherPreviewAction,
+              onChanged: (v) => setState(() => _teacherPreviewAction = v!),
+              title: Text('Request $fullName (${_phoneController.text.isEmpty ? 'no phone' : _phoneController.text}) for a specific day?'),
+            ),
+          ),
+          if (_teacherPreviewAction == TeacherPreviewAction.specificDay) ...[
+            const SizedBox(height: 8),
+            Card(
+              child: Padding(
+                padding: const EdgeInsets.all(12),
+                child: TableCalendar(
+                  firstDay: DateTime.now().subtract(const Duration(days: 1)),
+                  lastDay: DateTime.now().add(const Duration(days: 365)),
+                  focusedDay: _teacherPreviewFocusedDay,
+                  selectedDayPredicate: (day) => _teacherPreviewSelectedDay != null && isSameDay(_teacherPreviewSelectedDay, day),
+                  onDaySelected: (selected, focused) {
+                    setState(() {
+                      _teacherPreviewSelectedDay = selected;
+                      _teacherPreviewFocusedDay = focused;
+                    });
+                  },
+                  onPageChanged: (focused) => _teacherPreviewFocusedDay = focused,
+                  calendarStyle: const CalendarStyle(isTodayHighlighted: true),
+                ),
+              ),
+            ),
+          ],
+          const SizedBox(height: 10),
+          Card(
+            child: Padding(
+              padding: const EdgeInsets.all(12),
+              child: Column(
+                children: [
+                  Row(
+                    children: [
+                      Checkbox(
+                        value: _teacherPreviewTermsAccepted,
+                        onChanged: (v) => setState(() => _teacherPreviewTermsAccepted = v ?? false),
+                      ),
+                      Expanded(
+                        child: GestureDetector(
+                          onTap: _showTeacherTermsPreview,
+                          child: const Text(
+                            'I Agree to the Terms and Conditions',
+                            style: TextStyle(decoration: TextDecoration.underline),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                  Row(
+                    children: [
+                      Checkbox(
+                        value: _teacherPreviewDownloadAppChecked,
+                        onChanged: (v) => setState(() => _teacherPreviewDownloadAppChecked = v ?? false),
+                      ),
+                      const Expanded(
+                        child: Text(
+                          'Download the app! For a smoother experience and to unlock other features download the app on your mobile device!',
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          ),
+          const SizedBox(height: 10),
+          SizedBox(
+            width: double.infinity,
+            child: ElevatedButton(
+              onPressed: _teacherPreviewCanContinue
+                  ? () {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(
+                          content: Text('Preview: Teachers will tap Next, enter Frontline/ESS credentials, then continue.'),
+                        ),
+                      );
+                    }
+                  : null,
+              child: const Text('Next'),
+            ),
+          ),
         ],
       ),
     );

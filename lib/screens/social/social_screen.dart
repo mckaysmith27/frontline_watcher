@@ -7,6 +7,8 @@ import 'feed_tab.dart';
 import 'top_posts_tab.dart';
 import '../profile/profile_screen.dart';
 import '../../widgets/app_bar_quick_toggles.dart';
+import '../../services/social_service.dart';
+import '../../services/user_role_service.dart';
 
 class SocialScreen extends StatefulWidget {
   final VoidCallback? onNavigateToMyPage;
@@ -23,6 +25,9 @@ class SocialScreen extends StatefulWidget {
 class _SocialScreenState extends State<SocialScreen>
     with SingleTickerProviderStateMixin {
   late TabController _tabController;
+  final TextEditingController _quickPostController = TextEditingController();
+  final FocusNode _quickPostFocus = FocusNode();
+  bool _sendingQuickPost = false;
 
   @override
   void initState() {
@@ -33,7 +38,112 @@ class _SocialScreenState extends State<SocialScreen>
   @override
   void dispose() {
     _tabController.dispose();
+    _quickPostController.dispose();
+    _quickPostFocus.dispose();
     super.dispose();
+  }
+
+  Future<void> _sendQuickPost() async {
+    if (_sendingQuickPost) return;
+    final content = _quickPostController.text.trim();
+    if (content.isEmpty) return;
+
+    setState(() => _sendingQuickPost = true);
+    try {
+      final roleService = UserRoleService();
+      final hasCommunityAccess = await roleService.hasFeatureAccess('community');
+      if (!hasCommunityAccess) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('This feature is not available for your role.'),
+              backgroundColor: Colors.orange,
+            ),
+          );
+        }
+        return;
+      }
+
+      final socialService = SocialService();
+      await socialService.createPost(content: content);
+
+      _quickPostController.clear();
+      _quickPostFocus.unfocus();
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Posted!')),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error posting: $e')),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _sendingQuickPost = false);
+    }
+  }
+
+  Future<void> _openComposerForImage() async {
+    final initial = _quickPostController.text.trim();
+    await showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      builder: (_) => PostComposer(initialText: initial),
+    );
+  }
+
+  Widget _buildQuickPostField(BuildContext context) {
+    final hasText = _quickPostController.text.trim().isNotEmpty;
+
+    return SizedBox(
+      height: 40,
+      child: TextField(
+        controller: _quickPostController,
+        focusNode: _quickPostFocus,
+        textInputAction: TextInputAction.send,
+        onSubmitted: (_) => _sendQuickPost(),
+        onChanged: (_) => setState(() {}),
+        decoration: InputDecoration(
+          hintText: "Quick post… (press Enter to send)",
+          isDense: true,
+          filled: true,
+          fillColor: Theme.of(context).colorScheme.surfaceContainerHighest.withOpacity(0.6),
+          contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+          border: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(24),
+            borderSide: BorderSide.none,
+          ),
+          suffixIconConstraints: const BoxConstraints(minWidth: 0, minHeight: 0),
+          suffixIcon: hasText
+              ? Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    IconButton(
+                      tooltip: 'Add image',
+                      onPressed: _openComposerForImage,
+                      icon: const Icon(Icons.image_outlined, size: 20),
+                    ),
+                    IconButton(
+                      tooltip: 'Send',
+                      onPressed: _sendingQuickPost ? null : _sendQuickPost,
+                      icon: _sendingQuickPost
+                          ? const SizedBox(
+                              width: 18,
+                              height: 18,
+                              child: CircularProgressIndicator(strokeWidth: 2),
+                            )
+                          : const Icon(Icons.send, size: 20),
+                    ),
+                    const SizedBox(width: 4),
+                  ],
+                )
+              : null,
+        ),
+      ),
+    );
   }
 
   @override
@@ -72,6 +182,7 @@ class _SocialScreenState extends State<SocialScreen>
               )
             : null,
         automaticallyImplyLeading: false,
+        title: _buildQuickPostField(context),
         actions: [
           const AppBarQuickToggles(),
           IconButton(

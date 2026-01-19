@@ -6,8 +6,9 @@ import '../../services/user_role_service.dart';
 
 class PostComposer extends StatefulWidget {
   final String? initialTag;
+  final String? initialText;
   
-  const PostComposer({super.key, this.initialTag});
+  const PostComposer({super.key, this.initialTag, this.initialText});
 
   @override
   State<PostComposer> createState() => _PostComposerState();
@@ -38,6 +39,12 @@ class _PostComposerState extends State<PostComposer> {
           : widget.initialTag == 'happy'
               ? null
               : widget.initialTag;
+    }
+
+    final initialText = widget.initialText;
+    if (initialText != null && initialText.trim().isNotEmpty) {
+      _controller.text = initialText.trim();
+      _controller.selection = TextSelection.collapsed(offset: _controller.text.length);
     }
   }
 
