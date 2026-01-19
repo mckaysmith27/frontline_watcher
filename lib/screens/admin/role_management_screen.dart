@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import '../../services/admin_service.dart';
+import '../../services/user_role_service.dart';
 
 class RoleManagementScreen extends StatefulWidget {
   final VoidCallback? onRolesUpdated;
@@ -14,11 +15,24 @@ class RoleManagementScreen extends StatefulWidget {
 
 class _RoleManagementScreenState extends State<RoleManagementScreen> {
   final AdminService _adminService = AdminService();
+  final UserRoleService _roleService = UserRoleService();
   final TextEditingController _searchController = TextEditingController();
   final FirebaseAuth _auth = FirebaseAuth.instance;
   final List<String> _availableRoles = ['sub', 'teacher', 'administration', 'app admin'];
   List<Map<String, dynamic>> _users = [];
   bool _isLoading = false;
+  bool _isFullAdmin = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadAdminLevel();
+  }
+
+  Future<void> _loadAdminLevel() async {
+    final isFull = await _roleService.isFullAppAdmin();
+    if (mounted) setState(() => _isFullAdmin = isFull);
+  }
 
   @override
   void dispose() {
@@ -64,6 +78,7 @@ class _RoleManagementScreenState extends State<RoleManagementScreen> {
           'email': data['email'] ?? '',
           'username': data['username'] ?? '',
           'userRoles': List<String>.from(data['userRoles'] ?? []),
+          'appAdminLevel': (data['appAdminLevel'] ?? 'full').toString(),
         };
       }
 
@@ -75,6 +90,7 @@ class _RoleManagementScreenState extends State<RoleManagementScreen> {
             'email': data['email'] ?? '',
             'username': data['username'] ?? '',
             'userRoles': List<String>.from(data['userRoles'] ?? []),
+            'appAdminLevel': (data['appAdminLevel'] ?? 'full').toString(),
           };
         }
       }
@@ -134,6 +150,29 @@ class _RoleManagementScreenState extends State<RoleManagementScreen> {
             content: Text('Error updating roles: $e'),
             backgroundColor: Colors.red,
           ),
+        );
+      }
+    }
+  }
+
+  Future<void> _updateUserAdminLevel(String userId, String level) async {
+    try {
+      await _adminService.updateAppAdminLevel(userId, level);
+      setState(() {
+        final userIndex = _users.indexWhere((u) => u['id'] == userId);
+        if (userIndex != -1) {
+          _users[userIndex]['appAdminLevel'] = level;
+        }
+      });
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Admin level updated'), backgroundColor: Colors.green),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error updating admin level: $e'), backgroundColor: Colors.red),
         );
       }
     }
@@ -216,6 +255,7 @@ class _RoleManagementScreenState extends State<RoleManagementScreen> {
                           final email = user['email'] as String;
                           final username = user['username'] as String;
                           final currentRoles = List<String>.from(user['userRoles'] as List<dynamic>? ?? []);
+                          final adminLevel = (user['appAdminLevel'] ?? 'full').toString().toLowerCase();
 
                           return Card(
                             margin: const EdgeInsets.only(bottom: 12),
@@ -281,6 +321,39 @@ class _RoleManagementScreenState extends State<RoleManagementScreen> {
                                             },
                                     );
                                   }),
+                                  if (currentRoles.contains('app admin')) ...[
+                                    const SizedBox(height: 10),
+                                    Row(
+                                      children: [
+                                        const Text(
+                                          'App admin permissions:',
+                                          style: TextStyle(fontWeight: FontWeight.w600),
+                                        ),
+                                        const SizedBox(width: 12),
+                                        Expanded(
+                                          child: DropdownButtonFormField<String>(
+                                            value: adminLevel == 'limited' ? 'limited' : 'full',
+                                            items: const [
+                                              DropdownMenuItem(value: 'full', child: Text('Full')),
+                                              DropdownMenuItem(value: 'limited', child: Text('Limited')),
+                                            ],
+                                            onChanged: !_isFullAdmin
+                                                ? null
+                                                : (v) {
+                                                    if (v == null) return;
+                                                    _updateUserAdminLevel(userId, v);
+                                                  },
+                                            decoration: InputDecoration(
+                                              border: const OutlineInputBorder(),
+                                              helperText: _isFullAdmin
+                                                  ? 'Limited admins will not see Promo tools.'
+                                                  : 'Only full admins can change this.',
+                                            ),
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ],
                                 ],
                               ),
                             ),

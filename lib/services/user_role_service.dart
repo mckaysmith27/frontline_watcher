@@ -6,6 +6,39 @@ class UserRoleService {
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
   final FirebaseAuth _auth = FirebaseAuth.instance;
 
+  /// App admin permission tier:
+  /// - 'full': can manage promos and other sensitive tools
+  /// - 'limited': can access general admin tools but not sensitive ones
+  Future<String> getCurrentAppAdminLevel() async {
+    final user = _auth.currentUser;
+    if (user == null) return 'none';
+    try {
+      final userDoc = await _firestore.collection('users').doc(user.uid).get();
+      final data = userDoc.data() ?? {};
+      final raw = data['appAdminLevel'];
+      if (raw is String && raw.trim().isNotEmpty) return raw.trim().toLowerCase();
+      final roles = (data['userRoles'] is List)
+          ? List<String>.from(data['userRoles']).map((e) => e.toLowerCase()).toList()
+          : <String>[];
+      final legacyIsAdmin = data['role'] == 'admin' || data['isAdmin'] == true;
+      if (roles.contains('app admin') || legacyIsAdmin) {
+        await _firestore.collection('users').doc(user.uid).set(
+          {'appAdminLevel': 'full'},
+          SetOptions(merge: true),
+        );
+        return 'full';
+      }
+    } catch (_) {}
+    return 'none';
+  }
+
+  Future<bool> isFullAppAdmin() async {
+    final roles = await getCurrentUserRoles();
+    if (!roles.contains('app admin')) return false;
+    final level = await getCurrentAppAdminLevel();
+    return level != 'limited';
+  }
+
   /// Get current user's roles
   Future<List<String>> getCurrentUserRoles() async {
     final user = _auth.currentUser;
@@ -60,6 +93,17 @@ class UserRoleService {
         SetOptions(merge: true),
       );
 
+      // Default app admin level if missing (for app admins only).
+      if (normalized.contains('app admin')) {
+        final rawLevel = userData?['appAdminLevel'];
+        if (rawLevel is! String || rawLevel.trim().isEmpty) {
+          await _firestore.collection('users').doc(user.uid).set(
+            {'appAdminLevel': 'full'},
+            SetOptions(merge: true),
+          );
+        }
+      }
+
       return normalized;
     } catch (e) {
       print('Error getting user roles: $e');
@@ -90,6 +134,7 @@ class UserRoleService {
   /// - 'admin_approvals': ['app admin']
   /// - 'admin_orders': ['app admin']
   /// - 'admin_roles': ['app admin']
+  /// - 'admin_promos': ['app admin (full only)']
   /// - 'admin_growth_sticky': ['app admin']
   /// - 'admin_growth_viral': ['app admin']
   /// - 'admin_growth_paid': ['app admin']
@@ -107,13 +152,20 @@ class UserRoleService {
       'admin_approvals': ['app admin'],
       'admin_orders': ['app admin'],
       'admin_roles': ['app admin'],
+      'admin_promos': ['app admin'],
       'admin_growth_sticky': ['app admin'],
       'admin_growth_viral': ['app admin'],
       'admin_growth_paid': ['app admin'],
     };
 
     final allowedRoles = featureRoleMap[feature] ?? [];
-    return allowedRoles.any((role) => userRoles.contains(role));
+    final hasRole = allowedRoles.any((role) => userRoles.contains(role));
+    if (!hasRole) return false;
+    if (feature == 'admin_promos') {
+      final level = await getCurrentAppAdminLevel();
+      return level != 'limited';
+    }
+    return true;
   }
 
   /// Get list of features accessible to current user
@@ -139,6 +191,11 @@ class UserRoleService {
         'admin_growth_viral',
         'admin_growth_paid',
       ]);
+
+      final level = await getCurrentAppAdminLevel();
+      if (level != 'limited') {
+        accessibleFeatures.add('admin_promos');
+      }
     }
 
     return accessibleFeatures.toSet().toList(); // Remove duplicates

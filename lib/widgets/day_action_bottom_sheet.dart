@@ -237,11 +237,14 @@ class DayActionBottomSheet extends StatelessWidget {
             const SizedBox(height: 12),
             SizedBox(
               width: double.infinity,
-              child: OutlinedButton.icon(
+              child: ElevatedButton.icon(
+                // Only after explicitly choosing partial availability should we open the time window editor.
                 onPressed: () => Navigator.pop(context, 'add_time_window'),
                 icon: const Icon(Icons.access_time),
-                label: const Text('Add Time Window'),
-                style: OutlinedButton.styleFrom(
+                label: const Text('Mark Partial Availability'),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: const Color(0xFFBFA100),
+                  foregroundColor: Colors.white,
                   padding: const EdgeInsets.symmetric(vertical: 16),
                 ),
               ),

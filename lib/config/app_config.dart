@@ -54,6 +54,11 @@ class AppConfig {
     'monthly': {'days': 30, 'price': 15.99},
     'annually': {'days': 365, 'price': 89.99},
   };
+
+  // Stripe (publishable) key for client-side card entry (PaymentSheet).
+  // DO NOT put secret keys in the app. Configure secret key in Cloud Functions.
+  static const String stripePublishableKey = '';
+  static const String stripeMerchantDisplayName = 'Sub67';
   
   // Default filters dictionary
   static const Map<String, List<String>> defaultFilters = {

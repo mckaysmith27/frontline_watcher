@@ -22,6 +22,26 @@ class AdminService {
            userData?['role'] == 'admin' || 
            userData?['isAdmin'] == true;
   }
+
+  Future<String> getCurrentAppAdminLevel() async {
+    final user = _auth.currentUser;
+    if (user == null) return 'none';
+    final userDoc = await _firestore.collection('users').doc(user.uid).get();
+    final userData = userDoc.data() ?? {};
+    final raw = userData['appAdminLevel'];
+    if (raw is String && raw.trim().isNotEmpty) return raw.trim().toLowerCase();
+    // Default to full for legacy admins.
+    final userRoles = userData['userRoles'] as List<dynamic>? ?? [];
+    final legacyIsAdmin = userData['role'] == 'admin' || userData['isAdmin'] == true;
+    if (userRoles.contains('app admin') || legacyIsAdmin) return 'full';
+    return 'none';
+  }
+
+  Future<bool> isFullAppAdmin() async {
+    if (!await isAdmin()) return false;
+    final level = await getCurrentAppAdminLevel();
+    return level != 'limited';
+  }
   
   /// Get user roles for a user
   Future<List<String>> getUserRoles(String userId) async {
@@ -40,6 +60,17 @@ class AdminService {
     await _firestore.collection('users').doc(userId).update({
       'userRoles': roles,
     });
+  }
+
+  Future<void> updateAppAdminLevel(String userId, String level) async {
+    if (!await isFullAppAdmin()) {
+      throw Exception('Only full app admins can update app admin level');
+    }
+    final normalized = level.trim().toLowerCase();
+    if (normalized != 'full' && normalized != 'limited') {
+      throw Exception('Invalid app admin level');
+    }
+    await _firestore.collection('users').doc(userId).update({'appAdminLevel': normalized});
   }
   
   /// Search for users by email or username

@@ -1093,8 +1093,8 @@ class _SchoolMapWidgetState extends State<SchoolMapWidget> {
   Widget _buildSchoolsWithinDrawer(BuildContext context, FiltersProvider filtersProvider) {
     final schoolsWithin = _getSchoolsWithinArea();
     final title = _filterByTime
-        ? 'Schools within ${_maxTravelTimeMinutes?.round() ?? 60} minutes'
-        : 'Schools within ${_radiusMiles.toStringAsFixed(1)} miles';
+        ? 'Schools within ${_maxTravelTimeMinutes?.round() ?? 60} minutes (included)'
+        : 'Schools within ${_radiusMiles.toStringAsFixed(1)} miles (included)';
 
     return ExpansionTile(
       initiallyExpanded: true, // Expanded by default
@@ -1177,8 +1177,8 @@ class _SchoolMapWidgetState extends State<SchoolMapWidget> {
             ),
             TextSpan(
               text: _filterByTime
-                  ? ' within ${_maxTravelTimeMinutes?.round() ?? 60} minutes'
-                  : ' within ${_radiusMiles.toStringAsFixed(1)} miles',
+                  ? ' within ${_maxTravelTimeMinutes?.round() ?? 60} minutes (excluded)'
+                  : ' within ${_radiusMiles.toStringAsFixed(1)} miles (excluded)',
             ),
           ],
         ),

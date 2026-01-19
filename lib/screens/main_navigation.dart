@@ -10,6 +10,7 @@ import 'admin/role_management_screen.dart';
 import 'admin/growth/sticky_engine_screen.dart';
 import 'admin/growth/viral_engine_screen.dart';
 import 'admin/growth/paid_engine_screen.dart';
+import 'admin/promo_codes_screen.dart';
 import '../services/admin_service.dart';
 import '../services/user_role_service.dart';
 
@@ -187,6 +188,14 @@ class _MainNavigationState extends State<MainNavigation> {
       ));
     }
 
+    if (_accessibleFeatures.contains('admin_promos')) {
+      destinations.add(const NavigationDestination(
+        icon: Icon(Icons.local_offer),
+        selectedIcon: Icon(Icons.local_offer),
+        label: 'Promos',
+      ));
+    }
+
     // Growth engines (3 icons, 3 pages)
     if (_accessibleFeatures.contains('admin_growth_sticky')) {
       destinations.add(const NavigationDestination(
@@ -233,6 +242,10 @@ class _MainNavigationState extends State<MainNavigation> {
           _checkAdminStatus();
         },
       ));
+    }
+
+    if (_accessibleFeatures.contains('admin_promos')) {
+      screens.add(const PromoCodesScreen());
     }
 
     if (_accessibleFeatures.contains('admin_growth_sticky')) {

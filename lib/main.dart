@@ -3,7 +3,9 @@ import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:provider/provider.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:flutter_stripe/flutter_stripe.dart';
 import 'firebase_options.dart';
+import 'config/app_config.dart';
 import 'providers/theme_provider.dart';
 import 'providers/auth_provider.dart';
 import 'providers/filters_provider.dart';
@@ -43,6 +45,14 @@ Future<void> main() async {
     print('  Stack trace: $stackTrace');
     // Still run the app - it will show errors when trying to use Firebase
     print('[Main] Continuing app startup despite Firebase error...');
+  }
+
+  // Stripe PaymentSheet (card entry + saved payment method).
+  // If the publishable key is empty, checkout will show an error.
+  if (AppConfig.stripePublishableKey.trim().isNotEmpty) {
+    Stripe.publishableKey = AppConfig.stripePublishableKey.trim();
+    Stripe.merchantIdentifier = 'merchant.com.sub67.app';
+    await Stripe.instance.applySettings();
   }
 
   runApp(const Sub67App());

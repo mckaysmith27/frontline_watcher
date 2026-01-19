@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:cloud_functions/cloud_functions.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:flutter_stripe/flutter_stripe.dart' as stripe;
 import '../../config/app_config.dart';
 
 class PaymentScreen extends StatefulWidget {
@@ -18,20 +19,33 @@ class PaymentScreen extends StatefulWidget {
 }
 
 class _PaymentScreenState extends State<PaymentScreen> {
-  final FirebaseFirestore _firestore = FirebaseFirestore.instance;
   final FirebaseAuth _auth = FirebaseAuth.instance;
+  final FirebaseFunctions _functions = FirebaseFunctions.instance;
 
   final TextEditingController _promoController = TextEditingController();
   String? _appliedPromo;
   bool _isProcessing = false;
-
-  final List<String> _validPromos = AppConfig.creditPromoCodes;
+  bool _promoCardRequired = true;
 
   double get _finalPrice {
-    if (_appliedPromo != null && widget.tier == 'bi-weekly') {
-      return 0.0; // Free with promo
+    final base = (widget.tierData['price'] as num).toDouble();
+    if (_appliedPromo == null) return base;
+    // For now, promo codes are validated server-side. If promo is applied,
+    // we treat it as free (or discounted) based on the server response.
+    // This screen uses the server for final pricing at checkout time.
+    // Display optimistic: show $0 when promo is applied.
+    return 0.0;
+  }
+
+  double get _basePriceUsd => (widget.tierData['price'] as num).toDouble();
+
+  int get _days => (widget.tierData['days'] as num).toInt();
+
+  String get _payButtonLabel {
+    if (_appliedPromo != null) {
+      return _promoCardRequired ? 'Checkout (card required for renewal)' : 'Checkout';
     }
-    return widget.tierData['price'] as double;
+    return 'Checkout';
   }
 
   @override
@@ -43,37 +57,30 @@ class _PaymentScreenState extends State<PaymentScreen> {
   Future<void> _applyPromo() async {
     final promo = _promoController.text.trim();
     if (promo.isEmpty) return;
-
-    final isValid = _validPromos.any(
-      (p) => p.toLowerCase() == promo.toLowerCase(),
-    );
-
-    if (!isValid || widget.tier != 'bi-weekly') {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Invalid promo code')),
-      );
-      return;
+    try {
+      final callable = _functions.httpsCallable('validatePromoCode');
+      final res = await callable.call({'code': promo, 'tier': widget.tier});
+      final data = Map<String, dynamic>.from(res.data as Map);
+      final cardReq = data['isCardStillRequired'] == true;
+      setState(() {
+        _appliedPromo = promo.toUpperCase();
+        _promoCardRequired = cardReq;
+      });
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(cardReq ? 'Promo applied. Card still required for renewal.' : 'Promo applied.'),
+            backgroundColor: Colors.green,
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Invalid promo code: $e'), backgroundColor: Colors.red),
+        );
+      }
     }
-
-    // Check if promo code has already been used
-    final hasUsed = await _hasUsedPromoCode(promo);
-
-    if (hasUsed) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('This promo code has already been used'),
-          backgroundColor: Colors.orange,
-        ),
-      );
-      return;
-    }
-
-    setState(() {
-      _appliedPromo = promo;
-    });
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Promo code applied!')),
-    );
   }
 
   Future<void> _processPayment() async {
@@ -85,59 +92,69 @@ class _PaymentScreenState extends State<PaymentScreen> {
       final user = _auth.currentUser;
       if (user == null) throw Exception('Not authenticated');
 
-      final days = (widget.tierData['days'] as num).toInt();
-      
-      // If promo code was used, mark it as used before adding credits
-      if (_appliedPromo != null) {
-        try {
-          await _markPromoCodeAsUsed(_appliedPromo!);
-        } catch (e) {
-          print('Error marking promo code as used: $e');
-          // Continue anyway - don't block the purchase
-        }
+      if (AppConfig.stripePublishableKey.trim().isEmpty) {
+        throw Exception('Stripe publishable key not configured in AppConfig.stripePublishableKey');
       }
 
-      // Simulate payment processing
-      await Future.delayed(const Duration(seconds: 2));
+      final promoCode = _appliedPromo;
 
-      // Timestamp-based subscription (single source of truth).
-      // NOTE: In production this should be written/verified from store receipt events.
-      final userDocRef = _firestore.collection('users').doc(user.uid);
-      final userSnap = await userDocRef.get();
-      final data = userSnap.data();
-
-      DateTime baseUtc = DateTime.now().toUtc();
-      final existingEnds = data?['subscriptionEndsAt'];
-      if (existingEnds is Timestamp) {
-        final existingEndsUtc = existingEnds.toDate().toUtc();
-        if (existingEndsUtc.isAfter(baseUtc)) {
-          baseUtc = existingEndsUtc;
-        }
-      }
-
-      final startsAtUtc = DateTime.now().toUtc();
-      final endsAtUtc = baseUtc.add(Duration(days: days));
-
-      final purchaseAction = <String, dynamic>{
-        'timestamp': FieldValue.serverTimestamp(),
-        'promotion': _appliedPromo,
-        'subscriptionDays': days,
+      // Ask backend to create a session based on promo + tier.
+      final createCallable = _functions.httpsCallable('createStripePaymentSession');
+      final sessionRes = await createCallable.call({
         'tier': widget.tier,
-      };
+        'basePriceUsd': _basePriceUsd,
+        if (promoCode != null) 'promoCode': promoCode,
+      });
+      final session = Map<String, dynamic>.from(sessionRes.data as Map);
 
-      await userDocRef.set({
-        'subscriptionStartsAt': Timestamp.fromDate(startsAtUtc),
-        'subscriptionEndsAt': Timestamp.fromDate(endsAtUtc),
-        'subscriptionAutoRenewing': true, // placeholder; should be driven by store renewal state
-        'subscriptionActive': true, // derived; kept for compatibility
-        'purchaseActions': FieldValue.arrayUnion([purchaseAction]),
-      }, SetOptions(merge: true));
+      final mode = (session['mode'] as String?) ?? 'none'; // none|setup|payment
+      final intentId = session['intentId'] as String?;
+      final customerId = session['customerId'] as String?;
+      final ephemeralKeySecret = session['ephemeralKeySecret'] as String?;
+      final paymentIntentClientSecret = session['paymentIntentClientSecret'] as String?;
+      final setupIntentClientSecret = session['setupIntentClientSecret'] as String?;
+
+      if (mode == 'payment') {
+        await stripe.Stripe.instance.initPaymentSheet(
+          paymentSheetParameters: stripe.SetupPaymentSheetParameters(
+            merchantDisplayName: AppConfig.stripeMerchantDisplayName,
+            customerId: customerId,
+            customerEphemeralKeySecret: ephemeralKeySecret,
+            paymentIntentClientSecret: paymentIntentClientSecret,
+            style: ThemeMode.system,
+          ),
+        );
+        await stripe.Stripe.instance.presentPaymentSheet();
+      } else if (mode == 'setup') {
+        await stripe.Stripe.instance.initPaymentSheet(
+          paymentSheetParameters: stripe.SetupPaymentSheetParameters(
+            merchantDisplayName: AppConfig.stripeMerchantDisplayName,
+            customerId: customerId,
+            customerEphemeralKeySecret: ephemeralKeySecret,
+            setupIntentClientSecret: setupIntentClientSecret,
+            style: ThemeMode.system,
+          ),
+        );
+        await stripe.Stripe.instance.presentPaymentSheet();
+      } else {
+        // no card required
+      }
+
+      // Finalize subscription and mark promo redemption server-side.
+      final confirmCallable = _functions.httpsCallable('confirmSubscriptionPurchase');
+      await confirmCallable.call({
+        'tier': widget.tier,
+        'days': _days,
+        'mode': mode,
+        if (intentId != null) 'intentId': intentId,
+        if (promoCode != null) 'promoCode': promoCode,
+      });
 
       if (mounted) {
         Navigator.pop(context);
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Subscription active for $days days.'),
+            content: Text('Subscription active for $_days days.'),
             backgroundColor: Colors.green,
           ),
         );
@@ -247,35 +264,31 @@ class _PaymentScreenState extends State<PaymentScreen> {
               ),
             ),
             const SizedBox(height: 24),
-            if (widget.tier == 'bi-weekly' && _appliedPromo == null) ...[
-              Text(
-                'Promo Code',
-                style: Theme.of(context).textTheme.titleMedium,
-              ),
-              const SizedBox(height: 8),
-              Row(
-                children: [
-                  Expanded(
-                    child: TextField(
-                      controller: _promoController,
-                      decoration: const InputDecoration(
-                        hintText: 'Enter promo code',
-                        border: OutlineInputBorder(),
-                      ),
-                      textCapitalization: TextCapitalization.characters,
+            Text(
+              'Promo Code',
+              style: Theme.of(context).textTheme.titleMedium,
+            ),
+            const SizedBox(height: 8),
+            Row(
+              children: [
+                Expanded(
+                  child: TextField(
+                    controller: _promoController,
+                    decoration: const InputDecoration(
+                      hintText: 'Enter promo code',
+                      border: OutlineInputBorder(),
                     ),
+                    textCapitalization: TextCapitalization.characters,
                   ),
-                  const SizedBox(width: 8),
-                  ElevatedButton(
-                    onPressed: _applyPromo,
-                    child: const Text('Apply'),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 24),
-            ],
-            // Payment method selection would go here
-            // For now, we'll use a simple button
+                ),
+                const SizedBox(width: 8),
+                ElevatedButton(
+                  onPressed: _applyPromo,
+                  child: const Text('Apply'),
+                ),
+              ],
+            ),
+            const SizedBox(height: 18),
             SizedBox(
               width: double.infinity,
               child: ElevatedButton(
@@ -285,31 +298,13 @@ class _PaymentScreenState extends State<PaymentScreen> {
                 ),
                 child: _isProcessing
                     ? const CircularProgressIndicator()
-                    : Text('Pay \$${_finalPrice.toStringAsFixed(2)}'),
+                    : Text(_payButtonLabel),
               ),
             ),
           ],
         ),
       ),
     );
-  }
-
-  Future<bool> _hasUsedPromoCode(String promoCode) async {
-    final user = _auth.currentUser;
-    if (user == null) return false;
-    final doc = await _firestore.collection('users').doc(user.uid).get();
-    if (!doc.exists) return false;
-    final data = doc.data();
-    final usedPromoCodes = List<String>.from(data?['usedPromoCodes'] ?? const []);
-    return usedPromoCodes.contains(promoCode.toUpperCase());
-  }
-
-  Future<void> _markPromoCodeAsUsed(String promoCode) async {
-    final user = _auth.currentUser;
-    if (user == null) return;
-    await _firestore.collection('users').doc(user.uid).set({
-      'usedPromoCodes': FieldValue.arrayUnion([promoCode.toUpperCase()]),
-    }, SetOptions(merge: true));
   }
 }
 

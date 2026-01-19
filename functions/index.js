@@ -1,7 +1,19 @@
 const functions = require('firebase-functions');
 const admin = require('firebase-admin');
+const Stripe = require('stripe');
 
 admin.initializeApp();
+
+function getStripe() {
+  const key = functions.config()?.stripe?.secret_key || process.env.STRIPE_SECRET_KEY;
+  if (!key) {
+    throw new functions.https.HttpsError(
+      'failed-precondition',
+      'Stripe is not configured (missing STRIPE_SECRET_KEY / functions config stripe.secret_key).'
+    );
+  }
+  return Stripe(key, { apiVersion: '2024-06-20' });
+}
 
 /**
  * Cloud Function triggered when a new job event is created in Firestore.
@@ -152,7 +164,10 @@ exports.backfillJobStartTimeHistogram = functions.https.onCall(async (data, cont
 
   const adminDoc = await admin.firestore().collection('users').doc(context.auth.uid).get();
   const adminData = adminDoc.data();
-  if (adminData?.role !== 'admin' && adminData?.isAdmin !== true) {
+  const roles = Array.isArray(adminData?.userRoles) ? adminData.userRoles.map(r => String(r).toLowerCase()) : [];
+  const isAppAdmin = roles.includes('app admin');
+  const legacyIsAdmin = adminData?.role === 'admin' || adminData?.isAdmin === true;
+  if (!isAppAdmin && !legacyIsAdmin) {
     throw new functions.https.HttpsError('permission-denied', 'Admin access required');
   }
 
@@ -197,7 +212,17 @@ async function requireAppAdmin(context) {
   if (!isAppAdmin) {
     throw new functions.https.HttpsError('permission-denied', 'App admin access required');
   }
-  return { uid: context.auth.uid, user: data };
+  const levelRaw = typeof data.appAdminLevel === 'string' ? data.appAdminLevel.trim().toLowerCase() : '';
+  const appAdminLevel = levelRaw || 'full';
+  return { uid: context.auth.uid, user: data, appAdminLevel };
+}
+
+async function requireFullAppAdmin(context) {
+  const adminCtx = await requireAppAdmin(context);
+  if (adminCtx.appAdminLevel === 'limited') {
+    throw new functions.https.HttpsError('permission-denied', 'Full app admin access required');
+  }
+  return adminCtx;
 }
 
 function toMillis(ts) {
@@ -218,9 +243,12 @@ function tierPriceUsdFromTierName(tier) {
   // Keep in sync with `lib/config/app_config.dart` subscriptionTiers.
   // If tier names differ, we fall back to 0 (and the UI will show "approx").
   const map = {
+    daily: 1.99,
     weekly: 4.99,
+    'bi-weekly': 8.99,
     monthly: 14.99,
     yearly: 99.99,
+    annually: 89.99,
   };
   const key = typeof tier === 'string' ? tier.toLowerCase() : '';
   return map[key] ?? 0;
@@ -432,6 +460,595 @@ exports.getGrowthKpis = functions.https.onCall(async (data, context) => {
 
   throw new functions.https.HttpsError('invalid-argument', 'Unknown engine. Use sticky|viral|paid.');
 });
+
+// -------------------------
+// Promo codes (full app admin only for creation)
+// -------------------------
+
+const crypto = require('crypto');
+
+function normalizeCode(code) {
+  return String(code || '').trim();
+}
+
+function codeUpper(code) {
+  return normalizeCode(code).toUpperCase();
+}
+
+function randomAlnum(len) {
+  const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
+  const bytes = crypto.randomBytes(len);
+  let out = '';
+  for (let i = 0; i < len; i++) {
+    out += chars[bytes[i] % chars.length];
+  }
+  return out;
+}
+
+function promoToPublic(doc) {
+  const d = doc.data() || {};
+  const exp = d.expiresAt && typeof d.expiresAt.toDate === 'function' ? d.expiresAt.toDate().toISOString().slice(0, 10) : null;
+  return {
+    code: d.code || doc.id,
+    tier: d.tier || null,
+    discountType: d.discountType || null,
+    percentOff: d.percentOff ?? null,
+    amountOffUsd: d.amountOffUsd ?? null,
+    isCardStillRequired: d.isCardStillRequired === true,
+    expiresAt: exp,
+    maxRedemptions: d.maxRedemptions ?? null,
+    redeemedCount: d.redeemedCount ?? 0,
+    active: d.active !== false,
+    createdBy: d.createdBy || null,
+  };
+}
+
+exports.createPromoCode = functions.https.onCall(async (data, context) => {
+  const { uid } = await requireFullAppAdmin(context);
+  const db = admin.firestore();
+
+  const tier = typeof data?.tier === 'string' ? data.tier.toLowerCase() : null;
+  const discountType = typeof data?.discountType === 'string' ? data.discountType.toLowerCase() : 'free';
+  const isCardStillRequired = data?.isCardStillRequired === true;
+  const maxRedemptions = Number.isFinite(data?.maxRedemptions) ? Math.max(1, parseInt(data.maxRedemptions, 10)) : 1;
+
+  const expiresAt = data?.expiresAt;
+  if (!expiresAt || typeof expiresAt.toDate !== 'function') {
+    throw new functions.https.HttpsError('invalid-argument', 'expiresAt (Timestamp) is required');
+  }
+
+  let code = normalizeCode(data?.code);
+  if (!code) {
+    code = `SUB67-${randomAlnum(8)}`;
+  }
+  const codeU = codeUpper(code);
+
+  const percentOff = Number.isFinite(data?.percentOff) ? Math.max(0, Math.min(100, Number(data.percentOff))) : null;
+  const amountOffUsd = Number.isFinite(data?.amountOffUsd) ? Math.max(0, Number(data.amountOffUsd)) : null;
+
+  const docRef = db.collection('promo_codes').doc(codeU);
+  const existing = await docRef.get();
+  if (existing.exists) {
+    throw new functions.https.HttpsError('already-exists', 'Promo code already exists');
+  }
+
+  await docRef.set({
+    code,
+    codeUpper: codeU,
+    tier,
+    discountType,
+    percentOff,
+    amountOffUsd,
+    isCardStillRequired,
+    expiresAt,
+    maxRedemptions,
+    redeemedCount: 0,
+    active: true,
+    createdBy: uid,
+    createdAt: admin.firestore.FieldValue.serverTimestamp(),
+  });
+
+  return { ok: true, code: codeU };
+});
+
+exports.createPromoCodesBulk = functions.https.onCall(async (data, context) => {
+  const { uid } = await requireFullAppAdmin(context);
+  const db = admin.firestore();
+
+  const tier = typeof data?.tier === 'string' ? data.tier.toLowerCase() : null;
+  const count = Math.min(Math.max(parseInt(data?.count || 1, 10), 1), 500);
+  const randomLength = Math.min(Math.max(parseInt(data?.randomLength || 5, 10), 5), 32);
+  const prefix = normalizeCode(data?.prefix);
+  const suffix = normalizeCode(data?.suffix);
+  const discountType = typeof data?.discountType === 'string' ? data.discountType.toLowerCase() : 'free';
+  const isCardStillRequired = data?.isCardStillRequired === true;
+  const maxRedemptions = Number.isFinite(data?.maxRedemptions) ? Math.max(1, parseInt(data.maxRedemptions, 10)) : 1;
+  const expiresAt = data?.expiresAt;
+  if (!expiresAt || typeof expiresAt.toDate !== 'function') {
+    throw new functions.https.HttpsError('invalid-argument', 'expiresAt (Timestamp) is required');
+  }
+
+  const percentOff = Number.isFinite(data?.percentOff) ? Math.max(0, Math.min(100, Number(data.percentOff))) : null;
+  const amountOffUsd = Number.isFinite(data?.amountOffUsd) ? Math.max(0, Number(data.amountOffUsd)) : null;
+
+  let created = 0;
+  const codes = [];
+  let attempts = 0;
+
+  const batch = db.batch();
+  while (created < count && attempts < count * 20) {
+    attempts += 1;
+    const code = `${prefix}${randomAlnum(randomLength)}${suffix}`;
+    const codeU = codeUpper(code);
+    const ref = db.collection('promo_codes').doc(codeU);
+    // Collision check (cheap): rely on doc id uniqueness; if collision, we can overwrite, so we must check.
+    // We avoid per-code reads by using random space; but still guard with a read for safety at small scale.
+    // For up to 500, this is acceptable.
+    const existing = await ref.get();
+    if (existing.exists) continue;
+
+    batch.set(ref, {
+      code,
+      codeUpper: codeU,
+      tier,
+      discountType,
+      percentOff,
+      amountOffUsd,
+      isCardStillRequired,
+      expiresAt,
+      maxRedemptions,
+      redeemedCount: 0,
+      active: true,
+      createdBy: uid,
+      createdAt: admin.firestore.FieldValue.serverTimestamp(),
+    });
+    codes.push(codeU);
+    created += 1;
+  }
+
+  await batch.commit();
+  return { ok: true, created, codes };
+});
+
+exports.searchPromoCodes = functions.https.onCall(async (data, context) => {
+  await requireFullAppAdmin(context);
+  const db = admin.firestore();
+
+  const q = codeUpper(data?.query || '');
+  if (!q) return { items: [] };
+
+  const end = q + '\uf8ff';
+  const snap = await db
+    .collection('promo_codes')
+    .where('codeUpper', '>=', q)
+    .where('codeUpper', '<=', end)
+    .orderBy('codeUpper')
+    .limit(50)
+    .get();
+
+  return { items: snap.docs.map(promoToPublic) };
+});
+
+exports.validatePromoCode = functions.https.onCall(async (data, context) => {
+  // Auth optional; used during checkout.
+  const db = admin.firestore();
+  const codeU = codeUpper(data?.code || '');
+  const tier = typeof data?.tier === 'string' ? data.tier.toLowerCase() : null;
+  if (!codeU) throw new functions.https.HttpsError('invalid-argument', 'code is required');
+
+  const doc = await db.collection('promo_codes').doc(codeU).get();
+  if (!doc.exists) throw new functions.https.HttpsError('not-found', 'Promo code not found');
+  const p = doc.data() || {};
+
+  if (p.active === false) throw new functions.https.HttpsError('failed-precondition', 'Promo code inactive');
+  if (tier && p.tier && p.tier !== tier) throw new functions.https.HttpsError('failed-precondition', 'Promo code not valid for this package');
+  const expMs = toMillis(p.expiresAt);
+  if (expMs != null && expMs < Date.now()) throw new functions.https.HttpsError('failed-precondition', 'Promo code expired');
+
+  const max = Number.isFinite(p.maxRedemptions) ? p.maxRedemptions : 1;
+  const redeemed = Number.isFinite(p.redeemedCount) ? p.redeemedCount : 0;
+  if (redeemed >= max) throw new functions.https.HttpsError('failed-precondition', 'Promo code fully redeemed');
+
+  return {
+    code: codeU,
+    tier: p.tier || null,
+    discountType: p.discountType || 'free',
+    percentOff: p.percentOff ?? null,
+    amountOffUsd: p.amountOffUsd ?? null,
+    isCardStillRequired: p.isCardStillRequired === true,
+    expiresAt: expMs,
+    maxRedemptions: max,
+    redeemedCount: redeemed,
+  };
+});
+
+// -------------------------
+// Stripe checkout for subscriptions (stores card securely via Stripe)
+// -------------------------
+
+function cents(amountUsd) {
+  return Math.max(0, Math.round(Number(amountUsd || 0) * 100));
+}
+
+function parseIntentIdFromClientSecret(clientSecret) {
+  if (!clientSecret || typeof clientSecret !== 'string') return null;
+  const idx = clientSecret.indexOf('_secret');
+  if (idx <= 0) return null;
+  return clientSecret.substring(0, idx);
+}
+
+async function getOrCreateStripeCustomerForUser(uid) {
+  const db = admin.firestore();
+  const userRef = db.collection('users').doc(uid);
+  const snap = await userRef.get();
+  const data = snap.data() || {};
+  const stripe = getStripe();
+
+  const existing = data.stripeCustomerId;
+  if (typeof existing === 'string' && existing.trim()) {
+    return { customerId: existing.trim(), userRef, userData: data };
+  }
+
+  const email = typeof data.email === 'string' ? data.email : null;
+  const customer = await stripe.customers.create({
+    email: email || undefined,
+    metadata: { uid },
+  });
+
+  await userRef.set({ stripeCustomerId: customer.id }, { merge: true });
+  return { customerId: customer.id, userRef, userData: { ...data, stripeCustomerId: customer.id } };
+}
+
+function applyPromoToPrice(baseUsd, promo) {
+  let finalUsd = baseUsd;
+  if (!promo) return { finalUsd, promoApplied: false };
+  const t = promo.discountType || 'free';
+  if (t === 'free') {
+    finalUsd = 0;
+  } else if (t === 'percent' && Number.isFinite(promo.percentOff)) {
+    finalUsd = baseUsd * (1 - (promo.percentOff / 100));
+  } else if (t === 'amount' && Number.isFinite(promo.amountOffUsd)) {
+    finalUsd = baseUsd - promo.amountOffUsd;
+  }
+  if (finalUsd < 0) finalUsd = 0;
+  return { finalUsd, promoApplied: true };
+}
+
+async function loadPromoForCheckout(code, tier) {
+  if (!code) return null;
+  const db = admin.firestore();
+  const codeU = codeUpper(code);
+  const doc = await db.collection('promo_codes').doc(codeU).get();
+  if (!doc.exists) throw new functions.https.HttpsError('not-found', 'Promo code not found');
+  const p = doc.data() || {};
+  if (p.active === false) throw new functions.https.HttpsError('failed-precondition', 'Promo code inactive');
+  if (tier && p.tier && p.tier !== tier) {
+    throw new functions.https.HttpsError('failed-precondition', 'Promo code not valid for this package');
+  }
+  const expMs = toMillis(p.expiresAt);
+  if (expMs != null && expMs < Date.now()) throw new functions.https.HttpsError('failed-precondition', 'Promo code expired');
+  const max = Number.isFinite(p.maxRedemptions) ? p.maxRedemptions : 1;
+  const redeemed = Number.isFinite(p.redeemedCount) ? p.redeemedCount : 0;
+  if (redeemed >= max) throw new functions.https.HttpsError('failed-precondition', 'Promo code fully redeemed');
+  return { codeUpper: codeU, ...p };
+}
+
+exports.createStripePaymentSession = functions.https.onCall(async (data, context) => {
+  if (!context.auth) throw new functions.https.HttpsError('unauthenticated', 'Login required');
+  const uid = context.auth.uid;
+
+  const tier = typeof data?.tier === 'string' ? data.tier.toLowerCase() : null;
+  const basePriceUsd = Number.isFinite(data?.basePriceUsd) ? Number(data.basePriceUsd) : null;
+  if (!tier || basePriceUsd == null) {
+    throw new functions.https.HttpsError('invalid-argument', 'tier and basePriceUsd are required');
+  }
+
+  const promoCode = typeof data?.promoCode === 'string' ? data.promoCode.trim() : '';
+  const promo = promoCode ? await loadPromoForCheckout(promoCode, tier) : null;
+
+  const { finalUsd } = applyPromoToPrice(basePriceUsd, promo);
+  const mustCollectCard = promo ? (promo.isCardStillRequired === true) : true;
+
+  const stripe = getStripe();
+  const { customerId } = await getOrCreateStripeCustomerForUser(uid);
+
+  const ephemeralKey = await stripe.ephemeralKeys.create(
+    { customer: customerId },
+    { apiVersion: '2024-06-20' }
+  );
+
+  // If $0 and card not required, skip Stripe session entirely.
+  if (finalUsd <= 0 && !mustCollectCard) {
+    return {
+      mode: 'none',
+      finalPriceUsd: 0,
+      customerId,
+      promo: promo ? { code: promo.codeUpper, isCardStillRequired: promo.isCardStillRequired === true } : null,
+    };
+  }
+
+  if (finalUsd <= 0) {
+    // SetupIntent to save card for renewal.
+    const setupIntent = await stripe.setupIntents.create({
+      customer: customerId,
+      usage: 'off_session',
+      metadata: { uid, tier, promoCode: promo ? promo.codeUpper : '' },
+    });
+    return {
+      mode: 'setup',
+      finalPriceUsd: 0,
+      customerId,
+      ephemeralKeySecret: ephemeralKey.secret,
+      setupIntentClientSecret: setupIntent.client_secret,
+      intentId: setupIntent.id,
+      promo: promo ? { code: promo.codeUpper, isCardStillRequired: promo.isCardStillRequired === true } : null,
+    };
+  }
+
+  // PaymentIntent for first charge; also saves card for future use.
+  const pi = await stripe.paymentIntents.create({
+    amount: cents(finalUsd),
+    currency: 'usd',
+    customer: customerId,
+    automatic_payment_methods: { enabled: true },
+    setup_future_usage: 'off_session',
+    metadata: { uid, tier, promoCode: promo ? promo.codeUpper : '' },
+  });
+
+  return {
+    mode: 'payment',
+    finalPriceUsd: finalUsd,
+    customerId,
+    ephemeralKeySecret: ephemeralKey.secret,
+    paymentIntentClientSecret: pi.client_secret,
+    intentId: pi.id,
+    promo: promo ? { code: promo.codeUpper, isCardStillRequired: promo.isCardStillRequired === true } : null,
+  };
+});
+
+exports.confirmSubscriptionPurchase = functions.https.onCall(async (data, context) => {
+  if (!context.auth) throw new functions.https.HttpsError('unauthenticated', 'Login required');
+  const uid = context.auth.uid;
+  const db = admin.firestore();
+  const userRef = db.collection('users').doc(uid);
+
+  const tier = typeof data?.tier === 'string' ? data.tier.toLowerCase() : null;
+  const days = Number.isFinite(data?.days) ? parseInt(data.days, 10) : null;
+  const mode = typeof data?.mode === 'string' ? data.mode : 'none'; // 'none'|'setup'|'payment'
+  const intentId = typeof data?.intentId === 'string' ? data.intentId : null;
+  const promoCode = typeof data?.promoCode === 'string' ? data.promoCode.trim() : '';
+
+  if (!tier || !days) throw new functions.https.HttpsError('invalid-argument', 'tier and days are required');
+
+  const stripe = getStripe();
+  const { customerId } = await getOrCreateStripeCustomerForUser(uid);
+
+  let paymentMethodId = null;
+  if (mode === 'payment' && intentId) {
+    const pi = await stripe.paymentIntents.retrieve(intentId);
+    if (pi.status !== 'succeeded' && pi.status !== 'processing') {
+      throw new functions.https.HttpsError('failed-precondition', `PaymentIntent not successful (${pi.status})`);
+    }
+    paymentMethodId = typeof pi.payment_method === 'string' ? pi.payment_method : null;
+  } else if (mode === 'setup' && intentId) {
+    const si = await stripe.setupIntents.retrieve(intentId);
+    if (si.status !== 'succeeded' && si.status !== 'processing') {
+      throw new functions.https.HttpsError('failed-precondition', `SetupIntent not successful (${si.status})`);
+    }
+    paymentMethodId = typeof si.payment_method === 'string' ? si.payment_method : null;
+  }
+
+  // Attach and set default payment method (best effort).
+  if (paymentMethodId) {
+    try {
+      await stripe.paymentMethods.attach(paymentMethodId, { customer: customerId });
+    } catch (_) {}
+    try {
+      await stripe.customers.update(customerId, {
+        invoice_settings: { default_payment_method: paymentMethodId },
+      });
+    } catch (_) {}
+  }
+
+  // Promo redemption (transactional).
+  let appliedPromoUpper = null;
+  if (promoCode) {
+    const codeU = codeUpper(promoCode);
+    const promoRef = db.collection('promo_codes').doc(codeU);
+    await db.runTransaction(async (tx) => {
+      const snap = await tx.get(promoRef);
+      if (!snap.exists) throw new functions.https.HttpsError('not-found', 'Promo code not found');
+      const p = snap.data() || {};
+      if (p.active === false) throw new functions.https.HttpsError('failed-precondition', 'Promo code inactive');
+      if (p.tier && p.tier !== tier) throw new functions.https.HttpsError('failed-precondition', 'Promo code not valid for this package');
+      const expMs = toMillis(p.expiresAt);
+      if (expMs != null && expMs < Date.now()) throw new functions.https.HttpsError('failed-precondition', 'Promo code expired');
+      const max = Number.isFinite(p.maxRedemptions) ? p.maxRedemptions : 1;
+      const redeemed = Number.isFinite(p.redeemedCount) ? p.redeemedCount : 0;
+      if (redeemed >= max) throw new functions.https.HttpsError('failed-precondition', 'Promo code fully redeemed');
+      const redemptionRef = promoRef.collection('redemptions').doc(uid);
+      const redemptionSnap = await tx.get(redemptionRef);
+      if (redemptionSnap.exists) throw new functions.https.HttpsError('failed-precondition', 'Promo already used by this user');
+      tx.set(redemptionRef, { uid, usedAt: admin.firestore.FieldValue.serverTimestamp(), tier });
+      tx.update(promoRef, { redeemedCount: admin.firestore.FieldValue.increment(1) });
+    });
+    appliedPromoUpper = codeU;
+  }
+
+  // Extend subscription timestamps (server-side source of truth for now).
+  const userSnap = await userRef.get();
+  const dataNow = userSnap.data() || {};
+  let baseUtc = new Date();
+  const existingEnds = dataNow.subscriptionEndsAt;
+  if (existingEnds && typeof existingEnds.toDate === 'function') {
+    const ends = existingEnds.toDate();
+    if (ends.getTime() > Date.now()) baseUtc = ends;
+  }
+  const startsAtUtc = new Date();
+  const endsAtUtc = new Date(baseUtc.getTime() + days * 24 * 60 * 60 * 1000);
+
+  const purchaseAction = {
+    timestamp: admin.firestore.FieldValue.serverTimestamp(),
+    promotion: appliedPromoUpper,
+    subscriptionDays: days,
+    tier,
+    stripeCustomerId: customerId,
+    stripePaymentMethodId: paymentMethodId,
+    mode,
+    intentId,
+  };
+
+  await userRef.set(
+    {
+      subscriptionStartsAt: admin.firestore.Timestamp.fromDate(startsAtUtc),
+      subscriptionEndsAt: admin.firestore.Timestamp.fromDate(endsAtUtc),
+      subscriptionAutoRenewing: paymentMethodId != null,
+      subscriptionActive: true,
+      subscriptionTier: tier,
+      subscriptionDays: days,
+      stripeCustomerId: customerId,
+      ...(paymentMethodId ? { stripeDefaultPaymentMethodId: paymentMethodId } : {}),
+      purchaseActions: admin.firestore.FieldValue.arrayUnion([purchaseAction]),
+    },
+    { merge: true }
+  );
+
+  return {
+    ok: true,
+    subscriptionEndsAt: endsAtUtc.toISOString(),
+    autoRenewing: paymentMethodId != null,
+  };
+});
+
+exports.runSubscriptionRenewals = functions.https.onCall(async (data, context) => {
+  await requireFullAppAdmin(context);
+  const max = Math.min(Math.max(parseInt(data?.limit || 25, 10), 1), 200);
+  const result = await _renewExpiredSubscriptions({ limit: max });
+  return result;
+});
+
+async function _renewExpiredSubscriptions({ limit }) {
+  const db = admin.firestore();
+  const stripe = getStripe();
+
+  const now = new Date();
+  const snap = await db
+    .collection('users')
+    .where('subscriptionAutoRenewing', '==', true)
+    .where('subscriptionEndsAt', '<=', admin.firestore.Timestamp.fromDate(now))
+    .limit(limit)
+    .get();
+
+  let attempted = 0;
+  let renewed = 0;
+  let failed = 0;
+
+  for (const doc of snap.docs) {
+    attempted += 1;
+    const u = doc.data() || {};
+    const uid = doc.id;
+    const tier = typeof u.subscriptionTier === 'string' ? u.subscriptionTier : null;
+    const days = Number.isFinite(u.subscriptionDays) ? parseInt(u.subscriptionDays, 10) : null;
+    const customerId = typeof u.stripeCustomerId === 'string' ? u.stripeCustomerId : null;
+    const pm = typeof u.stripeDefaultPaymentMethodId === 'string' ? u.stripeDefaultPaymentMethodId : null;
+
+    if (!tier || !days || !customerId || !pm) {
+      failed += 1;
+      await doc.ref.set(
+        {
+          subscriptionAutoRenewing: false,
+          renewalError: 'Missing tier/days/customer/paymentMethod',
+          renewalFailedAt: admin.firestore.FieldValue.serverTimestamp(),
+        },
+        { merge: true }
+      );
+      continue;
+    }
+
+    const priceUsd = tierPriceUsdFromTierName(tier);
+    if (!priceUsd || priceUsd <= 0) {
+      failed += 1;
+      await doc.ref.set(
+        {
+          subscriptionAutoRenewing: false,
+          renewalError: 'Unknown tier price',
+          renewalFailedAt: admin.firestore.FieldValue.serverTimestamp(),
+        },
+        { merge: true }
+      );
+      continue;
+    }
+
+    try {
+      const pi = await stripe.paymentIntents.create({
+        amount: cents(priceUsd),
+        currency: 'usd',
+        customer: customerId,
+        payment_method: pm,
+        off_session: true,
+        confirm: true,
+        metadata: { uid, tier, reason: 'auto_renew' },
+      });
+
+      if (pi.status !== 'succeeded' && pi.status !== 'processing') {
+        throw new Error(`PaymentIntent status ${pi.status}`);
+      }
+
+      const baseUtc = now;
+      const endsAtUtc = new Date(baseUtc.getTime() + days * 24 * 60 * 60 * 1000);
+
+      const purchaseAction = {
+        timestamp: admin.firestore.FieldValue.serverTimestamp(),
+        promotion: null,
+        subscriptionDays: days,
+        tier,
+        stripeCustomerId: customerId,
+        stripePaymentMethodId: pm,
+        mode: 'auto_renew',
+        intentId: pi.id,
+      };
+
+      await doc.ref.set(
+        {
+          subscriptionEndsAt: admin.firestore.Timestamp.fromDate(endsAtUtc),
+          subscriptionActive: true,
+          renewalError: admin.firestore.FieldValue.delete(),
+          renewalFailedAt: admin.firestore.FieldValue.delete(),
+          purchaseActions: admin.firestore.FieldValue.arrayUnion([purchaseAction]),
+        },
+        { merge: true }
+      );
+
+      renewed += 1;
+    } catch (e) {
+      failed += 1;
+      await doc.ref.set(
+        {
+          renewalError: String(e),
+          renewalFailedAt: admin.firestore.FieldValue.serverTimestamp(),
+        },
+        { merge: true }
+      );
+    }
+  }
+
+  return { attempted, renewed, failed };
+}
+
+// Automatic renewals (best-effort). Requires Cloud Scheduler to be enabled.
+exports.renewSubscriptionsHourly = functions.pubsub
+  .schedule('every 60 minutes')
+  .timeZone('UTC')
+  .onRun(async () => {
+    try {
+      const res = await _renewExpiredSubscriptions({ limit: 25 });
+      console.log('[Renewals] Hourly renewal run:', res);
+      return res;
+    } catch (e) {
+      console.error('[Renewals] Hourly renewal failed:', e);
+      return null;
+    }
+  });
 
 /**
  * Find users that match the job event based on district and filters
