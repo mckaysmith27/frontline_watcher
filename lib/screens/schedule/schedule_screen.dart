@@ -11,6 +11,7 @@ import '../../widgets/profile_app_bar.dart';
 import '../../widgets/day_action_bottom_sheet.dart';
 import '../../widgets/notification_day_card.dart';
 import '../../widgets/time_window_picker.dart';
+import '../../widgets/app_bar_quick_toggles.dart';
 import 'job_card.dart';
 import 'package:add_2_calendar/add_2_calendar.dart';
 import '../profile/profile_screen.dart';
@@ -279,6 +280,7 @@ class _ScheduleScreenState extends State<ScheduleScreen> {
     return Scaffold(
       appBar: ProfileAppBar(
         actions: [
+          const AppBarQuickToggles(),
           IconButton(
             icon: const Icon(Icons.settings),
             onPressed: () {
@@ -395,57 +397,53 @@ class _ScheduleScreenState extends State<ScheduleScreen> {
           ),
           const Divider(),
           // Jobs Feed
-          Row(
-            children: [
-              Expanded(
-                child: ChoiceChip(
-                  label: const Text('Booked Jobs'),
-                  selected: _selectedTab == 'Booked Jobs',
-                  onSelected: (selected) {
-                    if (selected) {
-                      setState(() => _selectedTab = 'Booked Jobs');
-                    }
-                  },
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxHeight: 92),
+              child: Scrollbar(
+                thumbVisibility: false,
+                child: SingleChildScrollView(
+                  scrollDirection: Axis.vertical,
+                  child: Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
+                    children: [
+                      ChoiceChip(
+                        label: const Text('Booked Jobs'),
+                        selected: _selectedTab == 'Booked Jobs',
+                        onSelected: (selected) {
+                          if (selected) setState(() => _selectedTab = 'Booked Jobs');
+                        },
+                      ),
+                      ChoiceChip(
+                        label: const Text('Keywords by Day'),
+                        selected: _selectedTab == 'Keywords by Day',
+                        onSelected: (selected) {
+                          if (selected) setState(() => _selectedTab = 'Keywords by Day');
+                        },
+                      ),
+                      ChoiceChip(
+                        label: const Text('Unavailable'),
+                        selected: _selectedTab == 'Unavailable',
+                        onSelected: (selected) {
+                          if (selected) setState(() => _selectedTab = 'Unavailable');
+                        },
+                      ),
+                      ChoiceChip(
+                        label: const Text('Partial Availability'),
+                        selected: _selectedTab == 'Partial',
+                        onSelected: (selected) {
+                          if (selected) setState(() => _selectedTab = 'Partial');
+                        },
+                      ),
+                    ],
+                  ),
                 ),
               ),
-              const SizedBox(width: 8),
-              Expanded(
-                child: ChoiceChip(
-                  label: const Text('Keywords by Day'),
-                  selected: _selectedTab == 'Keywords by Day',
-                  onSelected: (selected) {
-                    if (selected) {
-                      setState(() => _selectedTab = 'Keywords by Day');
-                    }
-                  },
-                ),
-              ),
-              const SizedBox(width: 8),
-              Expanded(
-                child: ChoiceChip(
-                  label: const Text('Unavailable'),
-                  selected: _selectedTab == 'Unavailable',
-                  onSelected: (selected) {
-                    if (selected) {
-                      setState(() => _selectedTab = 'Unavailable');
-                    }
-                  },
-                ),
-              ),
-              const SizedBox(width: 8),
-              Expanded(
-                child: ChoiceChip(
-                  label: const Text('Partial'),
-                  selected: _selectedTab == 'Partial',
-                  onSelected: (selected) {
-                    if (selected) {
-                      setState(() => _selectedTab = 'Partial');
-                    }
-                  },
-                ),
-              ),
-            ],
+            ),
           ),
+          const SizedBox(height: 8),
           Expanded(
             child: _isLoading
                 ? const Center(child: CircularProgressIndicator())

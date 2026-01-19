@@ -6,6 +6,7 @@ import 'my_page_tab.dart';
 import 'feed_tab.dart';
 import 'top_posts_tab.dart';
 import '../profile/profile_screen.dart';
+import '../../widgets/app_bar_quick_toggles.dart';
 
 class SocialScreen extends StatefulWidget {
   final VoidCallback? onNavigateToMyPage;
@@ -72,6 +73,7 @@ class _SocialScreenState extends State<SocialScreen>
             : null,
         automaticallyImplyLeading: false,
         actions: [
+          const AppBarQuickToggles(),
           IconButton(
             icon: const Icon(Icons.settings),
             onPressed: () {

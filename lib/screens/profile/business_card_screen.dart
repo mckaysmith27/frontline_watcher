@@ -8,6 +8,7 @@ import 'package:qr_flutter/qr_flutter.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:firebase_storage/firebase_storage.dart';
 import '../../services/user_role_service.dart';
+import '../../widgets/app_bar_quick_toggles.dart';
 import 'business_card_order_screen.dart';
 import 'profile_screen.dart';
 
@@ -90,7 +91,7 @@ class _BusinessCardScreenState extends State<BusinessCardScreen> {
           _firstNameController.text = nameParts.isNotEmpty ? nameParts[0] : '';
           _lastNameController.text = nameParts.length > 1 ? nameParts.sublist(1).join(' ') : '';
         }
-        _phoneController.text = data['phoneNumber'] ?? '';
+        _phoneController.text = _formatPhoneDashed(data['phoneNumber'] ?? '');
         _emailController.text = user.email ?? '';
         _profilePhotoUrl = user.photoURL ?? data['photoUrl'];
         _instructionsController.text = (data['cardInstructions'] as String?)?.trim().isNotEmpty == true
@@ -111,6 +112,15 @@ class _BusinessCardScreenState extends State<BusinessCardScreen> {
       
       _checkFormComplete();
     }
+  }
+
+  String _formatPhoneDashed(String raw) {
+    final digits = raw.replaceAll(RegExp(r'[^0-9]'), '');
+    final capped = digits.length > 10 ? digits.substring(0, 10) : digits;
+    if (capped.isEmpty) return '';
+    if (capped.length <= 3) return capped;
+    if (capped.length <= 6) return '${capped.substring(0, 3)}-${capped.substring(3)}';
+    return '${capped.substring(0, 3)}-${capped.substring(3, 6)}-${capped.substring(6)}';
   }
 
   Future<void> _pickProfilePhoto() async {
@@ -325,6 +335,7 @@ class _BusinessCardScreenState extends State<BusinessCardScreen> {
       appBar: AppBar(
         title: const Text('Business Card'),
         actions: [
+          const AppBarQuickToggles(),
           IconButton(
             icon: const Icon(Icons.settings),
             onPressed: () {
@@ -345,12 +356,13 @@ class _BusinessCardScreenState extends State<BusinessCardScreen> {
           children: [
             // Business Card Form
             _buildBusinessCardForm(),
+            _buildShortnameStatusBelowCard(),
             const SizedBox(height: 12),
-            const Text(
+            Text(
               'NOTE: Text elements as well as the QR code will adjust to proper alignment. Final card before print viewable on the next page.',
               style: TextStyle(
                 fontStyle: FontStyle.italic,
-                color: Colors.black54,
+                color: Theme.of(context).colorScheme.onSurface.withOpacity(0.7),
               ),
               textAlign: TextAlign.center,
             ),
@@ -424,63 +436,51 @@ class _BusinessCardScreenState extends State<BusinessCardScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // First row: First Name and Last Name
-          Row(
-            children: [
-              Expanded(
-                child: TextField(
-                  controller: _firstNameController,
-                  decoration: const InputDecoration(
-                    hintText: 'First Name',
-                    border: InputBorder.none,
-                    contentPadding: EdgeInsets.zero,
-                    isDense: true,
-                  ),
-                  style: const TextStyle(
-                    fontSize: 20,
-                    fontWeight: FontWeight.bold,
-                    color: Colors.black87,
-                  ),
-                  onChanged: (value) async {
-                    await _saveField('firstName', value);
-                    _checkFormComplete();
-                  },
-                ),
-              ),
-              const SizedBox(width: 8),
-              Expanded(
-                child: TextField(
-                  controller: _lastNameController,
-                  decoration: const InputDecoration(
-                    hintText: 'Last Name',
-                    border: InputBorder.none,
-                    contentPadding: EdgeInsets.zero,
-                    isDense: true,
-                  ),
-                  style: const TextStyle(
-                    fontSize: 20,
-                    fontWeight: FontWeight.bold,
-                    color: Colors.black87,
-                  ),
-                  onChanged: (value) async {
-                    await _saveField('lastName', value);
-                    _checkFormComplete();
-                  },
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 16),
-          
-          // Second row: Phone/Email/Link + QR
           Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // Left: Phone and Email
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
+                    // Name (stacked so all left-aligned fields align cleanly)
+                    TextField(
+                      controller: _firstNameController,
+                      decoration: const InputDecoration(
+                        hintText: 'First Name',
+                        border: InputBorder.none,
+                        contentPadding: EdgeInsets.zero,
+                        isDense: true,
+                      ),
+                      style: const TextStyle(
+                        fontSize: 20,
+                        fontWeight: FontWeight.bold,
+                        color: Colors.black87,
+                      ),
+                      onChanged: (value) async {
+                        await _saveField('firstName', value);
+                        _checkFormComplete();
+                      },
+                    ),
+                    TextField(
+                      controller: _lastNameController,
+                      decoration: const InputDecoration(
+                        hintText: 'Last Name',
+                        border: InputBorder.none,
+                        contentPadding: EdgeInsets.zero,
+                        isDense: true,
+                      ),
+                      style: const TextStyle(
+                        fontSize: 20,
+                        fontWeight: FontWeight.bold,
+                        color: Colors.black87,
+                      ),
+                      onChanged: (value) async {
+                        await _saveField('lastName', value);
+                        _checkFormComplete();
+                      },
+                    ),
+                    const SizedBox(height: 14),
                     TextField(
                       controller: _phoneController,
                       decoration: const InputDecoration(
@@ -496,7 +496,7 @@ class _BusinessCardScreenState extends State<BusinessCardScreen> {
                       keyboardType: TextInputType.phone,
                       inputFormatters: [
                         FilteringTextInputFormatter.digitsOnly,
-                        UsPhoneNumberTextInputFormatter(),
+                        DashedPhoneNumberTextInputFormatter(),
                       ],
                       onChanged: (value) {
                         _saveField('phoneNumber', value);
@@ -517,16 +517,6 @@ class _BusinessCardScreenState extends State<BusinessCardScreen> {
                         border: InputBorder.none,
                         contentPadding: EdgeInsets.zero,
                         isDense: true,
-                        suffixIcon: _isValidating
-                            ? const SizedBox(
-                                width: 16,
-                                height: 16,
-                                child: Padding(
-                                  padding: EdgeInsets.all(4.0),
-                                  child: CircularProgressIndicator(strokeWidth: 2),
-                                ),
-                              )
-                            : null,
                       ),
                       style: const TextStyle(
                         fontSize: 14,
@@ -539,18 +529,6 @@ class _BusinessCardScreenState extends State<BusinessCardScreen> {
                         _checkFormComplete();
                       },
                     ),
-                    if (_validationMessage != null)
-                      Padding(
-                        padding: const EdgeInsets.only(top: 4.0),
-                        child: Text(
-                          _validationMessage!,
-                          style: TextStyle(
-                            color: _isAvailable ? Colors.green : Colors.red,
-                            fontSize: 12,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                      ),
                     const SizedBox(height: 6),
                     TextField(
                       controller: _emailController,
@@ -574,7 +552,7 @@ class _BusinessCardScreenState extends State<BusinessCardScreen> {
                 ),
               ),
               const SizedBox(width: 16),
-              // Right: QR Code placeholder
+              // QR Code placeholder (top-aligned with name fields)
               Container(
                 width: 100,
                 height: 100,
@@ -614,6 +592,54 @@ class _BusinessCardScreenState extends State<BusinessCardScreen> {
     );
   }
 
+  Widget _buildShortnameStatusBelowCard() {
+    final shortname = _shortnameController.text.trim().toLowerCase();
+
+    if (_isValidating) {
+      return Padding(
+        padding: const EdgeInsets.only(top: 10),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            const SizedBox(
+              height: 14,
+              width: 14,
+              child: CircularProgressIndicator(strokeWidth: 2),
+            ),
+            const SizedBox(width: 10),
+            Text(
+              'Checking shortname…',
+              style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                    fontStyle: FontStyle.italic,
+                    color: Theme.of(context).colorScheme.onSurface.withOpacity(0.75),
+                  ),
+            ),
+          ],
+        ),
+      );
+    }
+
+    if ((_validationMessage ?? '').trim().isEmpty) return const SizedBox.shrink();
+
+    final msg = _isAvailable
+        ? "The shortname $shortname is available!"
+        : (shortname.isEmpty
+            ? 'Shortname: ${_validationMessage!}'
+            : "The shortname $shortname is not available: ${_validationMessage!}");
+
+    return Padding(
+      padding: const EdgeInsets.only(top: 10),
+      child: Text(
+        msg,
+        textAlign: TextAlign.center,
+        style: Theme.of(context).textTheme.bodySmall?.copyWith(
+              color: _isAvailable ? Colors.green : Theme.of(context).colorScheme.error,
+              fontWeight: FontWeight.w700,
+            ),
+      ),
+    );
+  }
+
   Widget _buildInstructionsBox() {
     return Container(
       width: double.infinity,
@@ -628,10 +654,10 @@ class _BusinessCardScreenState extends State<BusinessCardScreen> {
             child: TextField(
               controller: _instructionsController,
               maxLines: null,
-              style: const TextStyle(
+              style: TextStyle(
                 fontStyle: FontStyle.italic,
                 fontSize: 12,
-                color: Colors.black54,
+                color: Theme.of(context).colorScheme.onSurface.withOpacity(0.7),
               ),
               textAlign: TextAlign.center,
               decoration: const InputDecoration(
@@ -707,6 +733,14 @@ class _BusinessCardScreenState extends State<BusinessCardScreen> {
       ),
       child: Column(
         children: [
+          Text(
+            'Powered by Sub67…',
+            style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                  fontStyle: FontStyle.italic,
+                  color: Theme.of(context).colorScheme.onSurface.withOpacity(0.55),
+                ),
+          ),
+          const SizedBox(height: 10),
           GestureDetector(
             onTap: _pickProfilePhoto,
             child: Stack(
@@ -830,7 +864,7 @@ class _BusinessCardScreenState extends State<BusinessCardScreen> {
 
 // Business card terms were consolidated into the global one-time Terms & Conditions gate.
 
-class UsPhoneNumberTextInputFormatter extends TextInputFormatter {
+class DashedPhoneNumberTextInputFormatter extends TextInputFormatter {
   @override
   TextEditingValue formatEditUpdate(TextEditingValue oldValue, TextEditingValue newValue) {
     final digits = newValue.text.replaceAll(RegExp(r'[^0-9]'), '');
@@ -840,12 +874,11 @@ class UsPhoneNumberTextInputFormatter extends TextInputFormatter {
     if (capped.isEmpty) {
       formatted = '';
     } else if (capped.length <= 3) {
-      formatted = '(${capped}';
+      formatted = capped;
     } else if (capped.length <= 6) {
-      formatted = '(${capped.substring(0, 3)}) ${capped.substring(3)}';
+      formatted = '${capped.substring(0, 3)}-${capped.substring(3)}';
     } else {
-      formatted =
-          '(${capped.substring(0, 3)}) ${capped.substring(3, 6)}-${capped.substring(6)}';
+      formatted = '${capped.substring(0, 3)}-${capped.substring(3, 6)}-${capped.substring(6)}';
     }
 
     return TextEditingValue(

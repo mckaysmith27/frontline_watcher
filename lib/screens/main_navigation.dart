@@ -154,7 +154,7 @@ class _MainNavigationState extends State<MainNavigation> {
     if (_accessibleFeatures.contains('business_card')) {
       destinations.add(const NavigationDestination(
         icon: Icon(Icons.badge),
-        label: 'ID Card',
+        label: 'Biz Card',
       ));
     }
     

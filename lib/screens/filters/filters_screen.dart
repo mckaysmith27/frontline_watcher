@@ -7,6 +7,7 @@ import '../../widgets/filter_column.dart';
 import '../../widgets/nested_filter_column.dart';
 import '../../widgets/school_map_widget.dart';
 import '../../widgets/profile_app_bar.dart';
+import '../../widgets/app_bar_quick_toggles.dart';
 import '../profile/profile_screen.dart';
 
 class FiltersScreen extends StatefulWidget {
@@ -66,6 +67,7 @@ class _FiltersScreenState extends State<FiltersScreen> {
     return Scaffold(
       appBar: ProfileAppBar(
         actions: [
+          const AppBarQuickToggles(),
           IconButton(
             icon: const Icon(Icons.settings),
             onPressed: () {

@@ -4,6 +4,7 @@ import '../../providers/notifications_provider.dart';
 import '../../providers/subscription_provider.dart';
 import '../filters/automation_bottom_sheet.dart';
 import '../profile/profile_screen.dart';
+import '../../widgets/app_bar_quick_toggles.dart';
 import 'time_window_widget.dart';
 
 class NotificationsScreen extends StatefulWidget {
@@ -20,6 +21,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
       appBar: AppBar(
         title: const Text('Notifications'),
         actions: [
+          const AppBarQuickToggles(),
           IconButton(
             icon: const Icon(Icons.settings),
             onPressed: () {
@@ -116,7 +118,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
               spacing: 6,
               runSpacing: 4,
               children: [
-                const Text("Enable 'FAST Notify'"),
+                const Text("Enable 'FAST ALERT'"),
                 Tooltip(
                   message:
                       'Uses proprietary scanning architecture to minimize the gap between a job first being posted and the user being notified.',
@@ -153,7 +155,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
               spacing: 6,
               runSpacing: 4,
               children: [
-                const Text("Enable 'FAST Job Accept'"),
+                const Text("Enable 'PRIORITY BOOKING'"),
                 Tooltip(
                   message:
                       'Uses proprietary technology features—like the applying of a keywords filter and guidance towards a users desired call to action thus enabling the user to reduce time between being notified and accepting a desired new job.',

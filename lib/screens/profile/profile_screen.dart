@@ -20,6 +20,8 @@ class ProfileScreen extends StatelessWidget {
 
     return Scaffold(
       appBar: ProfileAppBar(
+        showBackButton: true,
+        child: const Text('Settings'),
         actions: [
           IconButton(
             icon: Icon(
