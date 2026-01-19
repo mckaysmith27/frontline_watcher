@@ -55,12 +55,13 @@ class _TimeWindowPickerState extends State<TimeWindowPicker> {
 
   List<int>? _hist;
   bool _loadingHist = false;
+  String? _histError;
 
   @override
   void initState() {
     super.initState();
-    _start = _snap(widget.value.startMinutes);
-    _end = _snap(widget.value.endMinutes);
+    _start = _snapStart(widget.value.startMinutes);
+    _end = _snapEnd(widget.value.endMinutes);
     _ensureValid();
     _loadHistogram();
   }
@@ -68,8 +69,8 @@ class _TimeWindowPickerState extends State<TimeWindowPicker> {
   @override
   void didUpdateWidget(covariant TimeWindowPicker oldWidget) {
     super.didUpdateWidget(oldWidget);
-    final nextStart = _snap(widget.value.startMinutes);
-    final nextEnd = _snap(widget.value.endMinutes);
+    final nextStart = _snapStart(widget.value.startMinutes);
+    final nextEnd = _snapEnd(widget.value.endMinutes);
     if (nextStart != _start || nextEnd != _end) {
       _start = nextStart;
       _end = nextEnd;
@@ -77,9 +78,20 @@ class _TimeWindowPickerState extends State<TimeWindowPicker> {
     }
   }
 
-  int _snap(int minutes) {
-    final clamped = minutes.clamp(0, 24 * 60);
-    final snapped = (clamped / _minutesPerStep).round() * _minutesPerStep;
+  int _clampMinutes(int minutes) => minutes.clamp(0, 24 * 60);
+
+  /// Snap **down** to the nearest 15-minute mark (for start times).
+  int _snapStart(int minutes) {
+    final clamped = _clampMinutes(minutes);
+    final snapped = (clamped ~/ _minutesPerStep) * _minutesPerStep;
+    return snapped.clamp(0, 24 * 60);
+  }
+
+  /// Snap **up** to the nearest 15-minute mark (for end times).
+  int _snapEnd(int minutes) {
+    final clamped = _clampMinutes(minutes);
+    if (clamped == 24 * 60) return clamped;
+    final snapped = ((clamped + (_minutesPerStep - 1)) ~/ _minutesPerStep) * _minutesPerStep;
     return snapped.clamp(0, 24 * 60);
   }
 
@@ -95,7 +107,10 @@ class _TimeWindowPickerState extends State<TimeWindowPicker> {
 
   Future<void> _loadHistogram() async {
     if (!widget.showJobHistogram) return;
-    setState(() => _loadingHist = true);
+    setState(() {
+      _loadingHist = true;
+      _histError = null;
+    });
     try {
       final svc = JobTimeHistogramService();
       final buckets = await svc.getStartHistogram(
@@ -104,9 +119,12 @@ class _TimeWindowPickerState extends State<TimeWindowPicker> {
       );
       if (!mounted) return;
       setState(() => _hist = buckets);
-    } catch (_) {
+    } catch (e) {
       if (!mounted) return;
-      setState(() => _hist = List<int>.filled(_steps, 0));
+      setState(() {
+        _hist = null;
+        _histError = e.toString();
+      });
     } finally {
       if (mounted) setState(() => _loadingHist = false);
     }
@@ -117,12 +135,16 @@ class _TimeWindowPickerState extends State<TimeWindowPicker> {
   }
 
   String _formatMinutes(BuildContext context, int minutes) {
+    if (minutes >= 24 * 60) {
+      // End-of-day sentinel: show explicitly to avoid confusion with midnight start.
+      return '12:00 AM (+1)';
+    }
     final h = (minutes ~/ 60) % 24;
     final m = minutes % 60;
     return TimeOfDay(hour: h, minute: m).format(context);
   }
 
-  int _toStep(int minutes) => (minutes / _minutesPerStep).round().clamp(0, _steps);
+  int _toStep(int minutes) => (minutes ~/ _minutesPerStep).clamp(0, _steps);
   int _fromStep(int step) => step.clamp(0, _steps) * _minutesPerStep;
 
   List<double> _smoothed(List<int> buckets) {
@@ -149,6 +171,7 @@ class _TimeWindowPickerState extends State<TimeWindowPicker> {
 
     final hist = _hist;
     final smoothed = hist == null ? null : _smoothed(hist);
+    final hasHistogramData = smoothed != null && smoothed.isNotEmpty && smoothed.reduce(max) > 0;
 
     return Card(
       child: Padding(
@@ -188,7 +211,7 @@ class _TimeWindowPickerState extends State<TimeWindowPicker> {
                       );
                       if (picked == null) return;
                       setState(() {
-                        _start = _snap(picked.hour * 60 + picked.minute);
+                        _start = _snapStart(picked.hour * 60 + picked.minute);
                         _ensureValid();
                       });
                       _emit();
@@ -207,7 +230,7 @@ class _TimeWindowPickerState extends State<TimeWindowPicker> {
                       );
                       if (picked == null) return;
                       setState(() {
-                        _end = _snap(picked.hour * 60 + picked.minute);
+                        _end = _snapEnd(picked.hour * 60 + picked.minute);
                         _ensureValid();
                       });
                       _emit();
@@ -232,14 +255,40 @@ class _TimeWindowPickerState extends State<TimeWindowPicker> {
                     top: 0,
                     height: 50,
                     child: _loadingHist
-                        ? const SizedBox.shrink()
-                        : CustomPaint(
-                            painter: _HistogramLinePainter(
-                              values: smoothed,
-                              lineColor: Theme.of(context).colorScheme.primary.withOpacity(0.55),
-                              fillColor: Theme.of(context).colorScheme.primary.withOpacity(0.10),
+                        ? const Center(
+                            child: SizedBox(
+                              height: 18,
+                              width: 18,
+                              child: CircularProgressIndicator(strokeWidth: 2),
                             ),
-                          ),
+                          )
+                        : (_histError != null
+                            ? Center(
+                                child: Text(
+                                  'Couldn’t load histogram',
+                                  style: Theme.of(context)
+                                      .textTheme
+                                      .bodySmall
+                                      ?.copyWith(color: Theme.of(context).colorScheme.error),
+                                ),
+                              )
+                            : (widget.showJobHistogram && !hasHistogramData
+                                ? Center(
+                                    child: Text(
+                                      'No histogram data yet',
+                                      style: Theme.of(context)
+                                          .textTheme
+                                          .bodySmall
+                                          ?.copyWith(color: Colors.grey),
+                                    ),
+                                  )
+                                : CustomPaint(
+                                    painter: _HistogramLinePainter(
+                                      values: smoothed,
+                                      lineColor: Theme.of(context).colorScheme.primary.withOpacity(0.55),
+                                      fillColor: Theme.of(context).colorScheme.primary.withOpacity(0.10),
+                                    ),
+                                  ))),
                   ),
                   Positioned.fill(
                     child: Align(

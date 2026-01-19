@@ -25,7 +25,6 @@ class _SchoolMapWidgetState extends State<SchoolMapWidget> {
   final SchoolService _schoolService = SchoolService();
   List<School> _allSchools = [];
   List<School> _schoolsInRadius = [];
-  Position? _userPosition;
   Position? _selectedPosition;
   double _radiusMiles = 10.0;
   double _maxRadiusMiles = 50.0; // Will be calculated based on furthest school
@@ -50,9 +49,13 @@ class _SchoolMapWidgetState extends State<SchoolMapWidget> {
   bool _currentLocationButtonVisible = true; // Show button until location is successfully loaded
 
   // Drawer/expansion states (for custom chevrons)
+  bool _seeSpecificSchoolsExpanded = false;
   bool _schoolsWithinExpanded = true;
   bool _schoolsNotWithinExpanded = false;
   bool _nonAddressedExpanded = false;
+
+  double? _bestMiles(School s) => s.driveDistanceMiles ?? s.distanceMiles;
+  int? _bestMinutes(School s) => s.driveTimeMinutes;
 
   @override
   void initState() {
@@ -223,7 +226,6 @@ class _SchoolMapWidgetState extends State<SchoolMapWidget> {
         }
         
         setState(() {
-          _userPosition = position;
           _selectedPosition = position;
           _locationController.text = addressText;
           _currentLocationButtonVisible = false; // Hide button after successful load
@@ -274,7 +276,6 @@ class _SchoolMapWidgetState extends State<SchoolMapWidget> {
           headingAccuracy: 0,
         );
         setState(() {
-          _userPosition = lehiPosition;
           _selectedPosition = lehiPosition;
         });
         _locationController.text = 'Lehi, Utah';
@@ -318,7 +319,6 @@ class _SchoolMapWidgetState extends State<SchoolMapWidget> {
             timeLimit: const Duration(seconds: 5),
           );
           setState(() {
-            _userPosition = position;
             _selectedPosition = position;
           });
         } catch (e) {
@@ -339,7 +339,6 @@ class _SchoolMapWidgetState extends State<SchoolMapWidget> {
               headingAccuracy: 0,
             );
             setState(() {
-              _userPosition = lehiPosition;
               _selectedPosition = lehiPosition;
             });
           }
@@ -360,23 +359,13 @@ class _SchoolMapWidgetState extends State<SchoolMapWidget> {
         for (var school in _allSchools) {
           if (school.schoolType != 'other' && 
               _selectedSchoolTypes.contains(school.schoolType)) {
-            if (school.distanceMiles != null && school.distanceMiles! > maxDistance) {
-              maxDistance = school.distanceMiles!;
+            final miles = _bestMiles(school);
+            if (miles != null && miles > maxDistance) {
+              maxDistance = miles;
             }
-            if (school.travelTime != null) {
-              final travelTimeStr = school.travelTime!;
-              int? travelMinutes;
-              if (travelTimeStr.contains('hrs')) {
-                final hours = double.tryParse(travelTimeStr.replaceAll(' hrs', '').trim());
-                if (hours != null) {
-                  travelMinutes = (hours * 60).round();
-                }
-              } else if (travelTimeStr.contains('min')) {
-                travelMinutes = int.tryParse(travelTimeStr.replaceAll(' min', '').trim());
-              }
-              if (travelMinutes != null && travelMinutes > maxTime) {
-                maxTime = travelMinutes.toDouble();
-              }
+            final travelMinutes = _bestMinutes(school);
+            if (travelMinutes != null && travelMinutes > maxTime) {
+              maxTime = travelMinutes.toDouble();
             }
           }
         }
@@ -505,17 +494,8 @@ class _SchoolMapWidgetState extends State<SchoolMapWidget> {
       }
       
       // Filter by travel time if filtering by time
-      if (_filterByTime && _maxTravelTimeMinutes != null && school.travelTime != null) {
-        final travelTimeStr = school.travelTime!;
-        int? travelMinutes;
-        if (travelTimeStr.contains('hrs')) {
-          final hours = double.tryParse(travelTimeStr.replaceAll(' hrs', '').trim());
-          if (hours != null) {
-            travelMinutes = (hours * 60).round();
-          }
-        } else if (travelTimeStr.contains('min')) {
-          travelMinutes = int.tryParse(travelTimeStr.replaceAll(' min', '').trim());
-        }
+      if (_filterByTime && _maxTravelTimeMinutes != null) {
+        final travelMinutes = _bestMinutes(school);
         if (travelMinutes != null && travelMinutes > _maxTravelTimeMinutes!) {
           continue;
         }
@@ -538,17 +518,8 @@ class _SchoolMapWidgetState extends State<SchoolMapWidget> {
       if (school.latitude != null && school.longitude != null) {
         // Determine if school is within selected area
         bool isInSelectedArea = false;
-        if (_filterByTime && _maxTravelTimeMinutes != null && school.travelTime != null) {
-          final travelTimeStr = school.travelTime!;
-          int? travelMinutes;
-          if (travelTimeStr.contains('hrs')) {
-            final hours = double.tryParse(travelTimeStr.replaceAll(' hrs', '').trim());
-            if (hours != null) {
-              travelMinutes = (hours * 60).round();
-            }
-          } else if (travelTimeStr.contains('min')) {
-            travelMinutes = int.tryParse(travelTimeStr.replaceAll(' min', '').trim());
-          }
+        if (_filterByTime && _maxTravelTimeMinutes != null) {
+          final travelMinutes = _bestMinutes(school);
           isInSelectedArea = travelMinutes != null && travelMinutes <= _maxTravelTimeMinutes!;
         } else if (!_filterByTime) {
           final distanceMeters = Geolocator.distanceBetween(
@@ -596,7 +567,7 @@ class _SchoolMapWidgetState extends State<SchoolMapWidget> {
           infoWindow: InfoWindow(
             title: school.name,
             snippet: school.travelTime != null
-                ? '${school.distanceMiles?.toStringAsFixed(1)} mi • ${school.travelTime}'
+                ? '${(_bestMiles(school) ?? 0).toStringAsFixed(1)} mi • ${school.travelTime}'
                 : school.fullAddress,
           ),
           onTap: () => _showSchoolDetails(school),
@@ -623,22 +594,12 @@ class _SchoolMapWidgetState extends State<SchoolMapWidget> {
         for (var school in _allSchools) {
           if (school.schoolType != 'other' && 
               _selectedSchoolTypes.contains(school.schoolType) &&
-              school.distanceMiles != null &&
-              school.travelTime != null) {
-            final travelTimeStr = school.travelTime!;
-            int? travelMinutes;
-            if (travelTimeStr.contains('hrs')) {
-              final hours = double.tryParse(travelTimeStr.replaceAll(' hrs', '').trim());
-              if (hours != null) {
-                travelMinutes = (hours * 60).round();
-              }
-            } else if (travelTimeStr.contains('min')) {
-              travelMinutes = int.tryParse(travelTimeStr.replaceAll(' min', '').trim());
-            }
-            if (travelMinutes != null && 
-                travelMinutes <= _maxTravelTimeMinutes! &&
-                school.distanceMiles! > maxDistanceInTime) {
-              maxDistanceInTime = school.distanceMiles!;
+              _bestMiles(school) != null &&
+              _bestMinutes(school) != null) {
+            final travelMinutes = _bestMinutes(school)!;
+            final miles = _bestMiles(school)!;
+            if (travelMinutes <= _maxTravelTimeMinutes! && miles > maxDistanceInTime) {
+              maxDistanceInTime = miles;
             }
           }
         }
@@ -674,17 +635,8 @@ class _SchoolMapWidgetState extends State<SchoolMapWidget> {
               _selectedSchoolTypes.contains(school.schoolType))
           .where((school) {
             // Filter by travel time
-            if (_maxTravelTimeMinutes != null && school.travelTime != null) {
-              final travelTimeStr = school.travelTime!;
-              int? travelMinutes;
-              if (travelTimeStr.contains('hrs')) {
-                final hours = double.tryParse(travelTimeStr.replaceAll(' hrs', '').trim());
-                if (hours != null) {
-                  travelMinutes = (hours * 60).round();
-                }
-              } else if (travelTimeStr.contains('min')) {
-                travelMinutes = int.tryParse(travelTimeStr.replaceAll(' min', '').trim());
-              }
+            if (_maxTravelTimeMinutes != null) {
+              final travelMinutes = _bestMinutes(school);
               if (travelMinutes != null && travelMinutes > _maxTravelTimeMinutes!) {
                 return false;
               }
@@ -954,7 +906,6 @@ class _SchoolMapWidgetState extends State<SchoolMapWidget> {
       }
       
       setState(() {
-        _userPosition = position;
         _selectedPosition = position;
         _locationController.text = addressText;
         _currentLocationButtonVisible = false; // Hide button after successful load
@@ -1019,7 +970,7 @@ class _SchoolMapWidgetState extends State<SchoolMapWidget> {
             if (school.distanceMiles != null && school.travelTime != null) ...[
               const SizedBox(height: 8),
               Text(
-                '${school.distanceMiles!.toStringAsFixed(1)} miles • ${school.travelTime}',
+                '${(_bestMiles(school) ?? school.distanceMiles ?? 0).toStringAsFixed(1)} miles • ${school.travelTime}',
                 style: Theme.of(context).textTheme.bodyMedium,
               ),
             ],
@@ -1060,7 +1011,18 @@ class _SchoolMapWidgetState extends State<SchoolMapWidget> {
             school.schoolType != 'other' && 
             _selectedSchoolTypes.contains(school.schoolType))
         .toList();
-    schools.sort((a, b) => a.name.compareTo(b.name));
+    schools.sort((a, b) {
+      if (_filterByTime) {
+        final am = _bestMinutes(a);
+        final bm = _bestMinutes(b);
+        if (am != null && bm != null && am != bm) return am.compareTo(bm);
+      } else {
+        final ad = _bestMiles(a);
+        final bd = _bestMiles(b);
+        if (ad != null && bd != null && ad != bd) return ad.compareTo(bd);
+      }
+      return a.name.compareTo(b.name);
+    });
     return schools;
   }
 
@@ -1075,7 +1037,18 @@ class _SchoolMapWidgetState extends State<SchoolMapWidget> {
             _selectedSchoolTypes.contains(school.schoolType) &&
             !schoolsWithinNames.contains(school.name))
         .toList();
-    schoolsNotWithin.sort((a, b) => a.name.compareTo(b.name));
+    schoolsNotWithin.sort((a, b) {
+      if (_filterByTime) {
+        final am = _bestMinutes(a);
+        final bm = _bestMinutes(b);
+        if (am != null && bm != null && am != bm) return am.compareTo(bm);
+      } else {
+        final ad = _bestMiles(a);
+        final bd = _bestMiles(b);
+        if (ad != null && bd != null && ad != bd) return ad.compareTo(bd);
+      }
+      return a.name.compareTo(b.name);
+    });
     return schoolsNotWithin;
   }
 
@@ -1086,6 +1059,35 @@ class _SchoolMapWidgetState extends State<SchoolMapWidget> {
         .toList();
     schoolsOther.sort((a, b) => a.name.compareTo(b.name));
     return schoolsOther;
+  }
+
+  Widget _buildSeeSpecificSchoolsDrawer(BuildContext context, FiltersProvider filtersProvider) {
+    return ExpansionTile(
+      initiallyExpanded: false,
+      onExpansionChanged: (expanded) {
+        setState(() => _seeSpecificSchoolsExpanded = expanded);
+      },
+      trailing: Icon(
+        _seeSpecificSchoolsExpanded ? Icons.keyboard_arrow_down : Icons.keyboard_arrow_left,
+      ),
+      title: Text(
+        'See Specific Schools',
+        style: Theme.of(context).textTheme.titleSmall?.copyWith(
+              fontWeight: FontWeight.bold,
+            ),
+      ),
+      children: [
+        Padding(
+          padding: const EdgeInsets.only(bottom: 8),
+          child: _buildSchoolsWithinDrawer(context, filtersProvider),
+        ),
+        Padding(
+          padding: const EdgeInsets.only(bottom: 8),
+          child: _buildSchoolsNotWithinDrawer(context, filtersProvider),
+        ),
+        _buildNonAddressedSchoolsDrawer(context, filtersProvider),
+      ],
+    );
   }
 
   Widget _buildSchoolsWithinDrawer(BuildContext context, FiltersProvider filtersProvider) {
@@ -1460,19 +1462,14 @@ class _SchoolMapWidgetState extends State<SchoolMapWidget> {
           Wrap(
             spacing: 8,
             runSpacing: 8,
-            children: ['elementary', 'middle school', 'high school', 'other'].map((type) {
+            children: ['elementary', 'middle school', 'high school'].map((type) {
               final isSelected = _selectedSchoolTypes.contains(type);
-              final isOther = type == 'other';
               return FilterChip(
                 label: Text(type),
                 selected: isSelected,
-                onSelected: isOther ? null : (_) => _toggleSchoolType(type),
+                onSelected: (_) => _toggleSchoolType(type),
                 selectedColor: Colors.green.withValues(alpha: 0.3),
                 checkmarkColor: Colors.green,
-                disabledColor: Colors.grey.withValues(alpha: 0.2),
-                tooltip: isOther 
-                    ? 'Other schools are excluded from the map (see info icon)'
-                    : null,
               );
             }).toList(),
           ),
@@ -1611,14 +1608,8 @@ class _SchoolMapWidgetState extends State<SchoolMapWidget> {
               ),
             ),
           const SizedBox(height: 12),
-          // Schools within radius/time as tags in a drawer (show after map)
-          _buildSchoolsWithinDrawer(context, filtersProvider),
-          const SizedBox(height: 8),
-          // Schools not within radius/time as tags in a drawer
-          _buildSchoolsNotWithinDrawer(context, filtersProvider),
-          const SizedBox(height: 8),
-          // Non-addressed schools (type "other") in a drawer
-          _buildNonAddressedSchoolsDrawer(context, filtersProvider),
+          // See Specific Schools (nested drawers)
+          _buildSeeSpecificSchoolsDrawer(context, filtersProvider),
         ],
       ),
     );

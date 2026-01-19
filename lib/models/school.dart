@@ -7,7 +7,16 @@ class School {
   final String schoolType;
   final double? latitude;
   final double? longitude;
+  /// Straight-line distance (haversine via `Geolocator.distanceBetween`) in miles.
   final double? distanceMiles;
+
+  /// Road distance in miles (if available). Falls back to `distanceMiles`.
+  final double? driveDistanceMiles;
+
+  /// Road travel time in minutes (if available).
+  final int? driveTimeMinutes;
+
+  /// Display string (derived from `driveTimeMinutes` when available).
   final String? travelTime;
 
   School({
@@ -20,6 +29,8 @@ class School {
     this.latitude,
     this.longitude,
     this.distanceMiles,
+    this.driveDistanceMiles,
+    this.driveTimeMinutes,
     this.travelTime,
   });
 
@@ -47,6 +58,8 @@ class School {
       if (latitude != null) 'latitude': latitude,
       if (longitude != null) 'longitude': longitude,
       if (distanceMiles != null) 'distanceMiles': distanceMiles,
+      if (driveDistanceMiles != null) 'driveDistanceMiles': driveDistanceMiles,
+      if (driveTimeMinutes != null) 'driveTimeMinutes': driveTimeMinutes,
       if (travelTime != null) 'travelTime': travelTime,
     };
   }
@@ -61,6 +74,8 @@ class School {
     double? latitude,
     double? longitude,
     double? distanceMiles,
+    double? driveDistanceMiles,
+    int? driveTimeMinutes,
     String? travelTime,
   }) {
     return School(
@@ -73,6 +88,8 @@ class School {
       latitude: latitude ?? this.latitude,
       longitude: longitude ?? this.longitude,
       distanceMiles: distanceMiles ?? this.distanceMiles,
+      driveDistanceMiles: driveDistanceMiles ?? this.driveDistanceMiles,
+      driveTimeMinutes: driveTimeMinutes ?? this.driveTimeMinutes,
       travelTime: travelTime ?? this.travelTime,
     );
   }

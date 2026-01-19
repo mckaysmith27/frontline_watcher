@@ -181,6 +181,258 @@ exports.backfillJobStartTimeHistogram = functions.https.onCall(async (data, cont
   return { processed, lastId, done };
 });
 
+// -------------------------
+// Growth KPIs + lightweight analytics events
+// -------------------------
+
+async function requireAppAdmin(context) {
+  if (!context.auth) {
+    throw new functions.https.HttpsError('unauthenticated', 'User must be authenticated');
+  }
+  const snap = await admin.firestore().collection('users').doc(context.auth.uid).get();
+  const data = snap.data() || {};
+  const roles = Array.isArray(data.userRoles) ? data.userRoles.map(r => String(r).toLowerCase()) : [];
+  const legacyIsAdmin = data.isAdmin === true || data.role === 'admin';
+  const isAppAdmin = roles.includes('app admin') || legacyIsAdmin;
+  if (!isAppAdmin) {
+    throw new functions.https.HttpsError('permission-denied', 'App admin access required');
+  }
+  return { uid: context.auth.uid, user: data };
+}
+
+function toMillis(ts) {
+  if (!ts) return null;
+  if (typeof ts.toDate === 'function') return ts.toDate().getTime();
+  if (ts instanceof Date) return ts.getTime();
+  return null;
+}
+
+function daysAgoStart(days) {
+  const d = new Date();
+  d.setHours(0, 0, 0, 0);
+  d.setDate(d.getDate() - days);
+  return d;
+}
+
+function tierPriceUsdFromTierName(tier) {
+  // Keep in sync with `lib/config/app_config.dart` subscriptionTiers.
+  // If tier names differ, we fall back to 0 (and the UI will show "approx").
+  const map = {
+    weekly: 4.99,
+    monthly: 14.99,
+    yearly: 99.99,
+  };
+  const key = typeof tier === 'string' ? tier.toLowerCase() : '';
+  return map[key] ?? 0;
+}
+
+exports.logAnalyticsEvent = functions.https.onCall(async (data, context) => {
+  const type = typeof data?.type === 'string' ? data.type.trim() : '';
+  const shortname = typeof data?.shortname === 'string' ? data.shortname.trim().toLowerCase() : null;
+  const meta = (data?.meta && typeof data.meta === 'object') ? data.meta : null;
+
+  if (!type) {
+    throw new functions.https.HttpsError('invalid-argument', 'type is required');
+  }
+
+  // Allow unauthenticated calls (teacher landing is public).
+  const uid = context.auth?.uid ?? null;
+
+  await admin.firestore().collection('analytics_events').add({
+    type,
+    shortname,
+    uid,
+    meta,
+    createdAt: admin.firestore.FieldValue.serverTimestamp(),
+  });
+
+  return { ok: true };
+});
+
+exports.getGrowthKpis = functions.https.onCall(async (data, context) => {
+  await requireAppAdmin(context);
+
+  const engine = typeof data?.engine === 'string' ? data.engine.toLowerCase() : '';
+  const db = admin.firestore();
+
+  const now = Date.now();
+  const thirtyDaysAgo = new Date(now - 30 * 24 * 60 * 60 * 1000);
+
+  // Helpers to fetch counts
+  async function countAnalytics(type) {
+    const snap = await db
+      .collection('analytics_events')
+      .where('type', '==', type)
+      .where('createdAt', '>=', thirtyDaysAgo)
+      .get();
+    return snap.size;
+  }
+
+  if (engine === 'viral') {
+    const linkVisits = await countAnalytics('business_card_link_visit');
+    const bookingStarts = await countAnalytics('teacher_booking_started');
+    const shares = await countAnalytics('business_card_link_shared');
+
+    const inviteAcceptanceRate = linkVisits > 0 ? bookingStarts / linkVisits : null;
+    // K-factor (approx): shares per unique sharer * (bookingStarts/shares)
+    const sharersSnap = await db
+      .collection('analytics_events')
+      .where('type', '==', 'business_card_link_shared')
+      .where('createdAt', '>=', thirtyDaysAgo)
+      .where('uid', '!=', null)
+      .get();
+    const uniqueSharers = new Set(sharersSnap.docs.map(d => d.data().uid).filter(Boolean)).size;
+    const invitesPerUser = uniqueSharers > 0 ? shares / uniqueSharers : null;
+    const shareToStart = shares > 0 ? bookingStarts / shares : null;
+    const kFactor = (invitesPerUser != null && shareToStart != null) ? invitesPerUser * shareToStart : null;
+
+    // Cycle time (approx): average visit->start using same shortname within 30d.
+    const visitsSnap = await db
+      .collection('analytics_events')
+      .where('type', '==', 'business_card_link_visit')
+      .where('createdAt', '>=', thirtyDaysAgo)
+      .get();
+    const startsSnap = await db
+      .collection('analytics_events')
+      .where('type', '==', 'teacher_booking_started')
+      .where('createdAt', '>=', thirtyDaysAgo)
+      .get();
+
+    const latestVisitByShortname = new Map();
+    for (const doc of visitsSnap.docs) {
+      const ev = doc.data();
+      const sn = ev.shortname;
+      const ms = toMillis(ev.createdAt);
+      if (!sn || ms == null) continue;
+      const prev = latestVisitByShortname.get(sn);
+      if (prev == null || ms > prev) latestVisitByShortname.set(sn, ms);
+    }
+    let acc = 0;
+    let n = 0;
+    for (const doc of startsSnap.docs) {
+      const ev = doc.data();
+      const sn = ev.shortname;
+      const ms = toMillis(ev.createdAt);
+      if (!sn || ms == null) continue;
+      const visitMs = latestVisitByShortname.get(sn);
+      if (visitMs == null) continue;
+      const delta = ms - visitMs;
+      if (delta < 0) continue;
+      acc += delta;
+      n += 1;
+    }
+    const viralCycleTimeMinutes = n > 0 ? (acc / n) / 60000 : null;
+
+    return {
+      engine,
+      kFactor,
+      inviteAcceptanceRate,
+      viralCycleTimeMinutes,
+      notes:
+        'Viral KPIs are currently approximated from business-card link events (share, visit, booking start) over the last 30 days.',
+    };
+  }
+
+  // Sticky + Paid use user/subscription + purchases.
+  const usersSnap = await db.collection('users').get();
+  const users = usersSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+
+  const hasLastActive = users.some(u => u.lastActiveAt && typeof u.lastActiveAt.toDate === 'function');
+
+  function isActiveNow(u) {
+    const endsAt = u.subscriptionEndsAt;
+    if (!endsAt || typeof endsAt.toDate !== 'function') return false;
+    return endsAt.toDate().getTime() > Date.now();
+  }
+
+  function revenueUsd(u) {
+    const actions = Array.isArray(u.purchaseActions) ? u.purchaseActions : [];
+    let total = 0;
+    for (const a of actions) {
+      const tier = a?.tier;
+      const price = tierPriceUsdFromTierName(tier);
+      if (price > 0) total += price;
+    }
+    return total;
+  }
+
+  const payingUsers = users.filter(u => revenueUsd(u) > 0);
+  const totalRevenue = payingUsers.reduce((sum, u) => sum + revenueUsd(u), 0);
+  const ltvUsd = payingUsers.length > 0 ? totalRevenue / payingUsers.length : null;
+
+  if (engine === 'sticky') {
+    // Cohort retention: users created N days ago AND "active" (lastActiveAt within last 24h if available, else subscription active now).
+    function cohortRetention(days) {
+      const start = daysAgoStart(days + 1);
+      const end = daysAgoStart(days);
+      const cohort = users.filter(u => {
+        const ms = toMillis(u.createdAt);
+        return ms != null && ms >= start.getTime() && ms < end.getTime();
+      });
+      if (cohort.length === 0) return null;
+
+      const active = cohort.filter(u => {
+        if (hasLastActive) {
+          const last = toMillis(u.lastActiveAt);
+          return last != null && last >= (Date.now() - 24 * 60 * 60 * 1000);
+        }
+        return isActiveNow(u);
+      });
+      return active.length / cohort.length;
+    }
+
+    // Churn rate (30d): users whose subscription ended in last 30d and are not active now.
+    const churned = users.filter(u => {
+      const endMs = toMillis(u.subscriptionEndsAt);
+      if (endMs == null) return false;
+      if (endMs > Date.now()) return false;
+      return endMs >= thirtyDaysAgo.getTime();
+    });
+    const churnRate30d = churned.length > 0 ? churned.filter(u => !isActiveNow(u)).length / churned.length : null;
+
+    return {
+      engine,
+      retentionDay7: cohortRetention(7),
+      retentionDay30: cohortRetention(30),
+      churnRate30d,
+      ltvUsd,
+      notes: hasLastActive
+        ? 'Retention uses lastActiveAt (24h) when available.'
+        : 'Retention is currently proxied by subscriptionActive (lastActiveAt not yet widely tracked).',
+    };
+  }
+
+  if (engine === 'paid') {
+    // Manual CAC inputs.
+    const inputsSnap = await db.collection('kpi_inputs').doc('paid').get();
+    const inputs = inputsSnap.exists ? (inputsSnap.data() || {}) : {};
+    const adSpendUsd30d = typeof inputs.adSpendUsd30d === 'number' ? inputs.adSpendUsd30d : null;
+    const newCustomers30d = typeof inputs.newCustomers30d === 'number' ? inputs.newCustomers30d : null;
+    const arpuUsd30d = typeof inputs.arpuUsd30d === 'number' ? inputs.arpuUsd30d : null;
+
+    const cacUsd = (adSpendUsd30d != null && newCustomers30d != null && newCustomers30d > 0)
+      ? (adSpendUsd30d / newCustomers30d)
+      : null;
+
+    const ltvToCac = (ltvUsd != null && cacUsd != null && cacUsd > 0) ? (ltvUsd / cacUsd) : null;
+
+    // Payback (days): CAC / (ARPU/30)
+    const cacPaybackDays = (cacUsd != null && arpuUsd30d != null && arpuUsd30d > 0)
+      ? (cacUsd / (arpuUsd30d / 30))
+      : null;
+
+    return {
+      engine,
+      cacUsd,
+      ltvToCac,
+      cacPaybackDays,
+      notes: 'CAC metrics require admin inputs in Firestore doc kpi_inputs/paid (adSpendUsd30d, newCustomers30d, optional arpuUsd30d).',
+    };
+  }
+
+  throw new functions.https.HttpsError('invalid-argument', 'Unknown engine. Use sticky|viral|paid.');
+});
+
 /**
  * Find users that match the job event based on district and filters
  */

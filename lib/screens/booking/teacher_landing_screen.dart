@@ -52,6 +52,7 @@ class _TeacherLandingScreenState extends State<TeacherLandingScreen>
       CurvedAnimation(parent: _bounceController, curve: Curves.easeInOut),
     );
     _startBounceLoop();
+    _logEvent('business_card_link_visit');
     _loadProfile();
   }
 
@@ -97,6 +98,19 @@ class _TeacherLandingScreenState extends State<TeacherLandingScreen>
         _error = 'Unable to load profile.';
         _loading = false;
       });
+    }
+  }
+
+  Future<void> _logEvent(String type, {Map<String, dynamic>? meta}) async {
+    try {
+      final callable = _functions.httpsCallable('logAnalyticsEvent');
+      await callable.call({
+        'type': type,
+        'shortname': widget.shortname.toLowerCase(),
+        if (meta != null) 'meta': meta,
+      });
+    } catch (_) {
+      // Best-effort; never block UX.
     }
   }
 
@@ -205,6 +219,8 @@ class _TeacherLandingScreenState extends State<TeacherLandingScreen>
   Future<void> _next() async {
     final creds = await _promptFrontlineCredentials();
     if (!mounted || creds == null) return;
+
+    await _logEvent('teacher_booking_started', meta: {'action': _action.name});
 
     // For now, we pass the date selection into the existing webview screen.
     final dates = <DateTime>[];

@@ -90,6 +90,9 @@ class UserRoleService {
   /// - 'admin_approvals': ['app admin']
   /// - 'admin_orders': ['app admin']
   /// - 'admin_roles': ['app admin']
+  /// - 'admin_growth_sticky': ['app admin']
+  /// - 'admin_growth_viral': ['app admin']
+  /// - 'admin_growth_paid': ['app admin']
   Future<bool> hasFeatureAccess(String feature) async {
     final userRoles = await getCurrentUserRoles();
     
@@ -104,6 +107,9 @@ class UserRoleService {
       'admin_approvals': ['app admin'],
       'admin_orders': ['app admin'],
       'admin_roles': ['app admin'],
+      'admin_growth_sticky': ['app admin'],
+      'admin_growth_viral': ['app admin'],
+      'admin_growth_paid': ['app admin'],
     };
 
     final allowedRoles = featureRoleMap[feature] ?? [];
@@ -125,7 +131,14 @@ class UserRoleService {
     }
     
     if (userRoles.contains('app admin')) {
-      accessibleFeatures.addAll(['admin_approvals', 'admin_orders', 'admin_roles']);
+      accessibleFeatures.addAll([
+        'admin_approvals',
+        'admin_orders',
+        'admin_roles',
+        'admin_growth_sticky',
+        'admin_growth_viral',
+        'admin_growth_paid',
+      ]);
     }
 
     return accessibleFeatures.toSet().toList(); // Remove duplicates

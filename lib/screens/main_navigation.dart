@@ -7,6 +7,9 @@ import 'profile/business_card_screen.dart';
 import 'admin/post_approvals_screen.dart';
 import 'admin/business_card_orders_queue_screen.dart';
 import 'admin/role_management_screen.dart';
+import 'admin/growth/sticky_engine_screen.dart';
+import 'admin/growth/viral_engine_screen.dart';
+import 'admin/growth/paid_engine_screen.dart';
 import '../services/admin_service.dart';
 import '../services/user_role_service.dart';
 
@@ -183,6 +186,31 @@ class _MainNavigationState extends State<MainNavigation> {
         label: 'Roles',
       ));
     }
+
+    // Growth engines (3 icons, 3 pages)
+    if (_accessibleFeatures.contains('admin_growth_sticky')) {
+      destinations.add(const NavigationDestination(
+        icon: Icon(Icons.loop),
+        selectedIcon: Icon(Icons.loop),
+        label: 'Sticky',
+      ));
+    }
+
+    if (_accessibleFeatures.contains('admin_growth_viral')) {
+      destinations.add(const NavigationDestination(
+        icon: Icon(Icons.share),
+        selectedIcon: Icon(Icons.share),
+        label: 'Viral',
+      ));
+    }
+
+    if (_accessibleFeatures.contains('admin_growth_paid')) {
+      destinations.add(const NavigationDestination(
+        icon: Icon(Icons.attach_money),
+        selectedIcon: Icon(Icons.attach_money),
+        label: 'Paid',
+      ));
+    }
     
     return destinations;
   }
@@ -205,6 +233,18 @@ class _MainNavigationState extends State<MainNavigation> {
           _checkAdminStatus();
         },
       ));
+    }
+
+    if (_accessibleFeatures.contains('admin_growth_sticky')) {
+      screens.add(const StickyEngineScreen());
+    }
+
+    if (_accessibleFeatures.contains('admin_growth_viral')) {
+      screens.add(const ViralEngineScreen());
+    }
+
+    if (_accessibleFeatures.contains('admin_growth_paid')) {
+      screens.add(const PaidEngineScreen());
     }
     
     return screens;

@@ -301,6 +301,19 @@ class _BusinessCardScreenState extends State<BusinessCardScreen> {
     }
   }
 
+  Future<void> _logEvent(String type, {Map<String, dynamic>? meta}) async {
+    try {
+      final callable = _functions.httpsCallable('logAnalyticsEvent');
+      await callable.call({
+        'type': type,
+        if (_shortnameController.text.trim().isNotEmpty) 'shortname': _shortnameController.text.trim().toLowerCase(),
+        if (meta != null) 'meta': meta,
+      });
+    } catch (_) {
+      // Best-effort; never block UX.
+    }
+  }
+
   String _getBusinessCardUrl() {
     final shortname = _shortnameController.text.trim().toLowerCase();
     return shortname.isNotEmpty ? 'https://sub67.com/$shortname' : '';
@@ -800,6 +813,9 @@ class _BusinessCardScreenState extends State<BusinessCardScreen> {
               ? null
               : () async {
                   await Clipboard.setData(ClipboardData(text: valueToCopy.trim()));
+                  if (valueToCopy.trim().startsWith('https://sub67.com/')) {
+                    await _logEvent('business_card_link_shared', meta: {'method': 'copy'});
+                  }
                   if (mounted) {
                     ScaffoldMessenger.of(context).showSnackBar(
                       const SnackBar(content: Text('Copied')),

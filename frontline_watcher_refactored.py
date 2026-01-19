@@ -1,9 +1,10 @@
-print("🚨 CODE VERSION V6 — Event Publisher Only (No Filters, No Auto-Accept) 🚨")
+print("🚨 CODE VERSION V7) 🚨")
 
 import asyncio
 import hashlib
 import json
 import os
+import re
 import sys
 import random
 from datetime import datetime, timezone, timedelta
@@ -558,6 +559,37 @@ async def try_extract_available_job_blocks(page) -> list[str]:
         end_time = await safe_text("span.endTime")
         duration = await safe_text("span.durationName")
         location = await safe_text("div.locationName")
+
+        # --- Robust fallbacks (Frontline DOM changes over time) ---
+        # If the structured selectors fail, try extracting from the tbody text.
+        try:
+            if not item_date or not start_time or not location:
+                tbody_text = " ".join((await job.inner_text()).split())
+
+                # Date patterns: with/without weekday prefix
+                if not item_date:
+                    m = re.search(r"(Mon|Tue|Wed|Thu|Fri|Sat|Sun),\s*\d{1,2}/\d{1,2}/\d{4}", tbody_text)
+                    if m:
+                        item_date = m.group(0)
+                    else:
+                        m2 = re.search(r"\b\d{1,2}/\d{1,2}/\d{4}\b", tbody_text)
+                        if m2:
+                            item_date = m2.group(0)
+
+                # Time window (start/end) like "8:00 AM - 3:00 PM"
+                if not start_time:
+                    mt = re.search(r"\b(\d{1,2}:\d{2}\s*[AP]M)\s*-\s*(\d{1,2}:\d{2}\s*[AP]M)\b", tbody_text, re.IGNORECASE)
+                    if mt:
+                        start_time = mt.group(1).upper().replace("  ", " ").strip()
+                        end_time = mt.group(2).upper().replace("  ", " ").strip()
+
+                # Location: try common label
+                if not location:
+                    ml = re.search(r"LOCATION:\s*([^|]+)$", tbody_text, re.IGNORECASE)
+                    if ml:
+                        location = ml.group(1).strip()
+        except Exception:
+            pass
 
         # fallback duration if durationName isn't what the UI shows
         if not duration:
