@@ -8,8 +8,6 @@ import 'top_posts_tab.dart';
 import '../profile/profile_screen.dart';
 import '../../widgets/app_bar_quick_toggles.dart';
 import '../../widgets/profile_app_bar.dart';
-import '../../services/social_service.dart';
-import '../../services/user_role_service.dart';
 
 class SocialScreen extends StatefulWidget {
   final VoidCallback? onNavigateToMyPage;
@@ -26,9 +24,6 @@ class SocialScreen extends StatefulWidget {
 class _SocialScreenState extends State<SocialScreen>
     with SingleTickerProviderStateMixin {
   late TabController _tabController;
-  final TextEditingController _quickPostController = TextEditingController();
-  final FocusNode _quickPostFocus = FocusNode();
-  bool _sendingQuickPost = false;
 
   @override
   void initState() {
@@ -39,112 +34,7 @@ class _SocialScreenState extends State<SocialScreen>
   @override
   void dispose() {
     _tabController.dispose();
-    _quickPostController.dispose();
-    _quickPostFocus.dispose();
     super.dispose();
-  }
-
-  Future<void> _sendQuickPost() async {
-    if (_sendingQuickPost) return;
-    final content = _quickPostController.text.trim();
-    if (content.isEmpty) return;
-
-    setState(() => _sendingQuickPost = true);
-    try {
-      final roleService = UserRoleService();
-      final hasCommunityAccess = await roleService.hasFeatureAccess('community');
-      if (!hasCommunityAccess) {
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('This feature is not available for your role.'),
-              backgroundColor: Colors.orange,
-            ),
-          );
-        }
-        return;
-      }
-
-      final socialService = SocialService();
-      await socialService.createPost(content: content);
-
-      _quickPostController.clear();
-      _quickPostFocus.unfocus();
-
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Posted!')),
-        );
-      }
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error posting: $e')),
-        );
-      }
-    } finally {
-      if (mounted) setState(() => _sendingQuickPost = false);
-    }
-  }
-
-  Future<void> _openComposerForImage() async {
-    final initial = _quickPostController.text.trim();
-    await showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      builder: (_) => PostComposer(initialText: initial),
-    );
-  }
-
-  Widget _buildQuickPostField(BuildContext context) {
-    final hasText = _quickPostController.text.trim().isNotEmpty;
-
-    return SizedBox(
-      height: 40,
-      child: TextField(
-        controller: _quickPostController,
-        focusNode: _quickPostFocus,
-        textInputAction: TextInputAction.send,
-        onSubmitted: (_) => _sendQuickPost(),
-        onChanged: (_) => setState(() {}),
-        decoration: InputDecoration(
-          hintText: "Quick post… (press Enter to send)",
-          isDense: true,
-          filled: true,
-          fillColor: Theme.of(context).colorScheme.surfaceContainerHighest.withOpacity(0.6),
-          contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-          border: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(24),
-            borderSide: BorderSide.none,
-          ),
-          suffixIconConstraints: const BoxConstraints(minWidth: 0, minHeight: 0),
-          suffixIcon: hasText
-              ? Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    IconButton(
-                      tooltip: 'Add image',
-                      onPressed: _openComposerForImage,
-                      icon: const Icon(Icons.image_outlined, size: 20),
-                    ),
-                    IconButton(
-                      tooltip: 'Send',
-                      onPressed: _sendingQuickPost ? null : _sendQuickPost,
-                      icon: _sendingQuickPost
-                          ? const SizedBox(
-                              width: 18,
-                              height: 18,
-                              child: CircularProgressIndicator(strokeWidth: 2),
-                            )
-                          : const Icon(Icons.send, size: 20),
-                    ),
-                    const SizedBox(width: 4),
-                  ],
-                )
-              : null,
-        ),
-      ),
-    );
   }
 
   @override
@@ -184,8 +74,6 @@ class _SocialScreenState extends State<SocialScreen>
             padding: const EdgeInsets.all(16),
             child: Column(
               children: [
-                _buildQuickPostField(context),
-                const SizedBox(height: 12),
                 Row(
                   children: [
                     CircleAvatar(
@@ -196,18 +84,43 @@ class _SocialScreenState extends State<SocialScreen>
                     ),
                     const SizedBox(width: 12),
                     Expanded(
-                      child: OutlinedButton.icon(
-                        onPressed: () {
+                      child: InkWell(
+                        borderRadius: BorderRadius.circular(14),
+                        onTap: () {
                           showModalBottomSheet(
                             context: context,
                             isScrollControlled: true,
                             builder: (_) => const PostComposer(),
                           );
                         },
-                        icon: const Icon(Icons.edit),
-                        label: const Text('What\'s on your mind?'),
-                        style: OutlinedButton.styleFrom(
-                          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                        child: Container(
+                          width: double.infinity,
+                          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                          decoration: BoxDecoration(
+                            color: Theme.of(context).colorScheme.surfaceContainerHighest.withOpacity(0.55),
+                            borderRadius: BorderRadius.circular(14),
+                            border: Border.all(
+                              color: Theme.of(context).colorScheme.outline.withOpacity(0.25),
+                            ),
+                          ),
+                          child: Row(
+                            children: [
+                              Icon(
+                                Icons.edit_outlined,
+                                size: 18,
+                                color: Theme.of(context).colorScheme.onSurface.withOpacity(0.75),
+                              ),
+                              const SizedBox(width: 10),
+                              Expanded(
+                                child: Text(
+                                  "What's on your mind?",
+                                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                                        color: Theme.of(context).colorScheme.onSurface.withOpacity(0.70),
+                                      ),
+                                ),
+                              ),
+                            ],
+                          ),
                         ),
                       ),
                     ),
@@ -219,12 +132,16 @@ class _SocialScreenState extends State<SocialScreen>
                   scrollDirection: Axis.horizontal,
                   child: Row(
                     children: [
-                      _buildTagButton(context, '😂', 'funny', () {
-                        _openComposerWithTag(context, 'funny');
-                      }),
-                      const SizedBox(width: 8),
                       _buildTagButton(context, '🤔', 'question', () {
                         _openComposerWithTag(context, 'question');
+                      }),
+                      const SizedBox(width: 8),
+                      _buildTagButton(context, '☀️', 'summer-job-opportunities', () {
+                        _openComposerWithTag(context, 'summer-job-opportunities');
+                      }),
+                      const SizedBox(width: 8),
+                      _buildTagButton(context, '😂', 'funny', () {
+                        _openComposerWithTag(context, 'funny');
                       }),
                       const SizedBox(width: 8),
                       _buildTagButton(context, '😄', 'heart-warming', () {
@@ -257,6 +174,11 @@ class _SocialScreenState extends State<SocialScreen>
     );
   }
 
+  String _tagLabel(String tag) {
+    if (tag == 'summer-job-opportunities') return 'Summer Job Opportunities';
+    return tag.replaceAll('-', ' ');
+  }
+
   Widget _buildTagButton(BuildContext context, String emoji, String tag, VoidCallback onTap) {
     return InkWell(
       onTap: onTap,
@@ -275,7 +197,7 @@ class _SocialScreenState extends State<SocialScreen>
             Text(emoji, style: const TextStyle(fontSize: 18)),
             const SizedBox(width: 4),
             Text(
-              tag.replaceAll('-', ' '),
+              _tagLabel(tag),
               style: TextStyle(
                 fontSize: 12,
                 color: Theme.of(context).colorScheme.onSurface,

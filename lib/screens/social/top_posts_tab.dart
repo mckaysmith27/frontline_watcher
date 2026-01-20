@@ -16,11 +16,17 @@ class _TopPostsTabState extends State<TopPostsTab> {
   
   // Category tags with emojis
   static const Map<String, String> categoryTags = {
-    'funny': '😂',
     'question': '🤔',
+    'summer-job-opportunities': '☀️',
+    'funny': '😂',
     'heart-warming': '😄',
     'sad': '😢',
   };
+
+  String _tagLabel(String tag) {
+    if (tag == 'summer-job-opportunities') return 'Summer Job Opportunities';
+    return tag.replaceAll('-', ' ');
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -43,7 +49,7 @@ class _TopPostsTabState extends State<TopPostsTab> {
                   return Padding(
                     padding: const EdgeInsets.only(right: 8),
                     child: _buildCategoryButton(
-                      '$emoji ${tag.replaceAll('-', ' ')}',
+                      '$emoji ${_tagLabel(tag)}',
                       tag,
                       isSelected: _selectedCategoryTag == tag,
                     ),

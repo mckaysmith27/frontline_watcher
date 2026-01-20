@@ -12,6 +12,7 @@ import '../../widgets/day_action_bottom_sheet.dart';
 import '../../widgets/notification_day_card.dart';
 import '../../widgets/time_window_picker.dart';
 import '../../widgets/app_bar_quick_toggles.dart';
+import '../filters/automation_bottom_sheet.dart';
 import 'job_card.dart';
 import 'package:add_2_calendar/add_2_calendar.dart';
 import '../profile/profile_screen.dart';
@@ -399,46 +400,44 @@ class _ScheduleScreenState extends State<ScheduleScreen> {
           // Jobs Feed
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 16),
-            child: ConstrainedBox(
-              constraints: const BoxConstraints(maxHeight: 92),
-              child: Scrollbar(
-                thumbVisibility: false,
-                child: SingleChildScrollView(
-                  scrollDirection: Axis.vertical,
-                  child: Wrap(
-                    spacing: 8,
-                    runSpacing: 8,
-                    children: [
-                      ChoiceChip(
-                        label: const Text('Booked Jobs'),
-                        selected: _selectedTab == 'Booked Jobs',
-                        onSelected: (selected) {
-                          if (selected) setState(() => _selectedTab = 'Booked Jobs');
-                        },
-                      ),
-                      ChoiceChip(
-                        label: const Text('Keywords by Day'),
-                        selected: _selectedTab == 'Keywords by Day',
-                        onSelected: (selected) {
-                          if (selected) setState(() => _selectedTab = 'Keywords by Day');
-                        },
-                      ),
-                      ChoiceChip(
-                        label: const Text('Unavailable'),
-                        selected: _selectedTab == 'Unavailable',
-                        onSelected: (selected) {
-                          if (selected) setState(() => _selectedTab = 'Unavailable');
-                        },
-                      ),
-                      ChoiceChip(
-                        label: const Text('Partial Availability'),
-                        selected: _selectedTab == 'Partial',
-                        onSelected: (selected) {
-                          if (selected) setState(() => _selectedTab = 'Partial');
-                        },
-                      ),
-                    ],
-                  ),
+            child: Scrollbar(
+              thumbVisibility: false,
+              child: SingleChildScrollView(
+                scrollDirection: Axis.horizontal,
+                child: Row(
+                  children: [
+                    ChoiceChip(
+                      label: const Text('Booked Jobs'),
+                      selected: _selectedTab == 'Booked Jobs',
+                      onSelected: (selected) {
+                        if (selected) setState(() => _selectedTab = 'Booked Jobs');
+                      },
+                    ),
+                    const SizedBox(width: 8),
+                    ChoiceChip(
+                      label: const Text('Keywords by Day'),
+                      selected: _selectedTab == 'Keywords by Day',
+                      onSelected: (selected) {
+                        if (selected) setState(() => _selectedTab = 'Keywords by Day');
+                      },
+                    ),
+                    const SizedBox(width: 8),
+                    ChoiceChip(
+                      label: const Text('Unavailable'),
+                      selected: _selectedTab == 'Unavailable',
+                      onSelected: (selected) {
+                        if (selected) setState(() => _selectedTab = 'Unavailable');
+                      },
+                    ),
+                    const SizedBox(width: 8),
+                    ChoiceChip(
+                      label: const Text('Partial Availability'),
+                      selected: _selectedTab == 'Partial',
+                      onSelected: (selected) {
+                        if (selected) setState(() => _selectedTab = 'Partial');
+                      },
+                    ),
+                  ],
                 ),
               ),
             ),
@@ -514,19 +513,25 @@ class _ScheduleScreenState extends State<ScheduleScreen> {
             final isLocked = !subscriptionProvider.hasActiveSubscription;
             
             return ElevatedButton.icon(
-              onPressed: isLocked ? null : () => _syncCalendarToDevice(context),
+              onPressed: () {
+                if (isLocked) {
+                  showModalBottomSheet(
+                    context: context,
+                    isScrollControlled: true,
+                    builder: (_) => const AutomationBottomSheet(),
+                  );
+                  return;
+                }
+                _syncCalendarToDevice(context);
+              },
               icon: isLocked 
-                  ? const Icon(Icons.lock)
+                  ? const Icon(Icons.lock, color: Colors.orange)
                   : const Icon(Icons.sync), // Sync icon (arrows in circle) when unlocked
-              label: Text(isLocked ? 'Sync Calendar (Locked)' : 'Sync Calendar'),
+              label: const Text('Sync Calendar to Mobile'),
               style: ElevatedButton.styleFrom(
                 padding: const EdgeInsets.symmetric(vertical: 16),
-                backgroundColor: isLocked 
-                    ? Colors.grey
-                    : Theme.of(context).colorScheme.primary,
-                foregroundColor: isLocked
-                    ? Colors.grey[300]
-                    : Theme.of(context).colorScheme.onPrimary,
+                backgroundColor: Theme.of(context).colorScheme.primary,
+                foregroundColor: Theme.of(context).colorScheme.onPrimary,
               ),
             );
           },

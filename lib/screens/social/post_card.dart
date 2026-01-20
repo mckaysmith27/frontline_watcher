@@ -28,6 +28,11 @@ class _PostCardState extends State<PostCard> {
   final SocialService _socialService = SocialService();
   bool _showComments = false;
 
+  String _categoryLabel(String tag) {
+    if (tag == 'summer-job-opportunities') return 'Summer Job Opportunities';
+    return tag.replaceAll('-', ' ');
+  }
+
   String? _normalizeCategoryTag(String? tag) {
     if (tag == null) return null;
     if (tag == 'random-thought') return 'question';
@@ -159,7 +164,7 @@ class _PostCardState extends State<PostCard> {
                     ),
                     const SizedBox(width: 4),
                     Text(
-                      normalizedTag.replaceAll('-', ' '),
+                      _categoryLabel(normalizedTag),
                       style: TextStyle(
                         color: Theme.of(context).colorScheme.onPrimaryContainer,
                         fontWeight: FontWeight.w500,
@@ -258,6 +263,7 @@ class _PostCardState extends State<PostCard> {
     const emojis = {
       'funny': '😂',
       'question': '🤔',
+      'summer-job-opportunities': '☀️',
       'heart-warming': '😄',
       'sad': '😢',
     };

@@ -19,15 +19,21 @@ class _PostComposerState extends State<PostComposer> {
   final List<String> _imageUrls = [];
   final ImagePicker _picker = ImagePicker();
   bool _isPosting = false;
-  String? _selectedCategoryTag; // happy, funny, random-thought, heart-warming, sad
+  String? _selectedCategoryTag; // funny, question, summer-job-opportunities, heart-warming, sad
   
   // Category tags with emojis
   static const Map<String, String> categoryTags = {
-    'funny': '😂',
     'question': '🤔',
+    'summer-job-opportunities': '☀️',
+    'funny': '😂',
     'heart-warming': '😄',
     'sad': '😢',
   };
+
+  String _tagLabel(String tag) {
+    if (tag == 'summer-job-opportunities') return 'Summer Job Opportunities';
+    return tag.replaceAll('-', ' ');
+  }
 
   @override
   void initState() {
@@ -174,7 +180,7 @@ class _PostComposerState extends State<PostComposer> {
                             mainAxisSize: MainAxisSize.min,
                             children: [
                               Text(
-                                '${categoryTags[_selectedCategoryTag]} ${_selectedCategoryTag!.replaceAll('-', ' ')}',
+                                '${categoryTags[_selectedCategoryTag]} ${_tagLabel(_selectedCategoryTag!)}',
                                 style: TextStyle(
                                   color: Theme.of(context).colorScheme.onPrimaryContainer,
                                   fontWeight: FontWeight.w500,
@@ -294,7 +300,7 @@ class _PostComposerState extends State<PostComposer> {
                         return Padding(
                           padding: const EdgeInsets.only(right: 8),
                           child: _buildCategoryButton(
-                            '$emoji ${tag.replaceAll('-', ' ')}',
+                            '$emoji ${_tagLabel(tag)}',
                             tag,
                             isSelected: _selectedCategoryTag == tag,
                           ),
