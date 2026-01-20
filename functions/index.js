@@ -1391,18 +1391,65 @@ async function sendFCMNotification(user, event, eventId) {
     console.log(`[Dispatcher] User ${user.uid} has no FCM tokens, skipping`);
     return;
   }
-  
-  // Extract job title from jobData or snapshotText
-  let jobTitle = 'New Job Available';
-  if (event.jobData && event.jobData.title) {
-    jobTitle = event.jobData.title;
-  } else if (event.snapshotText) {
-    // Try to extract title from snapshot text
-    const titleMatch = event.snapshotText.match(/TITLE:\s*(.+)/i);
-    if (titleMatch) {
-      jobTitle = titleMatch[1].trim();
-    }
+
+  function safeStr(v) {
+    return (typeof v === 'string' ? v.trim() : '') || '';
   }
+
+  function extractGradeAndSubject(title) {
+    const t = safeStr(title);
+    if (!t) return { grade: '', subject: '' };
+
+    // Heuristic: try to pull a grade-like token from the title.
+    // Examples: "3rd Grade", "Grade 3", "Kindergarten", "Pre-K", "K".
+    const gradeRe =
+      /\b(Pre[-\s]?K|PreK|Kindergarten|K|Grade\s*\d{1,2}|\d{1,2}(?:st|nd|rd|th)?\s*Grade)\b/i;
+    const m = t.match(gradeRe);
+    const grade = m ? m[1].replace(/\s+/g, ' ').trim() : '';
+
+    // Subject is whatever remains after stripping grade + separators.
+    let subject = t;
+    if (m) {
+      subject = subject.replace(m[0], '');
+    }
+    subject = subject
+      .replace(/^[\s,:\-–—]+/, '')
+      .replace(/[\s,:\-–—]+$/, '')
+      .trim();
+
+    return { grade, subject };
+  }
+  
+  // Extract job basics (from scraper jobData, else snapshotText fallback).
+  const jobData = event.jobData || {};
+  const school = safeStr(jobData.location);
+  const teacher = safeStr(jobData.teacher);
+
+  let title = safeStr(jobData.title);
+  if (!title && event.snapshotText) {
+    const titleMatch = String(event.snapshotText).match(/TITLE:\s*(.+)/i);
+    if (titleMatch) title = String(titleMatch[1]).trim();
+  }
+
+  const { grade, subject } = extractGradeAndSubject(title);
+  const metaParts = [];
+  if (grade) metaParts.push(grade);
+  if (subject) metaParts.push(subject);
+  if (teacher) metaParts.push(teacher);
+
+  // Requested format:
+  // "<School>: <Grade>, <Subject>, <Teacher>" (grade optional), wrapped by OS if needed.
+  const notificationTitle = school
+    ? (metaParts.length ? `${school}: ${metaParts.join(', ')}` : school)
+    : 'New Job Available';
+
+  // Secondary line: date/time if available, else fall back to title.
+  const date = safeStr(jobData.date);
+  const startTime = safeStr(jobData.startTime);
+  const endTime = safeStr(jobData.endTime);
+  const timeRange = startTime ? (endTime ? `${startTime} - ${endTime}` : startTime) : '';
+  let notificationBody = [date, timeRange].filter(Boolean).join(' • ');
+  if (!notificationBody) notificationBody = title || 'Tap to view';
   
   // Organize keywords for notification
   const automationConfig = user.automationConfig || {};
@@ -1422,8 +1469,7 @@ async function sendFCMNotification(user, event, eventId) {
   
   const organizedKeywords = organizeKeywords(event.keywords || [], matchedKeywords);
   
-  // Build notification body with keywords
-  let notificationBody = jobTitle.length > 100 ? jobTitle.substring(0, 100) + '...' : jobTitle;
+  // Add keywords as a second line (when applicable).
   if (matchedKeywords.length > 0) {
     notificationBody += `\nKeywords: ${matchedKeywords.slice(0, 3).join(', ')}`;
   }
@@ -1433,7 +1479,7 @@ async function sendFCMNotification(user, event, eventId) {
   
   const message = {
     notification: {
-      title: 'New Job Available',
+      title: notificationTitle,
       body: notificationBody,
     },
     data: {
