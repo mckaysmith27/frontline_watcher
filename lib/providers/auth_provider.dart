@@ -1,4 +1,5 @@
 import 'dart:math';
+import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -12,6 +13,8 @@ class AuthProvider extends ChangeNotifier {
 
   User? _user;
   bool _isLoading = true;
+  StreamSubscription<User?>? _authSub;
+  String? _lastPushInitUid;
 
   User? get user => _user;
   bool get isLoading => _isLoading;
@@ -22,34 +25,36 @@ class AuthProvider extends ChangeNotifier {
   }
 
   Future<void> _init() async {
-    _auth.authStateChanges().listen((User? user) async {
+    _authSub?.cancel();
+    _authSub = _auth.authStateChanges().listen((User? user) {
       _user = user;
       _isLoading = false;
-      
-      // Initialize push notifications when user signs in
+
+      // IMPORTANT: notify immediately so app doesn't hang on startup.
+      notifyListeners();
+
+      // Best-effort push init in background; never block app startup.
       if (user != null) {
+        final uid = user.uid;
+        if (_lastPushInitUid == uid) return;
+        _lastPushInitUid = uid;
         final pushService = PushNotificationService();
-        await pushService.initialize();
-        // Save token if it exists
-        if (pushService.currentToken != null) {
-          await _saveFcmToken(pushService.currentToken!);
-        }
+        // Fire-and-forget with timeout to avoid deadlocks on emulators/devices.
+        unawaited(
+          pushService
+              .initialize()
+              .timeout(const Duration(seconds: 8))
+              .catchError((e) => print('[AuthProvider] Push init failed: $e')),
+        );
+      } else {
+        _lastPushInitUid = null;
       }
-      
+    }, onError: (e) {
+      // If auth stream errors, don't keep spinner forever.
+      print('[AuthProvider] authStateChanges error: $e');
+      _isLoading = false;
       notifyListeners();
     });
-  }
-
-  Future<void> _saveFcmToken(String token) async {
-    if (_user == null) return;
-    
-    try {
-      await _firestore.collection('users').doc(_user!.uid).update({
-        'fcmTokens': FieldValue.arrayUnion([token]),
-      });
-    } catch (e) {
-      print('Error saving FCM token: $e');
-    }
   }
 
   Future<String?> signUp({
@@ -225,6 +230,12 @@ class AuthProvider extends ChangeNotifier {
   Future<void> signOut() async {
     await _auth.signOut();
     await _secureStorage.deleteAll();
+  }
+
+  @override
+  void dispose() {
+    _authSub?.cancel();
+    super.dispose();
   }
 
   Future<void> resetPassword(String email) async {

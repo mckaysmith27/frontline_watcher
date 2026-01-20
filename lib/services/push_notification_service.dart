@@ -24,6 +24,7 @@ class PushNotificationService {
 
   String? _currentToken;
   bool _isInitialized = false;
+  String? _lastSavedToken;
 
   String? get currentToken => _currentToken;
 
@@ -41,13 +42,13 @@ class PushNotificationService {
     }
     
     // Request permissions only if user has access to the feature
-    await _requestPermissions();
+    await _requestPermissions().timeout(const Duration(seconds: 6));
 
     // Initialize local notifications for foreground
-    await _initializeLocalNotifications();
+    await _initializeLocalNotifications().timeout(const Duration(seconds: 6));
 
     // Get FCM token
-    await _getToken();
+    await _getToken().timeout(const Duration(seconds: 8));
 
     // Listen for token refresh
     _messaging.onTokenRefresh.listen(_onTokenRefresh);
@@ -59,7 +60,7 @@ class PushNotificationService {
     FirebaseMessaging.onMessageOpenedApp.listen(_handleNotificationTap);
 
     // Handle notification tap when app is launched from terminated state
-    final initialMessage = await _messaging.getInitialMessage();
+    final initialMessage = await _messaging.getInitialMessage().timeout(const Duration(seconds: 4));
     if (initialMessage != null) {
       _handleNotificationTap(initialMessage);
     }
@@ -135,6 +136,7 @@ class PushNotificationService {
 
   Future<void> _saveTokenToFirestore(String? token) async {
     if (token == null) return;
+    if (_lastSavedToken == token) return;
 
     final user = _auth.currentUser;
     if (user == null) return;
@@ -143,6 +145,7 @@ class PushNotificationService {
       await _firestore.collection('users').doc(user.uid).update({
         'fcmTokens': FieldValue.arrayUnion([token]),
       });
+      _lastSavedToken = token;
       print('FCM token saved to Firestore');
     } catch (e) {
       print('Error saving FCM token: $e');
