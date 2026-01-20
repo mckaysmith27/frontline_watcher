@@ -1,5 +1,6 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
+import 'package:flutter/animation.dart';
 import 'package:flutter/services.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
@@ -23,7 +24,8 @@ class BusinessCardScreen extends StatefulWidget {
 
 enum TeacherPreviewAction { preferred, specificDay }
 
-class _BusinessCardScreenState extends State<BusinessCardScreen> {
+class _BusinessCardScreenState extends State<BusinessCardScreen>
+    with SingleTickerProviderStateMixin {
   final TextEditingController _firstNameController = TextEditingController();
   final TextEditingController _lastNameController = TextEditingController();
   final TextEditingController _phoneController = TextEditingController();
@@ -51,6 +53,10 @@ class _BusinessCardScreenState extends State<BusinessCardScreen> {
   bool _teacherPreviewTermsAccepted = false;
   bool _teacherPreviewDownloadAppChecked = true;
 
+  late final AnimationController _teacherTermsNudgeController;
+  late final Animation<double> _teacherTermsShakeX;
+  late final Animation<double> _teacherTermsCheckboxScale;
+
   static const String _defaultInstructions =
       "Scan the QR code to add me to add me as a 'preferred sub' with a single click! You can also keep this card and re-scan to quickly request me for a specific day.";
   static const String _defaultBio =
@@ -68,6 +74,41 @@ class _BusinessCardScreenState extends State<BusinessCardScreen> {
     _shortnameController.addListener(_checkFormComplete);
     _instructionsController.addListener(_checkFormComplete);
     _bioController.addListener(_checkFormComplete);
+
+    _teacherTermsNudgeController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 650),
+    );
+    _teacherTermsShakeX = TweenSequence<double>([
+      TweenSequenceItem(tween: Tween(begin: 0, end: -10), weight: 1),
+      TweenSequenceItem(tween: Tween(begin: -10, end: 10), weight: 2),
+      TweenSequenceItem(tween: Tween(begin: 10, end: -8), weight: 2),
+      TweenSequenceItem(tween: Tween(begin: -8, end: 8), weight: 2),
+      TweenSequenceItem(tween: Tween(begin: 8, end: -4), weight: 1),
+      TweenSequenceItem(tween: Tween(begin: -4, end: 4), weight: 1),
+      TweenSequenceItem(tween: Tween(begin: 4, end: 0), weight: 1),
+    ]).animate(
+      CurvedAnimation(
+        parent: _teacherTermsNudgeController,
+        curve: const Interval(0.0, 0.65, curve: Curves.easeOut),
+      ),
+    );
+    _teacherTermsCheckboxScale = TweenSequence<double>([
+      TweenSequenceItem(tween: Tween(begin: 1.0, end: 1.22), weight: 1),
+      TweenSequenceItem(tween: Tween(begin: 1.22, end: 1.0), weight: 1),
+    ]).animate(
+      CurvedAnimation(
+        parent: _teacherTermsNudgeController,
+        curve: const Interval(0.65, 1.0, curve: Curves.elasticOut),
+      ),
+    );
+  }
+
+  Future<void> _nudgeTeacherTerms() async {
+    if (!mounted) return;
+    if (_teacherTermsNudgeController.isAnimating) return;
+    _teacherTermsNudgeController.reset();
+    await _teacherTermsNudgeController.forward();
   }
 
   bool get _teacherPreviewCanContinue {
@@ -120,6 +161,7 @@ class _BusinessCardScreenState extends State<BusinessCardScreen> {
     _shortnameController.dispose();
     _instructionsController.dispose();
     _bioController.dispose();
+    _teacherTermsNudgeController.dispose();
     super.dispose();
   }
 
@@ -423,7 +465,7 @@ class _BusinessCardScreenState extends State<BusinessCardScreen> {
             Align(
               alignment: Alignment.centerLeft,
               child: Text(
-                'What the teacher will see:',
+                'What teacher will see after scanning your QR code:',
                 style: Theme.of(context).textTheme.titleMedium?.copyWith(
                       fontWeight: FontWeight.bold,
                     ),
@@ -455,7 +497,7 @@ class _BusinessCardScreenState extends State<BusinessCardScreen> {
                 style: ElevatedButton.styleFrom(
                   padding: const EdgeInsets.symmetric(vertical: 16),
                 ),
-                child: const Text('Checkout'),
+                child: const Text('Proceed to Checkout'),
               ),
             ),
           ],
@@ -470,8 +512,8 @@ class _BusinessCardScreenState extends State<BusinessCardScreen> {
     return Container(
       width: double.infinity,
       constraints: const BoxConstraints(maxWidth: 400),
-      height: 280, // Slightly taller to fit instructions cleanly
-      padding: const EdgeInsets.all(20.0),
+      height: 240, // Closer to true business card proportions
+      padding: const EdgeInsets.all(16.0),
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.zero, // Sharp corners
@@ -494,44 +536,57 @@ class _BusinessCardScreenState extends State<BusinessCardScreen> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    // Name (stacked so all left-aligned fields align cleanly)
-                    TextField(
-                      controller: _firstNameController,
-                      decoration: const InputDecoration(
-                        hintText: 'First Name',
-                        border: InputBorder.none,
-                        contentPadding: EdgeInsets.zero,
-                        isDense: true,
-                      ),
-                      style: const TextStyle(
-                        fontSize: 20,
-                        fontWeight: FontWeight.bold,
-                        color: Colors.black87,
-                      ),
-                      onChanged: (value) async {
-                        await _saveField('firstName', value);
-                        _checkFormComplete();
-                      },
+                    // Name (same row; shorter labels so the card doesn't get taller)
+                    Row(
+                      children: [
+                        Expanded(
+                          child: TextField(
+                            controller: _firstNameController,
+                            decoration: const InputDecoration(
+                              hintText: 'First',
+                              border: InputBorder.none,
+                              contentPadding: EdgeInsets.zero,
+                              isDense: true,
+                              suffixIcon: Icon(Icons.edit, size: 16, color: Colors.black45),
+                              suffixIconConstraints: BoxConstraints(minWidth: 18, minHeight: 18),
+                            ),
+                            style: const TextStyle(
+                              fontSize: 18,
+                              fontWeight: FontWeight.bold,
+                              color: Colors.black87,
+                            ),
+                            onChanged: (value) async {
+                              await _saveField('firstName', value);
+                              _checkFormComplete();
+                            },
+                          ),
+                        ),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: TextField(
+                            controller: _lastNameController,
+                            decoration: const InputDecoration(
+                              hintText: 'Last',
+                              border: InputBorder.none,
+                              contentPadding: EdgeInsets.zero,
+                              isDense: true,
+                              suffixIcon: Icon(Icons.edit, size: 16, color: Colors.black45),
+                              suffixIconConstraints: BoxConstraints(minWidth: 18, minHeight: 18),
+                            ),
+                            style: const TextStyle(
+                              fontSize: 18,
+                              fontWeight: FontWeight.bold,
+                              color: Colors.black87,
+                            ),
+                            onChanged: (value) async {
+                              await _saveField('lastName', value);
+                              _checkFormComplete();
+                            },
+                          ),
+                        ),
+                      ],
                     ),
-                    TextField(
-                      controller: _lastNameController,
-                      decoration: const InputDecoration(
-                        hintText: 'Last Name',
-                        border: InputBorder.none,
-                        contentPadding: EdgeInsets.zero,
-                        isDense: true,
-                      ),
-                      style: const TextStyle(
-                        fontSize: 20,
-                        fontWeight: FontWeight.bold,
-                        color: Colors.black87,
-                      ),
-                      onChanged: (value) async {
-                        await _saveField('lastName', value);
-                        _checkFormComplete();
-                      },
-                    ),
-                    const SizedBox(height: 14),
+                    const SizedBox(height: 10),
                     TextField(
                       controller: _phoneController,
                       decoration: const InputDecoration(
@@ -539,6 +594,8 @@ class _BusinessCardScreenState extends State<BusinessCardScreen> {
                         border: InputBorder.none,
                         contentPadding: EdgeInsets.zero,
                         isDense: true,
+                        suffixIcon: Icon(Icons.edit, size: 16, color: Colors.black45),
+                        suffixIconConstraints: BoxConstraints(minWidth: 18, minHeight: 18),
                       ),
                       style: const TextStyle(
                         fontSize: 14,
@@ -554,7 +611,7 @@ class _BusinessCardScreenState extends State<BusinessCardScreen> {
                         _checkFormComplete();
                       },
                     ),
-                    const SizedBox(height: 8),
+                    const SizedBox(height: 6),
                     TextField(
                       controller: _shortnameController,
                       decoration: InputDecoration(
@@ -568,6 +625,8 @@ class _BusinessCardScreenState extends State<BusinessCardScreen> {
                         border: InputBorder.none,
                         contentPadding: EdgeInsets.zero,
                         isDense: true,
+                        suffixIcon: const Icon(Icons.edit, size: 16, color: Colors.black45),
+                        suffixIconConstraints: const BoxConstraints(minWidth: 18, minHeight: 18),
                       ),
                       style: const TextStyle(
                         fontSize: 14,
@@ -580,7 +639,7 @@ class _BusinessCardScreenState extends State<BusinessCardScreen> {
                         _checkFormComplete();
                       },
                     ),
-                    const SizedBox(height: 6),
+                    const SizedBox(height: 4),
                     TextField(
                       controller: _emailController,
                       decoration: const InputDecoration(
@@ -588,6 +647,8 @@ class _BusinessCardScreenState extends State<BusinessCardScreen> {
                         border: InputBorder.none,
                         contentPadding: EdgeInsets.zero,
                         isDense: true,
+                        suffixIcon: Icon(Icons.edit, size: 16, color: Colors.black45),
+                        suffixIconConstraints: BoxConstraints(minWidth: 18, minHeight: 18),
                       ),
                       style: const TextStyle(
                         fontSize: 14,
@@ -605,8 +666,8 @@ class _BusinessCardScreenState extends State<BusinessCardScreen> {
               const SizedBox(width: 16),
               // QR Code placeholder (top-aligned with name fields)
               Container(
-                width: 100,
-                height: 100,
+                width: 92,
+                height: 92,
                 decoration: BoxDecoration(
                   color: Colors.grey[200],
                   border: Border.all(color: Colors.grey[400]!, width: 1),
@@ -615,14 +676,14 @@ class _BusinessCardScreenState extends State<BusinessCardScreen> {
                     ? QrImageView(
                         data: _getBusinessCardUrl(),
                         version: QrVersions.auto,
-                        size: 100,
+                        size: 92,
                         backgroundColor: Colors.white,
                       )
                     : Center(
                         child: Padding(
                           padding: const EdgeInsets.all(8.0),
                           child: Text(
-                            'QR Code needs the full form filled out with each of the items below the form checked and clicked respectively in order for it to work and a working QR code to be generated for print.',
+                            'QR Code link generated on next page.',
                             style: TextStyle(
                               fontSize: 8,
                               color: Colors.grey[600],
@@ -634,7 +695,7 @@ class _BusinessCardScreenState extends State<BusinessCardScreen> {
               ),
             ],
           ),
-          const SizedBox(height: 12),
+          const SizedBox(height: 10),
           Expanded(
             child: _buildInstructionsBox(),
           ),
@@ -784,12 +845,20 @@ class _BusinessCardScreenState extends State<BusinessCardScreen> {
       ),
       child: Column(
         children: [
-          Text(
-            'Powered by Sub67…',
-            style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                  fontStyle: FontStyle.italic,
-                  color: Theme.of(context).colorScheme.onSurface.withOpacity(0.55),
-                ),
+          Align(
+            alignment: Alignment.centerLeft,
+            child: Padding(
+              // Extra inset to avoid clipping against rounded edges.
+              padding: const EdgeInsets.only(left: 4, right: 4),
+              child: Text(
+                'Powered by Sub67…',
+                softWrap: true,
+                style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                      fontStyle: FontStyle.italic,
+                      color: Theme.of(context).colorScheme.onSurface.withOpacity(0.55),
+                    ),
+              ),
+            ),
           ),
           const SizedBox(height: 10),
           GestureDetector(
@@ -820,7 +889,10 @@ class _BusinessCardScreenState extends State<BusinessCardScreen> {
             ),
           ),
           const SizedBox(height: 12),
-          _copyRow(label: fullName.isEmpty ? 'Name' : fullName, valueToCopy: fullName),
+          _copyRow(
+            label: fullName.isEmpty ? 'Name' : fullName,
+            valueToCopy: fullName,
+          ),
           const SizedBox(height: 8),
           Row(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -880,17 +952,6 @@ class _BusinessCardScreenState extends State<BusinessCardScreen> {
 
           const SizedBox(height: 12),
           Divider(color: Theme.of(context).colorScheme.outline.withOpacity(0.2)),
-          const SizedBox(height: 8),
-          Align(
-            alignment: Alignment.centerLeft,
-            child: Text(
-              'This is what teachers will see after scanning your QR code:',
-              style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                    fontStyle: FontStyle.italic,
-                    color: Theme.of(context).colorScheme.onSurface.withOpacity(0.65),
-                  ),
-            ),
-          ),
           const SizedBox(height: 10),
           Align(
             alignment: Alignment.centerLeft,
@@ -905,7 +966,10 @@ class _BusinessCardScreenState extends State<BusinessCardScreen> {
               value: TeacherPreviewAction.preferred,
               groupValue: _teacherPreviewAction,
               onChanged: (v) => setState(() => _teacherPreviewAction = v!),
-              title: Text('Add $fullName (${_phoneController.text.isEmpty ? 'no phone' : _phoneController.text}) to preferred teaching list?*'),
+              title: Text(
+                'Add $fullName (${_phoneController.text.isEmpty ? 'no phone' : _phoneController.text}) to preferred teaching list?*',
+                softWrap: true,
+              ),
             ),
           ),
           Card(
@@ -913,7 +977,10 @@ class _BusinessCardScreenState extends State<BusinessCardScreen> {
               value: TeacherPreviewAction.specificDay,
               groupValue: _teacherPreviewAction,
               onChanged: (v) => setState(() => _teacherPreviewAction = v!),
-              title: Text('Request $fullName (${_phoneController.text.isEmpty ? 'no phone' : _phoneController.text}) for a specific day?'),
+              title: Text(
+                'Request $fullName (${_phoneController.text.isEmpty ? 'no phone' : _phoneController.text}) for a specific day?',
+                softWrap: true,
+              ),
             ),
           ),
           if (_teacherPreviewAction == TeacherPreviewAction.specificDay) ...[
@@ -944,22 +1011,50 @@ class _BusinessCardScreenState extends State<BusinessCardScreen> {
               padding: const EdgeInsets.all(12),
               child: Column(
                 children: [
-                  Row(
-                    children: [
-                      Checkbox(
-                        value: _teacherPreviewTermsAccepted,
-                        onChanged: (v) => setState(() => _teacherPreviewTermsAccepted = v ?? false),
-                      ),
-                      Expanded(
-                        child: GestureDetector(
-                          onTap: _showTeacherTermsPreview,
-                          child: const Text(
-                            'I Agree to the Terms and Conditions',
-                            style: TextStyle(decoration: TextDecoration.underline),
+                  AnimatedBuilder(
+                    animation: _teacherTermsNudgeController,
+                    builder: (context, child) {
+                      return Transform.translate(
+                        offset: Offset(_teacherTermsShakeX.value, 0),
+                        child: child,
+                      );
+                    },
+                    child: Row(
+                      children: [
+                        AnimatedBuilder(
+                          animation: _teacherTermsNudgeController,
+                          builder: (context, child) {
+                            return Transform.scale(
+                              scale: _teacherTermsCheckboxScale.value,
+                              child: child,
+                            );
+                          },
+                          child: Checkbox(
+                            value: _teacherPreviewTermsAccepted,
+                            onChanged: (v) => setState(() => _teacherPreviewTermsAccepted = v ?? false),
                           ),
                         ),
-                      ),
-                    ],
+                        Expanded(
+                          child: Wrap(
+                            children: [
+                              Text(
+                                'I Agree to the ',
+                                style: Theme.of(context).textTheme.bodyMedium,
+                              ),
+                              InkWell(
+                                onTap: _showTeacherTermsPreview,
+                                child: Text(
+                                  'Terms & Conditions',
+                                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                                        decoration: TextDecoration.underline,
+                                      ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
                   Row(
                     children: [
@@ -967,9 +1062,20 @@ class _BusinessCardScreenState extends State<BusinessCardScreen> {
                         value: _teacherPreviewDownloadAppChecked,
                         onChanged: (v) => setState(() => _teacherPreviewDownloadAppChecked = v ?? false),
                       ),
-                      const Expanded(
-                        child: Text(
-                          'Download the app! For a smoother experience and to unlock other features download the app on your mobile device!',
+                      Expanded(
+                        child: Text.rich(
+                          TextSpan(
+                            style: Theme.of(context).textTheme.bodyMedium,
+                            children: const [
+                              TextSpan(
+                                text: 'Download the app!',
+                                style: TextStyle(fontWeight: FontWeight.bold),
+                              ),
+                              TextSpan(
+                                text: '—For a faster, smoother experience and to unlock other useful features.',
+                              ),
+                            ],
+                          ),
                         ),
                       ),
                     ],
@@ -982,15 +1088,18 @@ class _BusinessCardScreenState extends State<BusinessCardScreen> {
           SizedBox(
             width: double.infinity,
             child: ElevatedButton(
-              onPressed: _teacherPreviewCanContinue
-                  ? () {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(
-                          content: Text('Preview: Teachers will tap Next, enter Frontline/ESS credentials, then continue.'),
-                        ),
-                      );
-                    }
-                  : null,
+              onPressed: () async {
+                if (!_teacherPreviewCanContinue) {
+                  await _nudgeTeacherTerms();
+                  return;
+                }
+                if (!context.mounted) return;
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text('Preview: Teachers will tap Next, enter Frontline/ESS credentials, then continue.'),
+                  ),
+                );
+              },
               child: const Text('Next'),
             ),
           ),
@@ -1006,6 +1115,7 @@ class _BusinessCardScreenState extends State<BusinessCardScreen> {
           child: Text(
             label,
             style: const TextStyle(fontSize: 14),
+            softWrap: true,
           ),
         ),
         IconButton(

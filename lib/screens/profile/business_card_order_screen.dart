@@ -33,7 +33,7 @@ class _BusinessCardOrderScreenState extends State<BusinessCardOrderScreen> {
   final FirebaseAuth _auth = FirebaseAuth.instance;
   final FirebaseFunctions _functions = FirebaseFunctions.instance;
   
-  int _selectedQuantity = 20; // Default to recommended
+  int _selectedQuantity = 50; // Default to recommended
   String _selectedShipping = 'standard'; // 'standard' or 'express'
   bool _isProcessing = false;
   bool _hasCreditsOrSubscription = false;
@@ -570,7 +570,7 @@ class _BusinessCardOrderScreenState extends State<BusinessCardOrderScreen> {
                   title: Row(
                     children: [
                       Text('$quantity Cards'),
-                      if (quantity == 20) ...[
+                      if (quantity == 50) ...[
                         const SizedBox(width: 8),
                         Text(
                           '(recommended)',
