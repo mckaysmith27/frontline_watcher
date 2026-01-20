@@ -45,7 +45,11 @@ class _PremiumUnlockBottomSheetState extends State<PremiumUnlockBottomSheet> {
 
     Widget child;
     if (_headlineIndex == 0) {
-      child = Text('Get the job!', style: style);
+      child = Text(
+        'Get the job!',
+        style: style,
+        textAlign: TextAlign.center,
+      );
     } else if (_headlineIndex == 1) {
       child = Text.rich(
         TextSpan(
@@ -56,17 +60,32 @@ class _PremiumUnlockBottomSheetState extends State<PremiumUnlockBottomSheet> {
             TextSpan(text: ' prefer.'),
           ],
         ),
+        textAlign: TextAlign.center,
       );
     } else {
-      child = Text("Connect with other subs, and share in each other's experience.", style: style);
+      child = Text(
+        "Connect with other subs, and share in each other's experience.",
+        style: style,
+        textAlign: TextAlign.center,
+      );
     }
 
-    return AnimatedSwitcher(
-      duration: const Duration(milliseconds: 350),
-      child: SizedBox(
-        key: ValueKey(_headlineIndex),
-        width: double.infinity,
-        child: child,
+    // Keep this area a fixed height so the rest of the sheet doesn't jump
+    // as sentences change length.
+    return SizedBox(
+      height: 86,
+      child: AnimatedSwitcher(
+        duration: const Duration(milliseconds: 350),
+        child: SizedBox(
+          key: ValueKey(_headlineIndex),
+          width: double.infinity,
+          child: Center(
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 8),
+              child: child,
+            ),
+          ),
+        ),
       ),
     );
   }

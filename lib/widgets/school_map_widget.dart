@@ -54,8 +54,17 @@ class _SchoolMapWidgetState extends State<SchoolMapWidget> {
   bool _schoolsNotWithinExpanded = false;
   bool _nonAddressedExpanded = false;
 
-  double? _bestMiles(School s) => s.driveDistanceMiles ?? s.distanceMiles;
-  int? _bestMinutes(School s) => s.driveTimeMinutes;
+  double? _bestMiles(School s) {
+    final miles = s.driveDistanceMiles ?? s.distanceMiles;
+    if (miles == null || miles <= 0) return null;
+    return miles;
+  }
+
+  int? _bestMinutes(School s) {
+    final minutes = s.driveTimeMinutes;
+    if (minutes == null || minutes <= 0) return null;
+    return minutes;
+  }
 
   @override
   void initState() {
@@ -637,7 +646,10 @@ class _SchoolMapWidgetState extends State<SchoolMapWidget> {
             // Filter by travel time
             if (_maxTravelTimeMinutes != null) {
               final travelMinutes = _bestMinutes(school);
-              if (travelMinutes != null && travelMinutes > _maxTravelTimeMinutes!) {
+              // If we don't have a valid travel time for this school yet, treat it as out-of-range
+              // (otherwise time-based filtering becomes inaccurate).
+              if (travelMinutes == null) return false;
+              if (travelMinutes > _maxTravelTimeMinutes!) {
                 return false;
               }
             }
