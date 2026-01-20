@@ -10,6 +10,7 @@ import 'package:firebase_storage/firebase_storage.dart';
 import 'package:table_calendar/table_calendar.dart';
 import '../../services/user_role_service.dart';
 import '../../widgets/app_bar_quick_toggles.dart';
+import '../../widgets/profile_app_bar.dart';
 import 'business_card_order_screen.dart';
 import 'profile_screen.dart';
 
@@ -383,8 +384,7 @@ class _BusinessCardScreenState extends State<BusinessCardScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Business Card'),
+      appBar: ProfileAppBar(
         actions: [
           const AppBarQuickToggles(),
           IconButton(

@@ -7,6 +7,7 @@ import 'feed_tab.dart';
 import 'top_posts_tab.dart';
 import '../profile/profile_screen.dart';
 import '../../widgets/app_bar_quick_toggles.dart';
+import '../../widgets/profile_app_bar.dart';
 import '../../services/social_service.dart';
 import '../../services/user_role_service.dart';
 
@@ -151,38 +152,7 @@ class _SocialScreenState extends State<SocialScreen>
     final authProvider = Provider.of<AuthProvider>(context);
 
     return Scaffold(
-      appBar: AppBar(
-        leading: authProvider.user != null
-            ? GestureDetector(
-                onTap: () {
-                  // Switch to My Page tab
-                  if (_tabController.index != 0) {
-                    _tabController.animateTo(0);
-                  }
-                  // Also trigger callback if provided
-                  if (widget.onNavigateToMyPage != null) {
-                    widget.onNavigateToMyPage!();
-                  }
-                },
-                child: Container(
-                  margin: const EdgeInsets.all(8),
-                  child: CircleAvatar(
-                    radius: 18,
-                    backgroundImage: authProvider.user!.photoURL != null
-                        ? NetworkImage(authProvider.user!.photoURL!)
-                        : null,
-                    child: authProvider.user!.photoURL == null
-                        ? Text(
-                            authProvider.user!.email?[0].toUpperCase() ?? 'U',
-                            style: const TextStyle(fontSize: 16),
-                          )
-                        : null,
-                  ),
-                ),
-              )
-            : null,
-        automaticallyImplyLeading: false,
-        title: _buildQuickPostField(context),
+      appBar: ProfileAppBar(
         actions: [
           const AppBarQuickToggles(),
           IconButton(
@@ -214,6 +184,8 @@ class _SocialScreenState extends State<SocialScreen>
             padding: const EdgeInsets.all(16),
             child: Column(
               children: [
+                _buildQuickPostField(context),
+                const SizedBox(height: 12),
                 Row(
                   children: [
                     CircleAvatar(

@@ -87,11 +87,6 @@ class _FiltersScreenState extends State<FiltersScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(
-              'Select your job preferences',
-              style: Theme.of(context).textTheme.titleLarge,
-            ),
-            const SizedBox(height: 16),
             // Filter Legend with Tooltips
             _buildFilterLegend(context),
             const SizedBox(height: 24),

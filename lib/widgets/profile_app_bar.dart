@@ -7,16 +7,21 @@ class ProfileAppBar extends StatelessWidget implements PreferredSizeWidget {
   final Widget? child;
   final List<Widget>? actions;
   final bool showBackButton;
+  final PreferredSizeWidget? bottom;
 
   const ProfileAppBar({
     super.key,
     this.child,
     this.actions,
     this.showBackButton = false,
+    this.bottom,
   });
 
   @override
-  Size get preferredSize => const Size.fromHeight(kToolbarHeight);
+  Size get preferredSize {
+    final bottomHeight = bottom?.preferredSize.height ?? 0;
+    return Size.fromHeight(kToolbarHeight + bottomHeight);
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -52,6 +57,7 @@ class ProfileAppBar extends StatelessWidget implements PreferredSizeWidget {
               : null),
       title: child,
       actions: actions,
+      bottom: bottom,
       automaticallyImplyLeading: !shouldShowBack ? false : true,
     );
   }

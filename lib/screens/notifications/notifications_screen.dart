@@ -5,6 +5,7 @@ import '../../providers/subscription_provider.dart';
 import '../filters/automation_bottom_sheet.dart';
 import '../profile/profile_screen.dart';
 import '../../widgets/app_bar_quick_toggles.dart';
+import '../../widgets/profile_app_bar.dart';
 import 'time_window_widget.dart';
 
 class NotificationsScreen extends StatefulWidget {
@@ -18,8 +19,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Notifications'),
+      appBar: ProfileAppBar(
         actions: [
           const AppBarQuickToggles(),
           IconButton(
