@@ -92,7 +92,7 @@ class _PremiumUnlockBottomSheetState extends State<PremiumUnlockBottomSheet>
                   child: Transform.rotate(
                     angle: baseTilt + _crownWobble.value,
                     child: const Icon(
-                      Icons.crown,
+                      Icons.workspace_premium,
                       size: 20,
                       color: Color(0xFFFFD54F), // gold-ish
                     ),
