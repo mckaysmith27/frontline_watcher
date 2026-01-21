@@ -79,9 +79,9 @@ class ProfileScreen extends StatelessWidget {
             _buildSettingsItem(
               context,
               icon: Icons.person,
-              title: 'Shortname',
-              subtitle: 'Change your display name',
-              onTap: () => _showShortnameDialog(context),
+              title: 'Nickname',
+              subtitle: 'Change your community display name',
+              onTap: () => _showNicknameDialog(context),
             ),
             _buildThemeSettingsItem(context),
             _buildSettingsItem(
@@ -263,86 +263,121 @@ class ProfileScreen extends StatelessWidget {
     }
   }
 
-  void _showShortnameDialog(BuildContext context) {
+  void _showNicknameDialog(BuildContext context) {
     final controller = TextEditingController();
     final authProvider = Provider.of<AuthProvider>(context, listen: false);
+    final uid = authProvider.user?.uid;
+    if (uid == null) return;
 
     showDialog(
       context: context,
-      builder: (dialogContext) => StatefulBuilder(
-        builder: (context, setDialogState) {
-          return AlertDialog(
-            title: const Text('Change Shortname'),
-            content: TextField(
-              controller: controller,
-              decoration: const InputDecoration(
-                labelText: 'Shortname',
-                border: OutlineInputBorder(),
-              ),
-              autofocus: true,
-            ),
-            actions: [
-              TextButton(
-                onPressed: () {
-                  Navigator.pop(dialogContext);
-                  controller.dispose();
-                },
-                child: const Text('Cancel'),
-              ),
-              ElevatedButton(
-                onPressed: () async {
-                  final shortname = controller.text.trim();
-                  if (shortname.isEmpty) {
-                    ScaffoldMessenger.of(dialogContext).showSnackBar(
-                      const SnackBar(
-                        content: Text('Shortname cannot be empty'),
-                        backgroundColor: Colors.red,
-                      ),
-                    );
-                    return;
-                  }
+      builder: (dialogContext) => FutureBuilder<DocumentSnapshot<Map<String, dynamic>>>(
+        future: FirebaseFirestore.instance.collection('users').doc(uid).get(),
+        builder: (context, snap) => StatefulBuilder(
+          builder: (context, setDialogState) {
+            final data = snap.data?.data() ?? const <String, dynamic>{};
+            final currentNickname = (data['nickname'] is String) ? (data['nickname'] as String) : '';
+            final currentShortname = (data['shortname'] is String) ? (data['shortname'] as String) : '';
+            if (controller.text.isEmpty && currentNickname.isNotEmpty) {
+              controller.text = currentNickname;
+            }
 
-                  try {
-                    final user = authProvider.user;
-                    if (user != null) {
-                      // Update shortname in Firestore
-                      await FirebaseFirestore.instance
-                          .collection('users')
-                          .doc(user.uid)
-                          .update({
-                        'shortname': shortname.toLowerCase(),
-                      });
+            bool distinctFromShortname(String nickname) {
+              final n = nickname.trim().toLowerCase();
+              final s = currentShortname.trim().toLowerCase();
+              if (n.isEmpty) return false;
+              if (s.isEmpty) return true;
 
-                      if (dialogContext.mounted) {
-                        Navigator.pop(dialogContext);
-                        controller.dispose();
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(
-                            content: Text('Shortname updated'),
-                            backgroundColor: Colors.green,
-                          ),
-                        );
-                      }
-                    }
-                  } catch (e) {
-                    if (dialogContext.mounted) {
-                      ScaffoldMessenger.of(dialogContext).showSnackBar(
-                        SnackBar(
-                          content: Text('Error updating shortname: $e'),
-                          backgroundColor: Colors.red,
-                        ),
-                      );
-                    }
-                  }
-                },
-                child: const Text('Save'),
+              final digitsN = RegExp(r'\d').allMatches(n).map((m) => m.group(0)!).toSet();
+              final digitsS = RegExp(r'\d').allMatches(s).map((m) => m.group(0)!).toSet();
+              if (digitsN.intersection(digitsS).isNotEmpty) return false;
+
+              String lettersOnly(String x) => x.replaceAll(RegExp(r'[^a-z]'), '');
+              final ln = lettersOnly(n);
+              final ls = lettersOnly(s);
+              if (ln.length >= 3 && ls.length >= 3) {
+                final subs = <String>{};
+                for (int i = 0; i <= ln.length - 3; i++) {
+                  subs.add(ln.substring(i, i + 3));
+                }
+                for (int i = 0; i <= ls.length - 3; i++) {
+                  if (subs.contains(ls.substring(i, i + 3))) return false;
+                }
+              }
+              return true;
+            }
+
+            final ok = distinctFromShortname(controller.text);
+            return AlertDialog(
+              title: const Text('Change Nickname'),
+              content: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  TextField(
+                    controller: controller,
+                    decoration: const InputDecoration(
+                      labelText: 'Nickname',
+                      border: OutlineInputBorder(),
+                    ),
+                    autofocus: true,
+                    onChanged: (_) => setDialogState(() {}),
+                  ),
+                  const SizedBox(height: 8),
+                  if (!ok)
+                    const Text(
+                      'Must be completely different than shortname (none of the same numbers or run of three letters)',
+                      style: TextStyle(color: Colors.red),
+                    ),
+                ],
               ),
-            ],
-          );
-        },
+              actions: [
+                TextButton(
+                  onPressed: () {
+                    Navigator.pop(dialogContext);
+                    controller.dispose();
+                  },
+                  child: const Text('Cancel'),
+                ),
+                ElevatedButton(
+                  onPressed: ok
+                      ? () async {
+                          final nickname = controller.text.trim();
+                          if (nickname.isEmpty) return;
+                          try {
+                            await FirebaseFirestore.instance.collection('users').doc(uid).update({
+                              'nickname': nickname,
+                            });
+                            if (dialogContext.mounted) {
+                              Navigator.pop(dialogContext);
+                              controller.dispose();
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                const SnackBar(
+                                  content: Text('Nickname updated'),
+                                  backgroundColor: Colors.green,
+                                ),
+                              );
+                            }
+                          } catch (e) {
+                            if (dialogContext.mounted) {
+                              ScaffoldMessenger.of(dialogContext).showSnackBar(
+                                SnackBar(
+                                  content: Text('Error updating nickname: $e'),
+                                  backgroundColor: Colors.red,
+                                ),
+                              );
+                            }
+                          }
+                        }
+                      : null,
+                  child: const Text('Save'),
+                ),
+              ],
+            );
+          },
+        ),
       ),
     ).then((_) {
-      // Dispose controller when dialog is closed
       controller.dispose();
     });
   }

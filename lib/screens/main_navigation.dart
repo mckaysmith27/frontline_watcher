@@ -32,6 +32,11 @@ class _MainNavigationState extends State<MainNavigation> {
   List<String> _accessibleFeatures = [];
   bool _isLoadingRoles = true;
 
+  // Lazy-mount tabs so heavy screens (e.g., Google Maps) don't initialize
+  // until the user actually opens them.
+  final Set<int> _mountedMainTabs = <int>{};
+  final Set<int> _mountedAdminTabs = <int>{};
+
   @override
   void initState() {
     super.initState();
@@ -289,17 +294,40 @@ class _MainNavigationState extends State<MainNavigation> {
     final mainDestinations = _buildMainDestinations();
     final adminScreens = _buildAdminScreens();
     final adminDestinations = _buildAdminDestinations();
+
+    final safeMainIndex = _currentIndex < mainScreens.length ? _currentIndex : 0;
+    final safeAdminIndex = _adminIndex < adminScreens.length ? _adminIndex : 0;
+    if (mainScreens.isNotEmpty) _mountedMainTabs.add(safeMainIndex);
+    if (adminScreens.isNotEmpty) _mountedAdminTabs.add(safeAdminIndex);
     
     return Scaffold(
       body: _showAdminScreen && adminScreens.isNotEmpty
-          ? IndexedStack(
-              index: _adminIndex < adminScreens.length ? _adminIndex : 0,
-              children: adminScreens,
+          ? Stack(
+              children: List.generate(adminScreens.length, (i) {
+                final shouldMount = _mountedAdminTabs.contains(i) || i == safeAdminIndex;
+                if (!shouldMount) return const SizedBox.shrink();
+                return Offstage(
+                  offstage: i != safeAdminIndex,
+                  child: TickerMode(
+                    enabled: i == safeAdminIndex,
+                    child: adminScreens[i],
+                  ),
+                );
+              }),
             )
           : mainScreens.isNotEmpty
-              ? IndexedStack(
-                  index: _currentIndex < mainScreens.length ? _currentIndex : 0,
-                  children: mainScreens,
+              ? Stack(
+                  children: List.generate(mainScreens.length, (i) {
+                    final shouldMount = _mountedMainTabs.contains(i) || i == safeMainIndex;
+                    if (!shouldMount) return const SizedBox.shrink();
+                    return Offstage(
+                      offstage: i != safeMainIndex,
+                      child: TickerMode(
+                        enabled: i == safeMainIndex,
+                        child: mainScreens[i],
+                      ),
+                    );
+                  }),
                 )
               : const Center(
                   child: Text('No features available for your role'),

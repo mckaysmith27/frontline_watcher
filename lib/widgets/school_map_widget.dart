@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:ui' as ui;
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
@@ -38,6 +39,10 @@ class _SchoolMapWidgetState extends State<SchoolMapWidget> {
   final Map<String, Marker> _markers = {};
   Circle? _radiusCircle;
   BitmapDescriptor? _grayMarkerIcon; // Cache gray marker
+
+  // Debounce saving large map-driven filter writes to Firestore to avoid
+  // write-stream exhaustion and emulator OOMs when dragging sliders.
+  Timer? _filtersSaveDebounce;
   
   // School type filters (simple on/off, not green/grey/red)
   // Note: 'other' is not selected by default and schools with type 'other' are excluded from map
@@ -79,6 +84,15 @@ class _SchoolMapWidgetState extends State<SchoolMapWidget> {
       }
     });
     _initializeMap();
+  }
+
+  void _scheduleFiltersSave(FiltersProvider filtersProvider) {
+    _filtersSaveDebounce?.cancel();
+    _filtersSaveDebounce = Timer(const Duration(milliseconds: 900), () {
+      // Fire-and-forget; this should never block UI.
+      if (!mounted) return;
+      filtersProvider.saveToFirebase();
+    });
   }
   
   void _excludeOtherSchools() {
@@ -700,7 +714,8 @@ class _SchoolMapWidgetState extends State<SchoolMapWidget> {
       // If user has manually set green or red, keep that state
     }
     
-    filtersProvider.saveToFirebase();
+    // Debounced: this can be a large update and gets called frequently (sliders).
+    _scheduleFiltersSave(filtersProvider);
     
     _schoolsInRadius = filteredSchools;
     setState(() {});
@@ -1350,6 +1365,7 @@ class _SchoolMapWidgetState extends State<SchoolMapWidget> {
 
   @override
   void dispose() {
+    _filtersSaveDebounce?.cancel();
     _locationController.dispose();
     _mapController?.dispose();
     super.dispose();

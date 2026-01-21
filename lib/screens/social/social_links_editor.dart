@@ -36,7 +36,7 @@ class _SocialLinksEditorState extends State<SocialLinksEditor> {
     if (mounted) {
       Navigator.pop(context);
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Links saved!')),
+        const SnackBar(content: Text('Socials saved!')),
       );
     }
   }
@@ -88,7 +88,7 @@ class _SocialLinksEditorState extends State<SocialLinksEditor> {
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
                     const Text(
-                      'Social Links',
+                      'Socials',
                       style: TextStyle(
                         fontSize: 20,
                         fontWeight: FontWeight.bold,
@@ -117,7 +117,7 @@ class _SocialLinksEditorState extends State<SocialLinksEditor> {
                             ElevatedButton.icon(
                               onPressed: _addLink,
                               icon: const Icon(Icons.add),
-                              label: const Text('Add Link'),
+                              label: const Text('Add Social'),
                             ),
                           ],
                         ),
@@ -131,7 +131,7 @@ class _SocialLinksEditorState extends State<SocialLinksEditor> {
                   style: ElevatedButton.styleFrom(
                     minimumSize: const Size(double.infinity, 48),
                   ),
-                  child: const Text('Save Links'),
+                  child: const Text('Save Socials'),
                 ),
               ),
             ],

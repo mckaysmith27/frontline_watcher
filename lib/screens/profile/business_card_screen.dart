@@ -40,6 +40,7 @@ class _BusinessCardScreenState extends State<BusinessCardScreen>
   final ImagePicker _imagePicker = ImagePicker();
 
   String? _currentShortname;
+  String? _nickname;
   String? _validationMessage;
   bool _isValidating = false;
   bool _isAvailable = false;
@@ -174,6 +175,7 @@ class _BusinessCardScreenState extends State<BusinessCardScreen>
       final data = userDoc.data()!;
       setState(() {
         _currentShortname = data['shortname'];
+        _nickname = (data['nickname'] is String) ? (data['nickname'] as String) : null;
         _shortnameController.text = _currentShortname ?? '';
         _validationMessage = (_currentShortname ?? '').isNotEmpty ? 'available!' : null;
         _isAvailable = (_currentShortname ?? '').isNotEmpty;
@@ -206,6 +208,34 @@ class _BusinessCardScreenState extends State<BusinessCardScreen>
       
       _checkFormComplete();
     }
+  }
+
+  bool _shortnameIsDistinctFromNickname(String shortname) {
+    final nick = (_nickname ?? '').trim().toLowerCase();
+    if (nick.isEmpty) return true;
+    final sn = shortname.trim().toLowerCase();
+    if (sn.isEmpty) return true;
+
+    // No overlapping digits at all.
+    final digitsSn = RegExp(r'\d').allMatches(sn).map((m) => m.group(0)!).toSet();
+    final digitsNick = RegExp(r'\d').allMatches(nick).map((m) => m.group(0)!).toSet();
+    if (digitsSn.intersection(digitsNick).isNotEmpty) return false;
+
+    // No overlapping run of 3 letters anywhere.
+    String lettersOnly(String x) => x.replaceAll(RegExp(r'[^a-z]'), '');
+    final a = lettersOnly(sn);
+    final b = lettersOnly(nick);
+    if (a.length >= 3 && b.length >= 3) {
+      final subs = <String>{};
+      for (int i = 0; i <= a.length - 3; i++) {
+        subs.add(a.substring(i, i + 3));
+      }
+      for (int i = 0; i <= b.length - 3; i++) {
+        if (subs.contains(b.substring(i, i + 3))) return false;
+      }
+    }
+
+    return true;
   }
 
   String _formatPhoneDashed(String raw) {
@@ -352,13 +382,24 @@ class _BusinessCardScreenState extends State<BusinessCardScreen>
       return;
     }
 
-    // Check format: at least 3 characters, 1 number
-    final hasMinLength = shortname.length >= 3;
+    // Must be completely different than nickname (numbers + 3-letter runs).
+    if (!_shortnameIsDistinctFromNickname(shortname)) {
+      setState(() {
+        _validationMessage =
+            'Must be completely different than nickname (none of the same numbers or consecutive set of letters)';
+        _isAvailable = false;
+        _isValidating = false;
+      });
+      return;
+    }
+
+    // Check format: at least 6 characters, 1 number (to reduce collisions)
+    final hasMinLength = shortname.length >= 6;
     final hasNumber = RegExp(r'\d').hasMatch(shortname);
 
     if (!hasMinLength || !hasNumber) {
       setState(() {
-        _validationMessage = 'Required: @ least 3 char, 1 num';
+        _validationMessage = 'Required: at least 6 characters and 1 number';
         _isAvailable = false;
         _isValidating = false;
       });

@@ -25,10 +25,10 @@ class SocialService {
     if (user == null) return;
 
     final userDoc = await _firestore.collection('users').doc(user.uid).get();
-    final nickname = userDoc.data()?['shortname'] ?? 
-                    userDoc.data()?['nickname'] ?? 
-                    user.email?.split('@')[0] ?? 
-                    'User';
+    // IMPORTANT: never use shortname as a public display name.
+    final nickname = userDoc.data()?['nickname'] ??
+        user.email?.split('@')[0] ??
+        'User';
 
     // Check if post requires approval
     final requiresApproval = ContentModeration.requiresApproval(
@@ -357,10 +357,10 @@ class SocialService {
     if (user == null) return;
 
     final userDoc = await _firestore.collection('users').doc(user.uid).get();
-    final nickname = userDoc.data()?['shortname'] ?? 
-                    userDoc.data()?['nickname'] ?? 
-                    user.email?.split('@')[0] ?? 
-                    'User';
+    // IMPORTANT: never use shortname as a public display name.
+    final nickname = userDoc.data()?['nickname'] ??
+        user.email?.split('@')[0] ??
+        'User';
 
     await _firestore.collection('posts').doc(postId).collection('comments').add({
       'postId': postId,

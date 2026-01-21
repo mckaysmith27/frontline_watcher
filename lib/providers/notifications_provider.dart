@@ -44,16 +44,18 @@ class NotificationsProvider extends ChangeNotifier {
   final FirebaseAuth _auth = FirebaseAuth.instance;
 
   bool _notificationsEnabled = true; // Default to true
-  bool _fastNotificationsEnabled = false;
-  bool _fastJobAcceptEnabled = false;
   bool _applyFilterEnabled = false;
+  bool _calendarSyncEnabled = false;
+  bool _vipPerksPurchased = false;
+  bool _vipPerksEnabled = false;
   bool _setTimesEnabled = false;
   List<TimeWindow> _timeWindows = [];
 
   bool get notificationsEnabled => _notificationsEnabled;
-  bool get fastNotificationsEnabled => _fastNotificationsEnabled;
-  bool get fastJobAcceptEnabled => _fastJobAcceptEnabled;
   bool get applyFilterEnabled => _applyFilterEnabled;
+  bool get calendarSyncEnabled => _calendarSyncEnabled;
+  bool get vipPerksPurchased => _vipPerksPurchased;
+  bool get vipPerksEnabled => _vipPerksEnabled;
   bool get setTimesEnabled => _setTimesEnabled;
   List<TimeWindow> get timeWindows => _timeWindows;
 
@@ -83,9 +85,10 @@ class NotificationsProvider extends ChangeNotifier {
       if (doc.exists) {
         final data = doc.data()!;
         _notificationsEnabled = data['notifyEnabled'] ?? true; // Default to true
-        _fastNotificationsEnabled = data['fastNotificationsEnabled'] ?? false;
-        _fastJobAcceptEnabled = data['fastJobAcceptEnabled'] ?? false;
         _applyFilterEnabled = data['applyFilterEnabled'] ?? false;
+        _calendarSyncEnabled = data['calendarSyncEnabled'] ?? false;
+        _vipPerksPurchased = data['vipPerksPurchased'] ?? false;
+        _vipPerksEnabled = data['vipPerksEnabled'] ?? false;
         _setTimesEnabled = data['setTimesEnabled'] ?? false;
         
         // Load time windows
@@ -125,28 +128,6 @@ class NotificationsProvider extends ChangeNotifier {
     notifyListeners();
   }
 
-  Future<void> setFastNotificationsEnabled(bool enabled) async {
-    final user = _auth.currentUser;
-    if (user == null) return;
-
-    _fastNotificationsEnabled = enabled;
-    await _firestore.collection('users').doc(user.uid).update({
-      'fastNotificationsEnabled': enabled,
-    });
-    notifyListeners();
-  }
-
-  Future<void> setFastJobAcceptEnabled(bool enabled) async {
-    final user = _auth.currentUser;
-    if (user == null) return;
-
-    _fastJobAcceptEnabled = enabled;
-    await _firestore.collection('users').doc(user.uid).update({
-      'fastJobAcceptEnabled': enabled,
-    });
-    notifyListeners();
-  }
-
   Future<void> setApplyFilterEnabled(bool enabled) async {
     final user = _auth.currentUser;
     if (user == null) return;
@@ -154,6 +135,31 @@ class NotificationsProvider extends ChangeNotifier {
     _applyFilterEnabled = enabled;
     await _firestore.collection('users').doc(user.uid).update({
       'applyFilterEnabled': enabled,
+    });
+    notifyListeners();
+  }
+
+  Future<void> setCalendarSyncEnabled(bool enabled) async {
+    final user = _auth.currentUser;
+    if (user == null) return;
+
+    _calendarSyncEnabled = enabled;
+    await _firestore.collection('users').doc(user.uid).update({
+      'calendarSyncEnabled': enabled,
+    });
+    notifyListeners();
+  }
+
+  Future<void> setVipPerksEnabled(bool enabled) async {
+    final user = _auth.currentUser;
+    if (user == null) return;
+
+    // Only allow enabling if purchased; disabling is always allowed.
+    if (enabled && !_vipPerksPurchased) return;
+
+    _vipPerksEnabled = enabled;
+    await _firestore.collection('users').doc(user.uid).update({
+      'vipPerksEnabled': enabled,
     });
     notifyListeners();
   }

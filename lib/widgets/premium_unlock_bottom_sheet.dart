@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../config/app_config.dart';
 import '../screens/filters/payment_screen.dart';
+import 'marketing_points.dart';
 
 class PremiumUnlockBottomSheet extends StatefulWidget {
   const PremiumUnlockBottomSheet({super.key});
@@ -17,16 +18,45 @@ class PremiumUnlockBottomSheet extends StatefulWidget {
   State<PremiumUnlockBottomSheet> createState() => _PremiumUnlockBottomSheetState();
 }
 
-class _PremiumUnlockBottomSheetState extends State<PremiumUnlockBottomSheet> {
+class _PremiumUnlockBottomSheetState extends State<PremiumUnlockBottomSheet>
+    with SingleTickerProviderStateMixin {
   String? _selectedTier;
   int _headlineIndex = 0;
 
   Map<String, Map<String, dynamic>> get _tiers => AppConfig.subscriptionTiers;
 
+  late final AnimationController _crownController;
+  late final Animation<double> _crownWobble;
+
   @override
   void initState() {
     super.initState();
+    _crownController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 650),
+    );
+    _crownWobble = TweenSequence<double>([
+      TweenSequenceItem(tween: Tween(begin: 0.0, end: -0.30), weight: 1),
+      TweenSequenceItem(tween: Tween(begin: -0.30, end: 0.25), weight: 1),
+      TweenSequenceItem(tween: Tween(begin: 0.25, end: -0.18), weight: 1),
+      TweenSequenceItem(tween: Tween(begin: -0.18, end: 0.12), weight: 1),
+      TweenSequenceItem(tween: Tween(begin: 0.12, end: 0.0), weight: 1),
+    ]).animate(CurvedAnimation(parent: _crownController, curve: Curves.easeOut));
+
     _startHeadlineLoop();
+    _ringCrown();
+  }
+
+  @override
+  void dispose() {
+    _crownController.dispose();
+    super.dispose();
+  }
+
+  void _ringCrown() {
+    _crownController
+      ..reset()
+      ..forward();
   }
 
   void _startHeadlineLoop() {
@@ -36,6 +66,46 @@ class _PremiumUnlockBottomSheetState extends State<PremiumUnlockBottomSheet> {
       setState(() => _headlineIndex = (_headlineIndex + 1) % 3);
       _startHeadlineLoop();
     });
+  }
+
+  Widget _premiumTitle(BuildContext context) {
+    final style = Theme.of(context).textTheme.headlineSmall;
+    final premiumStyle = style?.copyWith(fontWeight: FontWeight.w800) ?? const TextStyle(fontSize: 24);
+
+    return Text.rich(
+      TextSpan(
+        style: style,
+        children: [
+          const TextSpan(text: 'Unlock '),
+          TextSpan(text: 'Premium', style: premiumStyle),
+          // No space between Premium and crown; crown floats above the "m".
+          WidgetSpan(
+            alignment: PlaceholderAlignment.baseline,
+            baseline: TextBaseline.alphabetic,
+            child: AnimatedBuilder(
+              animation: _crownWobble,
+              builder: (context, _) {
+                // Base tilt slightly right, then wobble like a bell.
+                final baseTilt = 0.22; // radians
+                return Transform.translate(
+                  offset: const Offset(-2, -12),
+                  child: Transform.rotate(
+                    angle: baseTilt + _crownWobble.value,
+                    child: const Icon(
+                      Icons.crown,
+                      size: 20,
+                      color: Color(0xFFFFD54F), // gold-ish
+                    ),
+                  ),
+                );
+              },
+            ),
+          ),
+          const TextSpan(text: ' Features'),
+        ],
+      ),
+      textAlign: TextAlign.center,
+    );
   }
 
   Widget _headline(BuildContext context) {
@@ -59,7 +129,7 @@ class _PremiumUnlockBottomSheetState extends State<PremiumUnlockBottomSheet> {
       );
     } else {
       child = Text(
-        '"It shouldn’t be a part time job just trying to get a job." —Mr.McCay',
+        '"It shouldn’t be a part time job just trying to get a job. Sub67 = Problem Solved!" —Mr.McCay',
         style: style,
         textAlign: TextAlign.center,
       );
@@ -81,31 +151,6 @@ class _PremiumUnlockBottomSheetState extends State<PremiumUnlockBottomSheet> {
             ),
           ),
         ),
-      ),
-    );
-  }
-
-  Widget _featureRow({
-    required IconData icon,
-    required String text,
-  }) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 8),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Padding(
-            padding: const EdgeInsets.only(top: 2),
-            child: Icon(icon, size: 20),
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Text(
-              text,
-              style: const TextStyle(fontSize: 14, height: 1.25),
-            ),
-          ),
-        ],
       ),
     );
   }
@@ -138,11 +183,7 @@ class _PremiumUnlockBottomSheetState extends State<PremiumUnlockBottomSheet> {
                   controller: scrollController,
                   padding: const EdgeInsets.all(24),
                   children: [
-                    Text(
-                      'Unlock Premium Features',
-                      style: Theme.of(context).textTheme.headlineSmall,
-                      textAlign: TextAlign.center,
-                    ),
+                    _premiumTitle(context),
                     const SizedBox(height: 12),
 
                     // Marketing headline carousel
@@ -156,44 +197,14 @@ class _PremiumUnlockBottomSheetState extends State<PremiumUnlockBottomSheet> {
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            _featureRow(
-                              icon: Icons.bolt,
-                              text:
-                                  "Get notified quickly when a new job is posted with 'FAST ALERTS' technology.",
-                            ),
-                            _featureRow(
-                              icon: Icons.workspace_premium,
-                              text:
-                                  "Be first to accept the job with proprietary 'PRIORITY BOOKING'.",
-                            ),
-                            _featureRow(
-                              icon: Icons.filter_list,
-                              text: "Cut through the noise with ‘KEYWORD FILTERING’.",
-                            ),
-                            _featureRow(
-                              icon: Icons.sync,
-                              text: 'Sync jobs to your mobile calendar.',
-                            ),
-                            _featureRow(
-                              icon: Icons.badge,
-                              text:
-                                  'Get free* personalized business cards sent directly to you in the mail.',
-                            ),
-                            _featureRow(
-                              icon: Icons.qr_code_2,
-                              text:
-                                  'Get added quickly as a preferred sub with you own personalized QR code link.',
-                            ),
-                            _featureRow(
-                              icon: Icons.people,
-                              text:
-                                  'Connect with fellow subs, teachers, and administration.',
-                            ),
-                            _featureRow(
-                              icon: Icons.support_agent,
-                              text:
-                                  'Get quick answers to all of your questions from other educators and AI support.',
-                            ),
+                            const MarketingPointRow(point: MarketingPointKey.fastAlerts),
+                            const MarketingPointRow(point: MarketingPointKey.priorityBooking),
+                            const MarketingPointRow(point: MarketingPointKey.keywordFiltering),
+                            const MarketingPointRow(point: MarketingPointKey.calendarSync),
+                            const MarketingPointRow(point: MarketingPointKey.bizCards),
+                            const MarketingPointRow(point: MarketingPointKey.qrCodeLink),
+                            const MarketingPointRow(point: MarketingPointKey.communityConnect),
+                            const MarketingPointRow(point: MarketingPointKey.educatorSupport),
                           ],
                         ),
                       ),

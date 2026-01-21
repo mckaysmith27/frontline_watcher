@@ -133,7 +133,7 @@ class MyPageTab extends StatelessWidget {
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
               Text(
-                'Links',
+                'Socials',
                 style: Theme.of(context).textTheme.titleMedium?.copyWith(
                       fontWeight: FontWeight.bold,
                     ),
@@ -156,9 +156,7 @@ class MyPageTab extends StatelessWidget {
             Padding(
               padding: const EdgeInsets.all(16),
               child: Text(
-                isOwnPage
-                    ? 'Add your social media links'
-                    : 'No links added',
+                'No socials added',
                 style: TextStyle(color: Colors.grey[600]),
               ),
             )

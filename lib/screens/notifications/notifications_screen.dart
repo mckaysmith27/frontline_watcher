@@ -2,10 +2,11 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../providers/notifications_provider.dart';
 import '../../providers/subscription_provider.dart';
-import '../filters/automation_bottom_sheet.dart';
 import '../profile/profile_screen.dart';
 import '../../widgets/app_bar_quick_toggles.dart';
 import '../../widgets/profile_app_bar.dart';
+import '../../widgets/marketing_points.dart';
+import '../../widgets/premium_unlock_bottom_sheet.dart';
 import 'time_window_widget.dart';
 
 class NotificationsScreen extends StatefulWidget {
@@ -39,11 +40,12 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
       body: Consumer2<NotificationsProvider, SubscriptionProvider>(
         builder: (context, notificationsProvider, subscriptionProvider, _) {
           final hasActiveSubscription = subscriptionProvider.hasActiveSubscription;
+          final hasVipPerks = notificationsProvider.vipPerksPurchased;
           
           return ListView(
             padding: const EdgeInsets.all(16),
             children: [
-              _buildToggles(context, notificationsProvider, hasActiveSubscription),
+              _buildToggles(context, notificationsProvider, hasActiveSubscription, hasVipPerks),
             ],
           );
         },
@@ -51,18 +53,63 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
     );
   }
 
-  Widget _buildToggles(BuildContext context, NotificationsProvider notificationsProvider, bool hasActiveSubscription) {
+  Widget _buildToggles(
+    BuildContext context,
+    NotificationsProvider notificationsProvider,
+    bool hasActiveSubscription,
+    bool hasVipPerks,
+  ) {
     return Column(
       children: [
-        // Enable Notifications toggle
+        // Enable Job Alerts toggle (subscription-gated)
         Card(
-          child: SwitchListTile(
-            title: const Text('Enable Notifications'),
-            subtitle: const Text('Receive notifications for new job postings'),
-            value: notificationsProvider.notificationsEnabled,
-            onChanged: (value) {
-              notificationsProvider.setNotificationsEnabled(value);
-            },
+          child: Column(
+            children: [
+              SwitchListTile(
+                title: Wrap(
+                  crossAxisAlignment: WrapCrossAlignment.center,
+                  spacing: 6,
+                  runSpacing: 4,
+                  children: [
+                    const Text('Enable Job Alerts'),
+                    Tooltip(
+                      message:
+                          'Turns on job alerts. When enabled, Sub67 will notify you when a new matching job is posted.',
+                      child: Icon(
+                        Icons.help_outline,
+                        size: 18,
+                        color: Colors.grey[600],
+                      ),
+                    ),
+                  ],
+                ),
+                subtitle: const Text('Receive job alerts for new job postings'),
+                value: notificationsProvider.notificationsEnabled,
+                onChanged: (value) {
+                  if (!hasActiveSubscription && value == true) {
+                    PremiumUnlockBottomSheet.show(context);
+                    return;
+                  }
+                  notificationsProvider.setNotificationsEnabled(value);
+                },
+                secondary: Icon(
+                  hasActiveSubscription ? Icons.lock_open : Icons.lock,
+                  color: hasActiveSubscription ? Colors.green : Colors.orange,
+                ),
+              ),
+              // Marketing points visually connected to Job Alerts
+              const Divider(height: 1),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 10, 16, 12),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: const [
+                    MarketingPointRow(point: MarketingPointKey.fastAlerts, dense: true),
+                    MarketingPointRow(point: MarketingPointKey.priorityBooking, dense: true),
+                  ],
+                ),
+              ),
+            ],
           ),
         ),
         const SizedBox(height: 16),
@@ -70,7 +117,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
         // Set Times toggle
         Card(
           child: SwitchListTile(
-            title: const Text('Set Times'),
+            title: const Text('Set Alert Times'),
             subtitle: const Text('Only receive notifications during specified time windows'),
             value: notificationsProvider.setTimesEnabled,
             onChanged: (value) {
@@ -110,80 +157,6 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
           ),
         ],
         
-        // Enable FAST Notifications toggle (paid feature)
-        Card(
-          child: SwitchListTile(
-            title: Wrap(
-              crossAxisAlignment: WrapCrossAlignment.center,
-              spacing: 6,
-              runSpacing: 4,
-              children: [
-                const Text("Enable 'FAST ALERT'"),
-                Tooltip(
-                  message:
-                      'Uses proprietary scanning architecture to minimize the gap between a job first being posted and the user being notified.',
-                  child: Icon(
-                    Icons.help_outline,
-                    size: 18,
-                    color: Colors.grey[600],
-                  ),
-                ),
-              ],
-            ),
-            subtitle: const Text('Get instant notifications for matching jobs'),
-            value: notificationsProvider.fastNotificationsEnabled,
-            onChanged: hasActiveSubscription
-                ? (value) {
-                    notificationsProvider.setFastNotificationsEnabled(value);
-                  }
-                : (_) {
-                    _showPurchaseOptions(context);
-                  },
-            secondary: Icon(
-              hasActiveSubscription ? Icons.lock_open : Icons.lock,
-              color: hasActiveSubscription ? Colors.green : Colors.orange,
-            ),
-          ),
-        ),
-        const SizedBox(height: 16),
-        
-        // Enable FAST Job Accept toggle (paid feature)
-        Card(
-          child: SwitchListTile(
-            title: Wrap(
-              crossAxisAlignment: WrapCrossAlignment.center,
-              spacing: 6,
-              runSpacing: 4,
-              children: [
-                const Text("Enable 'PRIORITY BOOKING'"),
-                Tooltip(
-                  message:
-                      'Uses proprietary technology features—like the applying of a keywords filter and guidance towards a users desired call to action thus enabling the user to reduce time between being notified and accepting a desired new job.',
-                  child: Icon(
-                    Icons.help_outline,
-                    size: 18,
-                    color: Colors.grey[600],
-                  ),
-                ),
-              ],
-            ),
-            subtitle: const Text('Automatically accept jobs that match your preferences'),
-            value: notificationsProvider.fastJobAcceptEnabled,
-            onChanged: hasActiveSubscription
-                ? (value) {
-                    notificationsProvider.setFastJobAcceptEnabled(value);
-                  }
-                : (_) {
-                    _showPurchaseOptions(context);
-                  },
-            secondary: Icon(
-              hasActiveSubscription ? Icons.lock_open : Icons.lock,
-              color: hasActiveSubscription ? Colors.green : Colors.orange,
-            ),
-          ),
-        ),
-        const SizedBox(height: 16),
-        
         // Apply Filter Keywords toggle (paid feature)
         Card(
           child: SwitchListTile(
@@ -192,7 +165,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
               spacing: 6,
               runSpacing: 4,
               children: [
-                const Text('Apply Filter Keywords'),
+                const Text('Enable Keyword Filter'),
                 Tooltip(
                   message:
                       "This activates the keywords specified on the 'filters' feature so that you are only notified of jobs that meet your keyword specifications.",
@@ -204,14 +177,14 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
                 ),
               ],
             ),
-            subtitle: const Text('Apply your keyword filters to job notifications'),
+            subtitle: const Text("Apply your own tailored filter to the job alerts you'll recieve."),
             value: notificationsProvider.applyFilterEnabled,
             onChanged: hasActiveSubscription
                 ? (value) {
                     notificationsProvider.setApplyFilterEnabled(value);
                   }
                 : (_) {
-                    _showPurchaseOptions(context);
+                    PremiumUnlockBottomSheet.show(context);
                   },
             secondary: Icon(
               hasActiveSubscription ? Icons.lock_open : Icons.lock,
@@ -220,15 +193,182 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
           ),
         ),
         const SizedBox(height: 16),
+
+        // Calendar Sync toggle (paid feature)
+        Card(
+          child: Column(
+            children: [
+              SwitchListTile(
+                title: Wrap(
+                  crossAxisAlignment: WrapCrossAlignment.center,
+                  spacing: 6,
+                  runSpacing: 4,
+                  children: [
+                    const Text('Calendar Sync'),
+                    Tooltip(
+                      message: "Sync up the jobs you have booked to your mobile's  calendar.",
+                      child: Icon(
+                        Icons.help_outline,
+                        size: 18,
+                        color: Colors.grey[600],
+                      ),
+                    ),
+                  ],
+                ),
+                value: notificationsProvider.calendarSyncEnabled,
+                onChanged: hasActiveSubscription
+                    ? (value) => notificationsProvider.setCalendarSyncEnabled(value)
+                    : (_) => PremiumUnlockBottomSheet.show(context),
+                secondary: Icon(
+                  hasActiveSubscription ? Icons.lock_open : Icons.lock,
+                  color: hasActiveSubscription ? Colors.green : Colors.orange,
+                ),
+              ),
+              const Divider(height: 1),
+              const Padding(
+                padding: EdgeInsets.fromLTRB(16, 10, 16, 12),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    MarketingPointRow(point: MarketingPointKey.calendarSync, dense: true),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 16),
+
+        // VIP Perks Power-up (one-time purchase feature)
+        Card(
+          child: Column(
+            children: [
+              SwitchListTile(
+                title: Wrap(
+                  crossAxisAlignment: WrapCrossAlignment.center,
+                  spacing: 6,
+                  runSpacing: 4,
+                  children: [
+                    const Text('VIP Perks Power-up'),
+                    Tooltip(
+                      message: 'One-time purchase feature with VIP perks.',
+                      child: Icon(
+                        Icons.help_outline,
+                        size: 18,
+                        color: Colors.grey[600],
+                      ),
+                    ),
+                  ],
+                ),
+                value: notificationsProvider.vipPerksEnabled,
+                onChanged: (value) {
+                  if (!hasVipPerks && value == true) {
+                    _showVipPerksPurchaseSheet(context);
+                    return;
+                  }
+                  notificationsProvider.setVipPerksEnabled(value);
+                },
+                secondary: Icon(
+                  hasVipPerks ? Icons.lock_open : Icons.lock,
+                  color: Colors.deepPurple,
+                ),
+              ),
+              const Divider(height: 1),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 10, 16, 12),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const MarketingPointRow(
+                      point: MarketingPointKey.vipEarlyOutHours,
+                      dense: true,
+                    ),
+                    const MarketingPointRow(
+                      point: MarketingPointKey.vipPreferredSubShortcut,
+                      dense: true,
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      "An email will be sent out with your profile link to an email subscriber who as opted-in to recieve sub67 marketing and promotions materials for teachers/administration, if in the case that there aren't yet teachers/administrators who are sub67 users in the schools you have selected on your filters page. This email will include your link inviting the subscriber to add to add you as a preferred sub.",
+                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                            color: Colors.grey[600],
+                            height: 1.3,
+                          ),
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      'Preferred Sub list requests are optional and controlled by teachers/administration and district processes; Sub67 cannot guarantee you will be added.',
+                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                            color: Colors.grey[600],
+                            height: 1.3,
+                          ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 16),
       ],
     );
   }
 
-  void _showPurchaseOptions(BuildContext context) {
-    showModalBottomSheet(
+  void _showVipPerksPurchaseSheet(BuildContext context) {
+    showModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
-      builder: (_) => const AutomationBottomSheet(),
+      builder: (context) {
+        return SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(16, 18, 16, 18),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'VIP Perks Power-up',
+                  style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                        fontWeight: FontWeight.w700,
+                      ),
+                ),
+                const SizedBox(height: 6),
+                Text(
+                  'One-time purchase',
+                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                        fontStyle: FontStyle.italic,
+                        color: Colors.grey[700],
+                      ),
+                ),
+                const SizedBox(height: 14),
+                Text(
+                  'Checkout for VIP Perks is not wired up yet in this build.',
+                  style: Theme.of(context).textTheme.bodyMedium,
+                ),
+                const SizedBox(height: 16),
+                SizedBox(
+                  width: double.infinity,
+                  child: ElevatedButton(
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.deepPurple,
+                      foregroundColor: Colors.white,
+                    ),
+                    onPressed: () {
+                      Navigator.pop(context);
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(
+                          content: Text('VIP Perks checkout coming soon.'),
+                        ),
+                      );
+                    },
+                    child: const Text('Checkout'),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
     );
   }
 

@@ -88,10 +88,17 @@ class UserRoleService {
 
       // Persist back to Firestore so the UI is stable next launch.
       // (Do not auto-add app admin unless legacy admin fields already implied it above.)
-      await _firestore.collection('users').doc(user.uid).set(
-        {'userRoles': normalized},
-        SetOptions(merge: true),
-      );
+      final existingRaw = userData?['userRoles'];
+      final existing = (existingRaw is List)
+          ? existingRaw.map((r) => r.toString().toLowerCase()).toSet()
+          : <String>{};
+      final next = normalized.toSet();
+      if (existing.isEmpty || existing.length != next.length || !existing.containsAll(next)) {
+        await _firestore.collection('users').doc(user.uid).set(
+          {'userRoles': normalized},
+          SetOptions(merge: true),
+        );
+      }
 
       // Default app admin level if missing (for app admins only).
       if (normalized.contains('app admin')) {

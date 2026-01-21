@@ -24,6 +24,41 @@ class AuthProvider extends ChangeNotifier {
     _init();
   }
 
+  static const _alphaNum = 'abcdefghijklmnopqrstuvwxyz0123456789';
+
+  String _randomAlnum(int len) {
+    final r = Random.secure();
+    final buf = StringBuffer();
+    for (int i = 0; i < len; i++) {
+      buf.write(_alphaNum[r.nextInt(_alphaNum.length)]);
+    }
+    return buf.toString();
+  }
+
+  bool _distinctShortnameAndNickname(String shortname, String nickname) {
+    final sn = shortname.trim().toLowerCase();
+    final nn = nickname.trim().toLowerCase();
+    if (sn.isEmpty || nn.isEmpty) return true;
+
+    final digitsSn = RegExp(r'\d').allMatches(sn).map((m) => m.group(0)!).toSet();
+    final digitsNn = RegExp(r'\d').allMatches(nn).map((m) => m.group(0)!).toSet();
+    if (digitsSn.intersection(digitsNn).isNotEmpty) return false;
+
+    String lettersOnly(String x) => x.replaceAll(RegExp(r'[^a-z]'), '');
+    final a = lettersOnly(sn);
+    final b = lettersOnly(nn);
+    if (a.length >= 3 && b.length >= 3) {
+      final subs = <String>{};
+      for (int i = 0; i <= a.length - 3; i++) {
+        subs.add(a.substring(i, i + 3));
+      }
+      for (int i = 0; i <= b.length - 3; i++) {
+        if (subs.contains(b.substring(i, i + 3))) return false;
+      }
+    }
+    return true;
+  }
+
   Future<void> _init() async {
     _authSub?.cancel();
     _authSub = _auth.authStateChanges().listen((User? user) {
@@ -38,6 +73,10 @@ class AuthProvider extends ChangeNotifier {
         final uid = user.uid;
         if (_lastPushInitUid == uid) return;
         _lastPushInitUid = uid;
+
+        // Best-effort: ensure defaults exist (nickname + shortname).
+        unawaited(_ensureNicknameAndShortname(uid, email: user.email));
+
         final pushService = PushNotificationService();
         // Fire-and-forget with timeout to avoid deadlocks on emulators/devices.
         unawaited(
@@ -89,13 +128,15 @@ class AuthProvider extends ChangeNotifier {
         try {
           print('[AuthProvider] Saving user data to Firestore...');
           
-          // Generate default shortname
-          final defaultShortname = await _generateDefaultShortname();
+          // Generate default shortname + nickname (random 6–8 chars, distinct)
+          final pair = await _generateDefaultNicknameAndShortname();
+          final defaultShortname = pair.shortname;
+          final defaultNickname = pair.nickname;
           
           await _firestore.collection('users').doc(credential.user!.uid).set({
             'username': username,
             'email': email,
-            'nickname': username,
+            'nickname': defaultNickname,
             'shortname': defaultShortname,
             'userRoles': [userRole], // Array of roles, starting with selected role
             'createdAt': FieldValue.serverTimestamp(),
@@ -271,38 +312,74 @@ class AuthProvider extends ChangeNotifier {
     };
   }
 
-  /// Generate a default shortname: "sub" + 3 digits (3 attempts), then "sub" + 8 alphanumeric
-  Future<String> _generateDefaultShortname() async {
-    final random = Random();
-    
-    // Try "sub" + 3 random digits (3 attempts)
-    for (int attempt = 0; attempt < 3; attempt++) {
-      final threeDigits = (100 + random.nextInt(900)).toString(); // 100-999
-      final candidate = 'sub$threeDigits';
-      
-      if (await _checkShortnameAvailable(candidate)) {
-        print('[AuthProvider] Generated shortname: $candidate (attempt ${attempt + 1})');
-        return candidate.toLowerCase();
+  Future<({String nickname, String shortname})> _generateDefaultNicknameAndShortname() async {
+    for (int attempt = 0; attempt < 60; attempt++) {
+      final lenNick = 6 + Random.secure().nextInt(3); // 6–8
+      final lenShort = 6 + Random.secure().nextInt(3); // 6–8
+      final nickname = _randomAlnum(lenNick);
+      final shortname = _randomAlnum(lenShort);
+      if (nickname == shortname) continue;
+      if (!_distinctShortnameAndNickname(shortname, nickname)) continue;
+      if (!RegExp(r'\d').hasMatch(shortname)) continue; // keep shortname a bit stronger
+      if (!await _checkShortnameAvailable(shortname)) continue;
+      return (nickname: nickname, shortname: shortname);
+    }
+    // Fallback
+    String sn;
+    do {
+      sn = _randomAlnum(8);
+    } while (!RegExp(r'\d').hasMatch(sn) || !await _checkShortnameAvailable(sn));
+    String nn;
+    do {
+      nn = _randomAlnum(8);
+    } while (nn == sn || !_distinctShortnameAndNickname(sn, nn));
+    return (nickname: nn, shortname: sn);
+  }
+
+  Future<void> _ensureNicknameAndShortname(String uid, {String? email}) async {
+    try {
+      final ref = _firestore.collection('users').doc(uid);
+      final snap = await ref.get();
+      final data = snap.data() ?? {};
+
+      final existingShort = (data['shortname'] is String) ? (data['shortname'] as String).trim().toLowerCase() : '';
+      final existingNick = (data['nickname'] is String) ? (data['nickname'] as String).trim() : '';
+
+      // Never auto-change an existing shortname (it powers business card links).
+      String shortname = existingShort;
+      if (shortname.isEmpty) {
+        String candidate;
+        do {
+          candidate = _randomAlnum(8);
+        } while (!RegExp(r'\d').hasMatch(candidate) || !await _checkShortnameAvailable(candidate));
+        shortname = candidate;
+      }
+
+      String nickname = existingNick;
+      final needsNick = nickname.isEmpty || !_distinctShortnameAndNickname(shortname, nickname);
+      if (needsNick) {
+        String candidate;
+        do {
+          candidate = _randomAlnum(8);
+        } while (candidate == shortname || !_distinctShortnameAndNickname(shortname, candidate));
+        nickname = candidate;
+      }
+
+      final updates = <String, dynamic>{};
+      if (existingShort.isEmpty) updates['shortname'] = shortname;
+      if (existingNick.isEmpty || needsNick) updates['nickname'] = nickname;
+      if (email != null && (data['email'] is! String || (data['email'] as String).trim().isEmpty)) {
+        updates['email'] = email;
+      }
+
+      if (updates.isNotEmpty) {
+        await ref.set(updates, SetOptions(merge: true));
+      }
+    } catch (e) {
+      if (kDebugMode) {
+        print('[AuthProvider] ensure nickname/shortname failed: $e');
       }
     }
-    
-    // If all 3 attempts failed, use "sub" + 8 random alphanumeric characters (case-insensitive)
-    const chars = '0123456789abcdefghijklmnopqrstuvwxyz';
-    String shortname = 'sub';
-    
-    // Generate until we find an available one (max 10 retries)
-    int retryCount = 0;
-    do {
-      shortname = 'sub';
-      for (int i = 0; i < 8; i++) {
-        final index = random.nextInt(chars.length);
-        shortname += chars[index];
-      }
-      retryCount++;
-    } while (!await _checkShortnameAvailable(shortname) && retryCount < 10);
-    
-    print('[AuthProvider] Generated shortname with alphanumeric: $shortname');
-    return shortname.toLowerCase();
   }
 
   /// Check if a shortname is available (case-insensitive)

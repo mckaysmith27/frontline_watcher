@@ -290,9 +290,6 @@ class _PostComposerState extends State<PostComposer> {
                             ),
                       ),
                       const SizedBox(width: 10),
-                      // ALL button
-                      _buildCategoryButton('ALL', null, isSelected: _selectedCategoryTag == null),
-                      const SizedBox(width: 8),
                       // Category buttons
                       ...categoryTags.entries.map((entry) {
                         final tag = entry.key;

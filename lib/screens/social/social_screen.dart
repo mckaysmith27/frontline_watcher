@@ -9,6 +9,18 @@ import '../profile/profile_screen.dart';
 import '../../widgets/app_bar_quick_toggles.dart';
 import '../../widgets/profile_app_bar.dart';
 
+class _TopicItem {
+  const _TopicItem({
+    required this.label,
+    required this.tag,
+    this.emoji,
+  });
+
+  final String label;
+  final String tag;
+  final String? emoji;
+}
+
 class SocialScreen extends StatefulWidget {
   final VoidCallback? onNavigateToMyPage;
   
@@ -40,6 +52,13 @@ class _SocialScreenState extends State<SocialScreen>
   @override
   Widget build(BuildContext context) {
     final authProvider = Provider.of<AuthProvider>(context);
+    final topics = <_TopicItem>[
+      const _TopicItem(label: 'Question', tag: 'question', emoji: '🤔'),
+      const _TopicItem(label: 'Summer Job Opportunities', tag: 'summer-job-opportunities', emoji: '☀️'),
+      const _TopicItem(label: 'Funny', tag: 'funny', emoji: '😂'),
+      const _TopicItem(label: 'Heart-warming', tag: 'heart-warming', emoji: '😄'),
+      const _TopicItem(label: 'Sad', tag: 'sad', emoji: '😢'),
+    ];
 
     return Scaffold(
       appBar: ProfileAppBar(
@@ -127,29 +146,30 @@ class _SocialScreenState extends State<SocialScreen>
                   ],
                 ),
                 const SizedBox(height: 12),
-                // Emoji tag buttons in the same row
+                // Topics row — match the PostComposer “Topics” look.
                 SingleChildScrollView(
                   scrollDirection: Axis.horizontal,
                   child: Row(
                     children: [
-                      _buildTagButton(context, '🤔', 'question', () {
-                        _openComposerWithTag(context, 'question');
-                      }),
-                      const SizedBox(width: 8),
-                      _buildTagButton(context, '☀️', 'summer-job-opportunities', () {
-                        _openComposerWithTag(context, 'summer-job-opportunities');
-                      }),
-                      const SizedBox(width: 8),
-                      _buildTagButton(context, '😂', 'funny', () {
-                        _openComposerWithTag(context, 'funny');
-                      }),
-                      const SizedBox(width: 8),
-                      _buildTagButton(context, '😄', 'heart-warming', () {
-                        _openComposerWithTag(context, 'heart-warming');
-                      }),
-                      const SizedBox(width: 8),
-                      _buildTagButton(context, '😢', 'sad', () {
-                        _openComposerWithTag(context, 'sad');
+                      Text(
+                        'Topics',
+                        style: Theme.of(context).textTheme.labelLarge?.copyWith(
+                              fontWeight: FontWeight.w600,
+                            ),
+                      ),
+                      const SizedBox(width: 10),
+                      ...topics.map((t) {
+                        final label = t.emoji == null ? t.label : '${t.emoji} ${t.label}';
+                        return Padding(
+                          padding: const EdgeInsets.only(right: 8),
+                          child: ChoiceChip(
+                            label: Text(label),
+                            selected: false,
+                            onSelected: (_) {
+                              _openComposerWithTag(context, t.tag);
+                            },
+                          ),
+                        );
                       }),
                     ],
                   ),
@@ -170,41 +190,6 @@ class _SocialScreenState extends State<SocialScreen>
             ),
           ),
         ],
-      ),
-    );
-  }
-
-  String _tagLabel(String tag) {
-    if (tag == 'summer-job-opportunities') return 'Summer Job Opportunities';
-    return tag.replaceAll('-', ' ');
-  }
-
-  Widget _buildTagButton(BuildContext context, String emoji, String tag, VoidCallback onTap) {
-    return InkWell(
-      onTap: onTap,
-      borderRadius: BorderRadius.circular(20),
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-        decoration: BoxDecoration(
-          border: Border.all(
-            color: Theme.of(context).colorScheme.outline.withOpacity(0.3),
-          ),
-          borderRadius: BorderRadius.circular(20),
-        ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Text(emoji, style: const TextStyle(fontSize: 18)),
-            const SizedBox(width: 4),
-            Text(
-              _tagLabel(tag),
-              style: TextStyle(
-                fontSize: 12,
-                color: Theme.of(context).colorScheme.onSurface,
-              ),
-            ),
-          ],
-        ),
       ),
     );
   }
