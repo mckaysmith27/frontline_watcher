@@ -12,12 +12,20 @@ class PostCard extends StatefulWidget {
   final Post post;
   final bool isOwnPost;
   final bool isTopPost;
+  final bool initialShowComments;
+  final bool forceShowComments;
+  final String? appAdminLevel; // 'full' | 'limited' | null
+  final bool enableAdminAnswerComposer;
 
   const PostCard({
     super.key,
     required this.post,
     this.isOwnPost = false,
     this.isTopPost = false,
+    this.initialShowComments = false,
+    this.forceShowComments = false,
+    this.appAdminLevel,
+    this.enableAdminAnswerComposer = false,
   });
 
   @override
@@ -27,6 +35,12 @@ class PostCard extends StatefulWidget {
 class _PostCardState extends State<PostCard> {
   final SocialService _socialService = SocialService();
   bool _showComments = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _showComments = widget.forceShowComments || widget.initialShowComments;
+  }
 
   String _categoryLabel(String tag) {
     if (tag == 'summer-job-opportunities') return 'Summer Job Opportunities';
@@ -43,6 +57,7 @@ class _PostCardState extends State<PostCard> {
   @override
   Widget build(BuildContext context) {
     final normalizedTag = _normalizeCategoryTag(widget.post.categoryTag);
+    final isQuestion = normalizedTag == 'question';
 
     return Card(
       margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
@@ -204,11 +219,13 @@ class _PostCardState extends State<PostCard> {
                 Text('${widget.post.downvotes}'),
                 IconButton(
                   icon: Icon(_showComments ? Icons.comment : Icons.comment_outlined),
-                  onPressed: () {
-                    setState(() {
-                      _showComments = !_showComments;
-                    });
-                  },
+                  onPressed: widget.forceShowComments
+                      ? null
+                      : () {
+                          setState(() {
+                            _showComments = !_showComments;
+                          });
+                        },
                 ),
                 const Spacer(),
                 Icon(Icons.visibility, size: 20),
@@ -220,6 +237,8 @@ class _PostCardState extends State<PostCard> {
               const Divider(),
               CommentComposer(
                 postId: widget.post.id,
+                appAdminLevel: widget.enableAdminAnswerComposer ? widget.appAdminLevel : null,
+                markQuestionAnswered: widget.enableAdminAnswerComposer && isQuestion,
                 onCommentAdded: () {
                   setState(() {}); // Refresh to show new comment
                 },

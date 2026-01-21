@@ -20,6 +20,8 @@ class Post {
   final String? blockedReason; // Reason for blocking (if applicable)
   final int flagCount; // Number of users who flagged this post
   final bool isFlagged; // If true, 2+ users have flagged it and it's in admin queue
+  final String? questionStatus; // 'open' | 'answered' (only for categoryTag == 'question')
+  final bool notifyAskerOnReply; // true for question posts by default
 
   Post({
     required this.id,
@@ -41,6 +43,8 @@ class Post {
     this.blockedReason,
     this.flagCount = 0,
     this.isFlagged = false,
+    this.questionStatus,
+    this.notifyAskerOnReply = true,
   });
 
   factory Post.fromMap(Map<String, dynamic> map, String id) {
@@ -66,6 +70,8 @@ class Post {
       blockedReason: map['blockedReason'],
       flagCount: map['flagCount'] ?? 0,
       isFlagged: map['isFlagged'] ?? false,
+      questionStatus: map['questionStatus'],
+      notifyAskerOnReply: map['notifyAskerOnReply'] ?? true,
     );
   }
 
@@ -89,6 +95,8 @@ class Post {
       'blockedReason': blockedReason,
       'flagCount': flagCount,
       'isFlagged': isFlagged,
+      'questionStatus': questionStatus,
+      'notifyAskerOnReply': notifyAskerOnReply,
     };
   }
 }

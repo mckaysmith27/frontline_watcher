@@ -1,10 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../providers/auth_provider.dart';
+import '../../services/social_service.dart';
+import '../../services/user_role_service.dart';
 import 'post_composer.dart';
 import 'my_page_tab.dart';
 import 'feed_tab.dart';
 import 'top_posts_tab.dart';
+import '../admin/question_queue_screen.dart';
 import '../profile/profile_screen.dart';
 import '../../widgets/app_bar_quick_toggles.dart';
 import '../../widgets/profile_app_bar.dart';
@@ -36,22 +39,48 @@ class SocialScreen extends StatefulWidget {
 class _SocialScreenState extends State<SocialScreen>
     with SingleTickerProviderStateMixin {
   late TabController _tabController;
+  final TextEditingController _appBarComposer = TextEditingController();
+  String _feedQuery = '';
+  String? _highlightPostId;
+  String _appAdminLevel = 'none'; // none|limited|full
 
   @override
   void initState() {
     super.initState();
     _tabController = TabController(length: 3, vsync: this);
+    _tabController.addListener(() {
+      if (!mounted) return;
+      // Only show/search in Feed tab (index 1).
+      if (_tabController.index != 1 && _feedQuery.isNotEmpty) {
+        setState(() => _feedQuery = '');
+        _appBarComposer.clear();
+      } else {
+        setState(() {});
+      }
+    });
+    _loadAdminLevel();
+  }
+
+  Future<void> _loadAdminLevel() async {
+    try {
+      final level = await UserRoleService().getCurrentAppAdminLevel();
+      if (!mounted) return;
+      setState(() => _appAdminLevel = level);
+    } catch (_) {}
   }
 
   @override
   void dispose() {
     _tabController.dispose();
+    _appBarComposer.dispose();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
     final authProvider = Provider.of<AuthProvider>(context);
+    final isFeedTab = _tabController.index == 1;
+    final isAppAdmin = _appAdminLevel != 'none';
     final topics = <_TopicItem>[
       const _TopicItem(label: 'Question', tag: 'question', emoji: '🤔'),
       const _TopicItem(label: 'Summer Job Opportunities', tag: 'summer-job-opportunities', emoji: '☀️'),
@@ -62,8 +91,22 @@ class _SocialScreenState extends State<SocialScreen>
 
     return Scaffold(
       appBar: ProfileAppBar(
+        child: isFeedTab ? _buildFeedAppBarField(context) : null,
         actions: [
           const AppBarQuickToggles(),
+          if (isFeedTab && isAppAdmin)
+            IconButton(
+              tooltip: 'Question queue',
+              icon: const Icon(Icons.live_help_outlined),
+              onPressed: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) => QuestionQueueScreen(appAdminLevel: _appAdminLevel),
+                  ),
+                );
+              },
+            ),
           IconButton(
             icon: const Icon(Icons.settings),
             onPressed: () {
@@ -182,15 +225,83 @@ class _SocialScreenState extends State<SocialScreen>
           Expanded(
             child: TabBarView(
               controller: _tabController,
-              children: const [
-                MyPageTab(),
-                FeedTab(),
-                TopPostsTab(),
+              children: [
+                const MyPageTab(),
+                FeedTab(searchQuery: _feedQuery, highlightPostId: _highlightPostId),
+                const TopPostsTab(),
               ],
             ),
           ),
         ],
       ),
+    );
+  }
+
+  Widget _buildFeedAppBarField(BuildContext context) {
+    return SizedBox(
+      height: 40,
+      child: TextField(
+        controller: _appBarComposer,
+        textInputAction: TextInputAction.search,
+        onChanged: (v) => setState(() => _feedQuery = v),
+        onSubmitted: (_) => _askQuestionFromAppBar(),
+        decoration: InputDecoration(
+          hintText: 'Search the feed / ask a question…',
+          isDense: true,
+          contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+          border: OutlineInputBorder(borderRadius: BorderRadius.circular(14)),
+          suffixIcon: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              IconButton(
+                tooltip: 'Search + ask as a question',
+                icon: const Icon(Icons.search),
+                onPressed: _askQuestionFromAppBar,
+              ),
+              IconButton(
+                tooltip: 'Post',
+                icon: const Icon(Icons.send),
+                onPressed: _postFromAppBar,
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Future<void> _askQuestionFromAppBar() async {
+    final text = _appBarComposer.text.trim();
+    if (text.isEmpty) return;
+    final id = await SocialService().createPost(
+      content: text,
+      categoryTag: 'question',
+      notifyAskerOnReply: true,
+      queueForAdmin: true,
+    );
+    if (!mounted) return;
+    setState(() {
+      _highlightPostId = id;
+      _feedQuery = '';
+      _appBarComposer.clear();
+    });
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Question posted. You’ll be notified when someone replies.')),
+    );
+  }
+
+  Future<void> _postFromAppBar() async {
+    final text = _appBarComposer.text.trim();
+    if (text.isEmpty) return;
+    final id = await SocialService().createPost(content: text);
+    if (!mounted) return;
+    setState(() {
+      _highlightPostId = id;
+      _feedQuery = '';
+      _appBarComposer.clear();
+    });
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Posted.')),
     );
   }
 

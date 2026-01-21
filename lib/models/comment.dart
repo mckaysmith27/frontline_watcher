@@ -12,6 +12,8 @@ class Comment {
   final int downvotes;
   final int views;
   final String? parentCommentId; // For nested replies
+  final bool isAdminAnswer; // True when an app admin answered a question
+  final bool disableProfileLink; // True for special admin identities (answrs67/76)
 
   Comment({
     required this.id,
@@ -25,6 +27,8 @@ class Comment {
     this.downvotes = 0,
     this.views = 0,
     this.parentCommentId,
+    this.isAdminAnswer = false,
+    this.disableProfileLink = false,
   });
 
   factory Comment.fromMap(Map<String, dynamic> map, String id) {
@@ -42,6 +46,8 @@ class Comment {
       downvotes: map['downvotes'] ?? 0,
       views: map['views'] ?? 0,
       parentCommentId: map['parentCommentId'],
+      isAdminAnswer: map['isAdminAnswer'] ?? false,
+      disableProfileLink: map['disableProfileLink'] ?? false,
     );
   }
 
@@ -57,6 +63,8 @@ class Comment {
       'downvotes': downvotes,
       'views': views,
       'parentCommentId': parentCommentId,
+      'isAdminAnswer': isAdminAnswer,
+      'disableProfileLink': disableProfileLink,
     };
   }
 }

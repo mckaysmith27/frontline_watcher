@@ -19,6 +19,7 @@ class CommentCard extends StatelessWidget {
     final socialService = SocialService();
     final currentUid = FirebaseAuth.instance.currentUser?.uid;
     final isOwnComment = currentUid != null && comment.userId == currentUid;
+    final canOpenProfile = !comment.disableProfileLink && comment.userId.trim().isNotEmpty;
 
     return Container(
       margin: const EdgeInsets.only(bottom: 8),
@@ -33,26 +34,25 @@ class CommentCard extends StatelessWidget {
           Row(
             children: [
               GestureDetector(
-                onTap: () {
-                  // Show user's page in modal
-                  showModalBottomSheet(
-                    context: context,
-                    isScrollControlled: true,
-                    useSafeArea: true,
-                    builder: (_) => UserPageViewer(
-                      userId: comment.userId,
-                      isOwnPage: false,
-                    ),
-                  );
-                },
+                onTap: canOpenProfile
+                    ? () {
+                        showModalBottomSheet(
+                          context: context,
+                          isScrollControlled: true,
+                          useSafeArea: true,
+                          builder: (_) => UserPageViewer(
+                            userId: comment.userId,
+                            isOwnPage: false,
+                          ),
+                        );
+                      }
+                    : null,
                 child: CircleAvatar(
                   radius: 12,
-                  backgroundImage: comment.userPhotoUrl != null
-                      ? NetworkImage(comment.userPhotoUrl!)
-                      : null,
+                  backgroundImage: comment.userPhotoUrl != null ? NetworkImage(comment.userPhotoUrl!) : null,
                   child: comment.userPhotoUrl == null
                       ? Text(
-                          comment.userNickname[0].toUpperCase(),
+                          comment.userNickname.isNotEmpty ? comment.userNickname[0].toUpperCase() : '?',
                           style: const TextStyle(fontSize: 12),
                         )
                       : null,

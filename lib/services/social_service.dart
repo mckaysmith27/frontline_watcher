@@ -16,13 +16,15 @@ class SocialService {
     return tag;
   }
 
-  Future<void> createPost({
+  Future<String?> createPost({
     required String content,
     List<String> imageUrls = const [],
     String? categoryTag,
+    bool? notifyAskerOnReply,
+    bool queueForAdmin = false,
   }) async {
     final user = _auth.currentUser;
-    if (user == null) return;
+    if (user == null) return null;
 
     final userDoc = await _firestore.collection('users').doc(user.uid).get();
     // IMPORTANT: never use shortname as a public display name.
@@ -41,7 +43,10 @@ class SocialService {
     // If doesn't require approval, set to 'approved' - everyone sees it immediately
     final approvalStatus = requiresApproval ? 'pending' : 'approved';
 
-    await _firestore.collection('posts').add({
+    final normalizedTag = normalizeCategoryTag(categoryTag);
+    final isQueuedQuestion = queueForAdmin;
+
+    final docRef = await _firestore.collection('posts').add({
       'userId': user.uid,
       'userNickname': nickname,
       'userPhotoUrl': userDoc.data()?['photoUrl'],
@@ -53,14 +58,17 @@ class SocialService {
       'views': 0,
       'isPinned': false,
       'pinOrder': 0,
-      'categoryTag': normalizeCategoryTag(categoryTag),
+      'categoryTag': normalizedTag,
       'approvalStatus': approvalStatus,
       'imageBlocked': null,
       'contentBlocked': null,
       'blockedReason': null,
       'flagCount': 0,
       'isFlagged': false,
+      if (isQueuedQuestion) 'questionStatus': 'open',
+      if (isQueuedQuestion) 'notifyAskerOnReply': notifyAskerOnReply ?? true,
     });
+    return docRef.id;
   }
 
   Stream<List<Post>> getFeedPosts() {
@@ -352,27 +360,32 @@ class SocialService {
     required String postId,
     required String content,
     String? parentCommentId,
+    bool isAdminAnswer = false,
+    bool disableProfileLink = false,
+    String? nicknameOverride,
   }) async {
     final user = _auth.currentUser;
     if (user == null) return;
 
     final userDoc = await _firestore.collection('users').doc(user.uid).get();
     // IMPORTANT: never use shortname as a public display name.
-    final nickname = userDoc.data()?['nickname'] ??
-        user.email?.split('@')[0] ??
-        'User';
+    final nickname = nicknameOverride?.trim().isNotEmpty == true
+        ? nicknameOverride!.trim()
+        : (userDoc.data()?['nickname'] ?? user.email?.split('@')[0] ?? 'User');
 
     await _firestore.collection('posts').doc(postId).collection('comments').add({
       'postId': postId,
       'userId': user.uid,
       'userNickname': nickname,
-      'userPhotoUrl': userDoc.data()?['photoUrl'],
+      'userPhotoUrl': disableProfileLink ? null : userDoc.data()?['photoUrl'],
       'content': content,
       'createdAt': FieldValue.serverTimestamp(),
       'upvotes': 0,
       'downvotes': 0,
       'views': 0,
       'parentCommentId': parentCommentId,
+      'isAdminAnswer': isAdminAnswer,
+      'disableProfileLink': disableProfileLink,
     });
   }
 
@@ -473,6 +486,41 @@ class SocialService {
       await commentRef.update({
         'views': FieldValue.increment(1),
       });
+    }
+  }
+
+  Stream<List<Post>> getOpenQuestionPosts() {
+    return _firestore
+        .collection('posts')
+        .where('categoryTag', isEqualTo: 'question')
+        .where('questionStatus', isEqualTo: 'open')
+        .snapshots()
+        .map((snapshot) {
+      final posts = <Post>[];
+      for (final doc in snapshot.docs) {
+        try {
+          posts.add(Post.fromMap(doc.data(), doc.id));
+        } catch (e) {
+          print('Error parsing post ${doc.id}: $e');
+        }
+      }
+      posts.sort((a, b) => b.createdAt.compareTo(a.createdAt));
+      return posts;
+    });
+  }
+
+  Future<void> markQuestionAnswered(String postId) async {
+    try {
+      await _firestore.collection('posts').doc(postId).set(
+        {
+          'questionStatus': 'answered',
+          'answeredAt': FieldValue.serverTimestamp(),
+        },
+        SetOptions(merge: true),
+      );
+    } catch (e) {
+      // best-effort
+      print('Error marking question answered: $e');
     }
   }
 }

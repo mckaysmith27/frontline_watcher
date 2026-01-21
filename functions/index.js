@@ -99,6 +99,76 @@ exports.onJobEventCreated = functions.firestore
   });
 
 // -------------------------
+// Community Q&A notifications (question posts)
+// -------------------------
+exports.onQuestionCommentCreated = functions.firestore
+  .document('posts/{postId}/comments/{commentId}')
+  .onCreate(async (snap, context) => {
+    try {
+      const { postId } = context.params;
+      const comment = snap.data() || {};
+
+      const db = admin.firestore();
+      const postSnap = await db.collection('posts').doc(postId).get();
+      if (!postSnap.exists) return null;
+      const post = postSnap.data() || {};
+
+      // Only treat as Q&A when this post was explicitly queued as a question.
+      if (post.questionStatus !== 'open' && post.questionStatus !== 'answered') return null;
+      if (post.notifyAskerOnReply === false) return null;
+
+      const askerUid = post.userId;
+      const commenterUid = comment.userId;
+      if (!askerUid || !commenterUid) return null;
+      if (askerUid === commenterUid) return null;
+
+      // If an app admin answers (and the comment indicates so), mark answered.
+      const commenterSnap = await db.collection('users').doc(commenterUid).get();
+      const commenter = commenterSnap.data() || {};
+      const roles = Array.isArray(commenter.userRoles) ? commenter.userRoles.map((r) => String(r).toLowerCase()) : [];
+      const isAppAdmin =
+        roles.includes('app admin') || commenter.role === 'admin' || commenter.isAdmin === true;
+
+      if (isAppAdmin && comment.isAdminAnswer === true && post.questionStatus !== 'answered') {
+        await db.collection('posts').doc(postId).set(
+          {
+            questionStatus: 'answered',
+            answeredAt: admin.firestore.FieldValue.serverTimestamp(),
+          },
+          { merge: true }
+        );
+      }
+
+      // Notify the asker.
+      const askerSnap = await db.collection('users').doc(askerUid).get();
+      const asker = askerSnap.data() || {};
+      const tokens = Array.isArray(asker.fcmTokens) ? asker.fcmTokens.filter(Boolean) : [];
+      if (!tokens.length) return null;
+
+      const nickname = typeof comment.userNickname === 'string' ? comment.userNickname : 'Someone';
+      const body = typeof comment.content === 'string' ? comment.content.trim() : '';
+      const bodyShort = body.length > 140 ? `${body.slice(0, 140)}…` : body;
+
+      await admin.messaging().sendEachForMulticast({
+        tokens,
+        notification: {
+          title: 'New reply to your question',
+          body: `${nickname}: ${bodyShort}`,
+        },
+        data: {
+          type: 'question_reply',
+          postId: String(postId),
+        },
+      });
+
+      return null;
+    } catch (e) {
+      console.warn('[Community] onQuestionCommentCreated error:', e);
+      return null;
+    }
+  });
+
+// -------------------------
 // Analytics: start time histogram (15-minute buckets)
 // -------------------------
 
