@@ -13,6 +13,7 @@ import 'providers/subscription_provider.dart';
 import 'providers/availability_provider.dart';
 import 'providers/notifications_provider.dart';
 import 'services/push_notification_service.dart';
+import 'services/frontline_webview_warmup.dart';
 import 'screens/auth/login_screen.dart';
 import 'screens/main_navigation.dart';
 import 'screens/job/job_webview_screen.dart';
@@ -68,11 +69,14 @@ class Sub67App extends StatefulWidget {
 class _Sub67AppState extends State<Sub67App> {
   final PushNotificationService _pushService = PushNotificationService();
   final GlobalKey<NavigatorState> _navigatorKey = GlobalKey<NavigatorState>();
+  final FrontlineWebViewWarmup _frontlineWarmup = FrontlineWebViewWarmup();
 
   @override
   void initState() {
     super.initState();
     _setupPushNotifications();
+    // Best-effort: warm the WebView engine/domain early for faster "tap notification → accept".
+    unawaited(_frontlineWarmup.prewarm());
   }
 
   void _setupPushNotifications() {

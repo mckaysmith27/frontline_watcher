@@ -72,9 +72,20 @@ class SchoolService {
         out.add((distanceMiles: 0, durationMinutes: 0));
         continue;
       }
+
+      // OSRM does not include live traffic and can be optimistic, especially for short trips
+      // (lights, turns, congestion). Apply a small conservative multiplier so the time-slider
+      // behaves closer to real-world "minutes to drive".
+      final miles = dMeters.toDouble() * _metersToMiles;
+      final rawMinutes = dSec.toDouble() / 60.0;
+      final factor = miles < 5
+          ? 1.45
+          : (miles < 15 ? 1.30 : (miles < 30 ? 1.20 : 1.12));
+      final adjustedMinutes = (rawMinutes * factor).ceil().clamp(1, 24 * 60);
+
       out.add((
-        distanceMiles: dMeters.toDouble() * _metersToMiles,
-        durationMinutes: (dSec.toDouble() / 60.0).round(),
+        distanceMiles: miles,
+        durationMinutes: adjustedMinutes,
       ));
     }
     return out;

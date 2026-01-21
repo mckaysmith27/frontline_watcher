@@ -30,7 +30,8 @@ class _PremiumUnlockBottomSheetState extends State<PremiumUnlockBottomSheet> {
   }
 
   void _startHeadlineLoop() {
-    Future<void>.delayed(const Duration(milliseconds: 2200), () {
+    // Keep each headline visible long enough to read.
+    Future<void>.delayed(const Duration(seconds: 7), () {
       if (!mounted) return;
       setState(() => _headlineIndex = (_headlineIndex + 1) % 3);
       _startHeadlineLoop();
@@ -46,25 +47,19 @@ class _PremiumUnlockBottomSheetState extends State<PremiumUnlockBottomSheet> {
     Widget child;
     if (_headlineIndex == 0) {
       child = Text(
-        'Get the job!',
+        'Get alerts, get the job, get preferred, get booked for more jobs.',
         style: style,
         textAlign: TextAlign.center,
       );
     } else if (_headlineIndex == 1) {
-      child = Text.rich(
-        TextSpan(
-          style: style,
-          children: const [
-            TextSpan(text: "Get on teachers/admin 'Preferred Sub' list—by the teachers/admin that "),
-            TextSpan(text: 'you', style: TextStyle(fontStyle: FontStyle.italic)),
-            TextSpan(text: ' prefer.'),
-          ],
-        ),
+      child = Text(
+        '"I can actually accept the job before it disappears! 🥲" —Mr.H',
+        style: style,
         textAlign: TextAlign.center,
       );
     } else {
       child = Text(
-        "Connect with other subs, and share in each other's experience.",
+        '"It shouldn’t be a part time job just trying to get a job." —Mr.McCay',
         style: style,
         textAlign: TextAlign.center,
       );
@@ -146,6 +141,7 @@ class _PremiumUnlockBottomSheetState extends State<PremiumUnlockBottomSheet> {
                     Text(
                       'Unlock Premium Features',
                       style: Theme.of(context).textTheme.headlineSmall,
+                      textAlign: TextAlign.center,
                     ),
                     const SizedBox(height: 12),
 
@@ -172,22 +168,31 @@ class _PremiumUnlockBottomSheetState extends State<PremiumUnlockBottomSheet> {
                             ),
                             _featureRow(
                               icon: Icons.filter_list,
-                              text:
-                                  "Sort through the noise to get notifications only for the jobs you want with 'ADVANCED KEYWORKD FILTERING'.",
+                              text: "Cut through the noise with ‘KEYWORD FILTERING’.",
                             ),
                             _featureRow(
                               icon: Icons.sync,
-                              text: 'Set up and sync jobs with your mobile calendar.',
+                              text: 'Sync jobs to your mobile calendar.',
                             ),
                             _featureRow(
                               icon: Icons.badge,
                               text:
-                                  'Get free business cards sent to you in the mail with a QR code link for teachers/admin to give you preferred status when posting their next available job.',
+                                  'Get free* personalized business cards sent directly to you in the mail.',
+                            ),
+                            _featureRow(
+                              icon: Icons.qr_code_2,
+                              text:
+                                  'Get added quickly as a preferred sub with you own personalized QR code link.',
                             ),
                             _featureRow(
                               icon: Icons.people,
                               text:
-                                  "Connect—get quick answers, suggestions, and support from fellow subs.",
+                                  'Connect with fellow subs, teachers, and administration.',
+                            ),
+                            _featureRow(
+                              icon: Icons.support_agent,
+                              text:
+                                  'Get quick answers to all of your questions from other educators and AI support.',
                             ),
                           ],
                         ),

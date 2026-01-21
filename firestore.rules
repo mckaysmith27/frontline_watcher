@@ -10,6 +10,12 @@ service cloud.firestore {
       );
     }
 
+    function isFullAppAdmin() {
+      return isAdmin() && (
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.appAdminLevel != 'limited'
+      );
+    }
+
     // Users can read/write their own user document
     // Admins can read/write any user document
     // Public read access for shortname lookup (for booking pages) - handled via Cloud Function
@@ -110,6 +116,23 @@ service cloud.firestore {
                      request.resource.data.userId == request.auth.uid;
       // Only admins can update orders (for fulfillment status, refunds, etc.)
       allow update: if isAdmin();
+    }
+
+    // Site improvements queue (admin tool)
+    match /site_improvements/{requestId} {
+      // App admins (limited/full) can read all requests (open + archived)
+      allow read: if isAdmin();
+
+      // App admins can create requests (plain text, max 5000 chars)
+      allow create: if isAdmin()
+        && request.resource.data.status == 'open'
+        && request.resource.data.createdBy == request.auth.uid
+        && request.resource.data.text is string
+        && request.resource.data.text.size() <= 5000
+        && (!('imageUrls' in request.resource.data) || request.resource.data.imageUrls is list);
+
+      // Only full app admins can archive/update requests (copy workflow)
+      allow update, delete: if isFullAppAdmin();
     }
     
     // Email queue collection (Cloud Functions only)

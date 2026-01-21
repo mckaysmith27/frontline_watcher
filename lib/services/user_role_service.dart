@@ -135,6 +135,7 @@ class UserRoleService {
   /// - 'admin_orders': ['app admin']
   /// - 'admin_roles': ['app admin']
   /// - 'admin_promos': ['app admin (full only)']
+  /// - 'admin_site_improvements': ['app admin']
   /// - 'admin_growth_sticky': ['app admin']
   /// - 'admin_growth_viral': ['app admin']
   /// - 'admin_growth_paid': ['app admin']
@@ -153,6 +154,7 @@ class UserRoleService {
       'admin_orders': ['app admin'],
       'admin_roles': ['app admin'],
       'admin_promos': ['app admin'],
+      'admin_site_improvements': ['app admin'],
       'admin_growth_sticky': ['app admin'],
       'admin_growth_viral': ['app admin'],
       'admin_growth_paid': ['app admin'],
@@ -187,6 +189,7 @@ class UserRoleService {
         'admin_approvals',
         'admin_orders',
         'admin_roles',
+        'admin_site_improvements',
         'admin_growth_sticky',
         'admin_growth_viral',
         'admin_growth_paid',

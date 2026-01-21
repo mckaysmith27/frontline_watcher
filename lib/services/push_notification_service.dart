@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -101,17 +102,33 @@ class PushNotificationService {
         // Handle local notification tap
         if (details.payload != null) {
           try {
-            final data = Map<String, dynamic>.from(
-              Map<String, String>.fromEntries(
-                details.payload!.split(',').map((e) {
-                  final parts = e.split(':');
-                  return MapEntry(parts[0], parts.length > 1 ? parts[1] : '');
-                }),
-              ),
-            );
+            final raw = details.payload!;
+            Map<String, dynamic> data;
+
+            // Preferred: JSON payload (safe for URLs containing ":" and ",")
+            final decoded = jsonDecode(raw);
+            if (decoded is Map) {
+              data = Map<String, dynamic>.from(decoded);
+            } else {
+              data = {};
+            }
+
             _notificationTapController.add(data);
           } catch (e) {
-            print('Error parsing notification payload: $e');
+            // Back-compat fallback for older payloads. NOTE: this can break for URLs.
+            try {
+              final data = Map<String, dynamic>.from(
+                Map<String, String>.fromEntries(
+                  details.payload!.split(',').map((e) {
+                    final parts = e.split(':');
+                    return MapEntry(parts[0], parts.length > 1 ? parts.sublist(1).join(':') : '');
+                  }),
+                ),
+              );
+              _notificationTapController.add(data);
+            } catch (_) {
+              print('Error parsing notification payload: $e');
+            }
           }
         }
       },
@@ -184,7 +201,9 @@ class PushNotificationService {
   }
 
   String _buildPayload(Map<String, dynamic> data) {
-    return data.entries.map((e) => '${e.key}:${e.value}').join(',');
+    // JSON avoids breaking URLs containing ":" or ",".
+    final safe = data.map((k, v) => MapEntry(k, v?.toString() ?? ''));
+    return jsonEncode(safe);
   }
 
   void dispose() {
