@@ -282,15 +282,19 @@ class ProfileScreen extends StatelessWidget {
               controller.text = currentNickname;
             }
 
-            bool distinctFromShortname(String nickname) {
+            String? distinctFromShortnameError(String nickname) {
               final n = nickname.trim().toLowerCase();
               final s = currentShortname.trim().toLowerCase();
-              if (n.isEmpty) return false;
-              if (s.isEmpty) return true;
+              if (n.isEmpty) return 'Nickname cannot be empty';
+              if (s.isEmpty) return null;
 
               final digitsN = RegExp(r'\d').allMatches(n).map((m) => m.group(0)!).toSet();
               final digitsS = RegExp(r'\d').allMatches(s).map((m) => m.group(0)!).toSet();
-              if (digitsN.intersection(digitsS).isNotEmpty) return false;
+              final overlapDigits = digitsN.intersection(digitsS).toList()..sort();
+              if (overlapDigits.isNotEmpty) {
+                final cannotUse = overlapDigits.join();
+                return 'Cannot use the same numbers as your shortname (CANNOT USE $cannotUse)';
+              }
 
               String lettersOnly(String x) => x.replaceAll(RegExp(r'[^a-z]'), '');
               final ln = lettersOnly(n);
@@ -301,13 +305,16 @@ class ProfileScreen extends StatelessWidget {
                   subs.add(ln.substring(i, i + 3));
                 }
                 for (int i = 0; i <= ls.length - 3; i++) {
-                  if (subs.contains(ls.substring(i, i + 3))) return false;
+                  if (subs.contains(ls.substring(i, i + 3))) {
+                    return 'Cannot share any run of 3 letters with your shortname';
+                  }
                 }
               }
-              return true;
+              return null;
             }
 
-            final ok = distinctFromShortname(controller.text);
+            final err = distinctFromShortnameError(controller.text);
+            final ok = err == null;
             return AlertDialog(
               title: const Text('Change Nickname'),
               content: Column(
@@ -325,9 +332,9 @@ class ProfileScreen extends StatelessWidget {
                   ),
                   const SizedBox(height: 8),
                   if (!ok)
-                    const Text(
-                      'Must be completely different than shortname (none of the same numbers or run of three letters)',
-                      style: TextStyle(color: Colors.red),
+                    Text(
+                      err,
+                      style: const TextStyle(color: Colors.red),
                     ),
                 ],
               ),

@@ -8,6 +8,7 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:flutter_stripe/flutter_stripe.dart';
 import 'firebase_options.dart';
 import 'config/app_config.dart';
+import 'services/public_app_config_service.dart';
 import 'providers/theme_provider.dart';
 import 'providers/auth_provider.dart';
 import 'providers/filters_provider.dart';
@@ -51,11 +52,27 @@ Future<void> main() async {
   }
 
   // Stripe PaymentSheet (card entry + saved payment method).
-  // If the publishable key is empty, checkout will show an error.
-  if (AppConfig.stripePublishableKey.trim().isNotEmpty) {
-    Stripe.publishableKey = AppConfig.stripePublishableKey.trim();
+  // Publishable key can come from:
+  // - Firebase Functions (preferred for centralized config)
+  // - AppConfig (fallback)
+  final fallbackKey = AppConfig.stripePublishableKey.trim();
+  if (fallbackKey.isNotEmpty) {
+    Stripe.publishableKey = fallbackKey;
     Stripe.merchantIdentifier = 'merchant.com.sub67.app';
     await Stripe.instance.applySettings();
+  } else {
+    // Best-effort fetch from backend config (no secrets; safe to expose).
+    try {
+      final cfg = await PublicAppConfigService().fetch().timeout(const Duration(seconds: 4));
+      final key = cfg?.stripePublishableKey.trim() ?? '';
+      if (key.isNotEmpty) {
+        Stripe.publishableKey = key;
+        Stripe.merchantIdentifier = 'merchant.com.sub67.app';
+        await Stripe.instance.applySettings();
+      }
+    } catch (_) {
+      // ignore; checkout screen will show a clear message if missing
+    }
   }
 
   runApp(const Sub67App());
@@ -110,25 +127,53 @@ class _Sub67AppState extends State<Sub67App> {
       ],
       child: Consumer<ThemeProvider>(
         builder: (context, themeProvider, _) {
+          final lightScheme = ColorScheme.fromSeed(
+            seedColor: const Color(0xFF6750A4),
+            brightness: Brightness.light,
+          );
+          final darkScheme = ColorScheme.fromSeed(
+            seedColor: const Color(0xFF6750A4),
+            brightness: Brightness.dark,
+          );
+
+          ButtonStyle elevatedCtaStyle(ColorScheme cs) {
+            return ButtonStyle(
+              backgroundColor: WidgetStateProperty.resolveWith<Color?>((states) {
+                if (states.contains(WidgetState.disabled)) {
+                  return cs.onSurface.withOpacity(0.12);
+                }
+                return cs.primary;
+              }),
+              foregroundColor: WidgetStateProperty.resolveWith<Color?>((states) {
+                if (states.contains(WidgetState.disabled)) {
+                  return cs.onSurface.withOpacity(0.38);
+                }
+                return cs.onPrimary;
+              }),
+              overlayColor: WidgetStateProperty.all(cs.onPrimary.withOpacity(0.10)),
+              textStyle: WidgetStateProperty.all(const TextStyle(fontWeight: FontWeight.w700)),
+              padding: WidgetStateProperty.all(const EdgeInsets.symmetric(horizontal: 16, vertical: 14)),
+              shape: WidgetStateProperty.all(
+                RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+              ),
+            );
+          }
+
           return MaterialApp(
             navigatorKey: _navigatorKey,
             title: 'Sub67',
             debugShowCheckedModeBanner: false,
             theme: ThemeData(
               useMaterial3: true,
-              colorScheme: ColorScheme.fromSeed(
-                seedColor: const Color(0xFF6750A4),
-                brightness: Brightness.light,
-              ),
+              colorScheme: lightScheme,
               textTheme: GoogleFonts.interTextTheme(),
+              elevatedButtonTheme: ElevatedButtonThemeData(style: elevatedCtaStyle(lightScheme)),
             ),
             darkTheme: ThemeData(
               useMaterial3: true,
-              colorScheme: ColorScheme.fromSeed(
-                seedColor: const Color(0xFF6750A4),
-                brightness: Brightness.dark,
-              ),
+              colorScheme: darkScheme,
               textTheme: GoogleFonts.interTextTheme(ThemeData.dark().textTheme),
+              elevatedButtonTheme: ElevatedButtonThemeData(style: elevatedCtaStyle(darkScheme)),
             ),
             themeMode: themeProvider.themeMode,
             home: initialPublicShortname != null

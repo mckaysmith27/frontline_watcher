@@ -92,8 +92,12 @@ class _PaymentScreenState extends State<PaymentScreen> {
       final user = _auth.currentUser;
       if (user == null) throw Exception('Not authenticated');
 
-      if (AppConfig.stripePublishableKey.trim().isEmpty) {
-        throw Exception('Stripe publishable key not configured in AppConfig.stripePublishableKey');
+      // Stripe must be initialized with a publishable key (preferably fetched from backend config).
+      if (stripe.Stripe.publishableKey.trim().isEmpty) {
+        throw Exception(
+          'Stripe is not configured yet (missing publishable key). '
+          'Set functions config stripe.publishable_key and redeploy functions.',
+        );
       }
 
       final promoCode = _appliedPromo;

@@ -1,6 +1,5 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
-import 'package:flutter/animation.dart';
 import 'package:flutter/services.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
@@ -59,7 +58,7 @@ class _BusinessCardScreenState extends State<BusinessCardScreen>
   late final Animation<double> _teacherTermsCheckboxScale;
 
   static const String _defaultInstructions =
-      "Scan the QR code to add me to add me as a 'preferred sub' with a single click! You can also keep this card and re-scan to quickly request me for a specific day.";
+      "Scan the QR code to add me as a 'preferred' sub! Keep this card and re-scan, to quickly request me for a specific day.";
   static const String _defaultBio =
       'An experienced sub who can who can manage a classroom and accomplish the mission.';
 
@@ -173,6 +172,8 @@ class _BusinessCardScreenState extends State<BusinessCardScreen>
     final userDoc = await _firestore.collection('users').doc(user.uid).get();
     if (userDoc.exists) {
       final data = userDoc.data()!;
+      final fsFirstName = (data['firstName'] is String) ? (data['firstName'] as String).trim() : '';
+      final fsLastName = (data['lastName'] is String) ? (data['lastName'] as String).trim() : '';
       setState(() {
         _currentShortname = data['shortname'];
         _nickname = (data['nickname'] is String) ? (data['nickname'] as String) : null;
@@ -180,12 +181,18 @@ class _BusinessCardScreenState extends State<BusinessCardScreen>
         _validationMessage = (_currentShortname ?? '').isNotEmpty ? 'available!' : null;
         _isAvailable = (_currentShortname ?? '').isNotEmpty;
         
-        // Load existing user data
-        final fullName = user.displayName ?? '';
-        if (fullName.isNotEmpty) {
-          final nameParts = fullName.split(' ');
-          _firstNameController.text = nameParts.isNotEmpty ? nameParts[0] : '';
-          _lastNameController.text = nameParts.length > 1 ? nameParts.sublist(1).join(' ') : '';
+        // Load existing user data (prefer Firestore fields; do NOT overwrite user-entered values).
+        if (fsFirstName.isNotEmpty || fsLastName.isNotEmpty) {
+          _firstNameController.text = fsFirstName;
+          _lastNameController.text = fsLastName;
+        } else {
+          // Fallback: FirebaseAuth displayName (may be blank or abbreviated)
+          final fullName = user.displayName ?? '';
+          if (fullName.isNotEmpty) {
+            final nameParts = fullName.split(' ');
+            _firstNameController.text = nameParts.isNotEmpty ? nameParts[0] : '';
+            _lastNameController.text = nameParts.length > 1 ? nameParts.sublist(1).join(' ') : '';
+          }
         }
         _phoneController.text = _formatPhoneDashed(data['phoneNumber'] ?? '');
         _emailController.text = user.email ?? '';
@@ -198,9 +205,13 @@ class _BusinessCardScreenState extends State<BusinessCardScreen>
             : _defaultBio;
       });
       
-      // Auto-save existing data
-      _saveField('firstName', _firstNameController.text);
-      _saveField('lastName', _lastNameController.text);
+      // Only backfill Firestore name fields if they were missing.
+      if (fsFirstName.isEmpty && _firstNameController.text.trim().isNotEmpty) {
+        _saveField('firstName', _firstNameController.text.trim());
+      }
+      if (fsLastName.isEmpty && _lastNameController.text.trim().isNotEmpty) {
+        _saveField('lastName', _lastNameController.text.trim());
+      }
       _saveField('phoneNumber', _phoneController.text);
       _saveField('email', _emailController.text);
       _saveField('cardInstructions', _instructionsController.text);
@@ -210,18 +221,20 @@ class _BusinessCardScreenState extends State<BusinessCardScreen>
     }
   }
 
-  bool _shortnameIsDistinctFromNickname(String shortname) {
+  String? _shortnameDistinctnessError(String shortname) {
     final nick = (_nickname ?? '').trim().toLowerCase();
-    if (nick.isEmpty) return true;
+    if (nick.isEmpty) return null;
     final sn = shortname.trim().toLowerCase();
-    if (sn.isEmpty) return true;
+    if (sn.isEmpty) return null;
 
-    // No overlapping digits at all.
     final digitsSn = RegExp(r'\d').allMatches(sn).map((m) => m.group(0)!).toSet();
     final digitsNick = RegExp(r'\d').allMatches(nick).map((m) => m.group(0)!).toSet();
-    if (digitsSn.intersection(digitsNick).isNotEmpty) return false;
+    final overlapDigits = digitsSn.intersection(digitsNick).toList()..sort();
+    if (overlapDigits.isNotEmpty) {
+      final cannotUse = overlapDigits.join();
+      return 'Cannot use the same numbers as your nickname (CANNOT USE $cannotUse)';
+    }
 
-    // No overlapping run of 3 letters anywhere.
     String lettersOnly(String x) => x.replaceAll(RegExp(r'[^a-z]'), '');
     final a = lettersOnly(sn);
     final b = lettersOnly(nick);
@@ -231,11 +244,13 @@ class _BusinessCardScreenState extends State<BusinessCardScreen>
         subs.add(a.substring(i, i + 3));
       }
       for (int i = 0; i <= b.length - 3; i++) {
-        if (subs.contains(b.substring(i, i + 3))) return false;
+        if (subs.contains(b.substring(i, i + 3))) {
+          return 'Cannot share any run of 3 letters with your nickname';
+        }
       }
     }
 
-    return true;
+    return null;
   }
 
   String _formatPhoneDashed(String raw) {
@@ -383,10 +398,10 @@ class _BusinessCardScreenState extends State<BusinessCardScreen>
     }
 
     // Must be completely different than nickname (numbers + 3-letter runs).
-    if (!_shortnameIsDistinctFromNickname(shortname)) {
+    final distinctErr = _shortnameDistinctnessError(shortname);
+    if (distinctErr != null) {
       setState(() {
-        _validationMessage =
-            'Must be completely different than nickname (none of the same numbers or consecutive set of letters)';
+        _validationMessage = distinctErr;
         _isAvailable = false;
         _isValidating = false;
       });

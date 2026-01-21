@@ -677,6 +677,19 @@ function parseIntentIdFromClientSecret(clientSecret) {
   return clientSecret.substring(0, idx);
 }
 
+exports.getPublicAppConfig = functions.https.onCall(async () => {
+  // Publishable keys are safe to expose to clients.
+  const publishableKey =
+    functions.config()?.stripe?.publishable_key ||
+    process.env.STRIPE_PUBLISHABLE_KEY ||
+    '';
+
+  return {
+    stripePublishableKey: publishableKey,
+    stripeMerchantDisplayName: 'Sub67',
+  };
+});
+
 async function getOrCreateStripeCustomerForUser(uid) {
   const db = admin.firestore();
   const userRef = db.collection('users').doc(uid);

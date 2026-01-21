@@ -1,9 +1,12 @@
 import 'package:flutter/material.dart';
+import 'dart:async';
+import '../services/user_role_service.dart';
 
 enum MarketingPointKey {
   fastAlerts,
   priorityBooking,
   keywordFiltering,
+  schoolSelectionMap,
   calendarSync,
   bizCards,
   qrCodeLink,
@@ -51,11 +54,18 @@ class MarketingPoints {
       case MarketingPointKey.keywordFiltering:
         return const MarketingPointData(
           icon: Icons.filter_list,
-          text: "Cut through the noise with ‘KEYWORD FILTERING’.",
+          text: 'Cut through the noise with ‘KEYWORD FILTERING’.',
           termTooltips: {
             'KEYWORD FILTERING':
                 'Keyword Filtering: only get alerts for the job details you care about (subject, school, teacher, etc.).',
           },
+        );
+      case MarketingPointKey.schoolSelectionMap:
+        return const MarketingPointData(
+          icon: Icons.map_outlined,
+          text:
+              'Select schools you want to teach at based on the apx. distance or time from where you live.',
+          termTooltips: {},
         );
       case MarketingPointKey.calendarSync:
         return const MarketingPointData(
@@ -87,8 +97,11 @@ class MarketingPoints {
       case MarketingPointKey.communityConnect:
         return const MarketingPointData(
           icon: Icons.people,
-          text: 'Connect with fellow subs, teachers, and administration.',
-          termTooltips: {},
+          text: 'Connect with fellow subs, teachers, and administration with TEACHERS CONNECT.',
+          termTooltips: {
+            'TEACHERS CONNECT':
+                "Ask questions and get real answers! Post and upvote posts by other subs on the 'community' page. Checkout the socials of other <userRole>'s.",
+          },
         );
       case MarketingPointKey.educatorSupport:
         return const MarketingPointData(
@@ -114,14 +127,14 @@ class MarketingPoints {
           text: "Apply 'PREFFERRED SUB SHORTCUT'.",
           termTooltips: {
             'PREFFERRED SUB SHORTCUT':
-                "For each 'VIP Perks Power-up' purchase made, a teacher/administrater with the sub67 app within your school district at the schools you have selected to get alerts for in your maps widget on the filter page will recieve an alert showing your sub profile link* with your contact information and bio, and prompting the teacher/administrator with a request to be added to their prefferred sub list**.",
+                "For each 'VIP Perks Power-up' purchase made, a teacher/administrater with the sub67 app within your school district at the schools you have selected to get alerts for in your maps widget on the filter page will recieve an alert showing your sub profile link* with your contact information and bio, and prompting the teacher/administrator with a request to be added to their prefferred sub list**.\n\n*An email will be sent out with your profile link to an email subscriber who as opted-in to recieve sub67 marketing and promotions materials for teachers/administration, if in the case that there aren't yet teachers/administrators who are sub67 users in the schools you have selected on your filters page. This email will include your link inviting the subscriber to add to add you as a preferred sub.\n\n**Preferred Sub list requests are optional and controlled by teachers/administration and district processes; Sub67 cannot guarantee you will be added.",
           },
         );
     }
   }
 }
 
-class MarketingPointRow extends StatelessWidget {
+class MarketingPointRow extends StatefulWidget {
   const MarketingPointRow({
     super.key,
     required this.point,
@@ -136,14 +149,43 @@ class MarketingPointRow extends StatelessWidget {
   final TextStyle? textStyle;
 
   @override
+  State<MarketingPointRow> createState() => _MarketingPointRowState();
+}
+
+class _MarketingPointRowState extends State<MarketingPointRow> {
+  String? _userRoleLabel;
+  static const String _bizCardsDisclaimer =
+      "*limited time offer, amounts of cards allowed for free may change and also depend on the users current subscription or non-subscription. See the biz cards page and it's checkout page for more details.";
+
+  @override
+  void initState() {
+    super.initState();
+    unawaited(_loadUserRoleLabel());
+  }
+
+  Future<void> _loadUserRoleLabel() async {
+    try {
+      final roles = await UserRoleService().getCurrentUserRoles();
+      String label = 'user';
+      if (roles.contains('sub')) label = 'sub';
+      if (roles.contains('teacher')) label = 'teacher';
+      if (roles.contains('administration')) label = 'administrator';
+      if (!mounted) return;
+      setState(() => _userRoleLabel = label);
+    } catch (_) {
+      // ignore; fallback is generic
+    }
+  }
+
+  @override
   Widget build(BuildContext context) {
-    final d = MarketingPoints.data(point);
-    final baseStyle = textStyle ??
+    final d = MarketingPoints.data(widget.point);
+    final baseStyle = widget.textStyle ??
         Theme.of(context).textTheme.bodyMedium?.copyWith(
-              fontSize: dense ? 13 : 14,
+              fontSize: widget.dense ? 13 : 14,
               height: 1.25,
             ) ??
-        TextStyle(fontSize: dense ? 13 : 14, height: 1.25);
+        TextStyle(fontSize: widget.dense ? 13 : 14, height: 1.25);
 
     final linkStyle = baseStyle.copyWith(
       decoration: TextDecoration.underline,
@@ -151,24 +193,95 @@ class MarketingPointRow extends StatelessWidget {
       fontWeight: FontWeight.w700,
     );
 
+    final tooltipThemeStyle = Theme.of(context).tooltipTheme.textStyle ?? Theme.of(context).textTheme.bodySmall;
+    final tooltipBaseStyle = (tooltipThemeStyle ?? const TextStyle(fontSize: 12)).copyWith(height: 1.3);
+    final tooltipSmallStyle = tooltipBaseStyle.copyWith(
+      fontSize: (tooltipBaseStyle.fontSize ?? 12) - 2,
+    );
+
     return Padding(
-      padding: EdgeInsets.symmetric(vertical: dense ? 6 : 8),
+      padding: EdgeInsets.symmetric(vertical: widget.dense ? 6 : 8),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Padding(
             padding: const EdgeInsets.only(top: 2),
-            child: Icon(d.icon, size: dense ? 18 : 20, color: iconColor),
+            child: Icon(d.icon, size: widget.dense ? 18 : 20, color: widget.iconColor),
           ),
           const SizedBox(width: 12),
           Expanded(
-            child: Text.rich(
-              TextSpan(children: _linkify(d.text, d.termTooltips, baseStyle, linkStyle)),
-            ),
+            child: widget.point == MarketingPointKey.bizCards
+                ? Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text.rich(
+                        TextSpan(
+                          children: _linkify(
+                            d.text,
+                            d.termTooltips,
+                            baseStyle,
+                            linkStyle,
+                            tooltipBaseStyle: tooltipBaseStyle,
+                            tooltipSmallStyle: tooltipSmallStyle,
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 6),
+                      Text(
+                        _bizCardsDisclaimer,
+                        style: baseStyle.copyWith(
+                          fontSize: (baseStyle.fontSize ?? (widget.dense ? 13 : 14)) - 2,
+                          height: 1.2,
+                          fontStyle: FontStyle.italic,
+                          color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.62),
+                        ),
+                      ),
+                    ],
+                  )
+                : Text.rich(
+                    TextSpan(
+                      children: _linkify(
+                        d.text,
+                        d.termTooltips,
+                        baseStyle,
+                        linkStyle,
+                        tooltipBaseStyle: tooltipBaseStyle,
+                        tooltipSmallStyle: tooltipSmallStyle,
+                      ),
+                    ),
+                  ),
           ),
         ],
       ),
     );
+  }
+
+  InlineSpan _buildTooltipRichMessage(
+    String msg, {
+    required TextStyle tooltipBaseStyle,
+    required TextStyle tooltipSmallStyle,
+  }) {
+    // Split into paragraphs on blank lines.
+    final paras = msg.split(RegExp(r'\n\s*\n')).map((p) => p.trim()).where((p) => p.isNotEmpty).toList();
+    if (paras.isEmpty) return TextSpan(text: msg, style: tooltipBaseStyle);
+
+    final children = <InlineSpan>[];
+    for (int idx = 0; idx < paras.length; idx++) {
+      final p = paras[idx];
+      if (idx > 0) children.add(TextSpan(text: '\n\n', style: tooltipBaseStyle));
+
+      if (p.startsWith('**')) {
+        children.add(TextSpan(text: '**', style: tooltipBaseStyle));
+        children.add(TextSpan(text: p.substring(2), style: tooltipSmallStyle));
+      } else if (p.startsWith('*')) {
+        children.add(TextSpan(text: '*', style: tooltipBaseStyle));
+        children.add(TextSpan(text: p.substring(1), style: tooltipSmallStyle));
+      } else {
+        children.add(TextSpan(text: p, style: tooltipBaseStyle));
+      }
+    }
+
+    return TextSpan(style: tooltipBaseStyle, children: children);
   }
 
   List<InlineSpan> _linkify(
@@ -176,6 +289,7 @@ class MarketingPointRow extends StatelessWidget {
     Map<String, String> tooltips,
     TextStyle baseStyle,
     TextStyle linkStyle,
+    {required TextStyle tooltipBaseStyle, required TextStyle tooltipSmallStyle}
   ) {
     if (tooltips.isEmpty) return [TextSpan(text: text, style: baseStyle)];
 
@@ -207,6 +321,10 @@ class MarketingPointRow extends StatelessWidget {
       }
 
       final msg = tooltips[bestTerm] ?? '';
+      final roleLabel = _userRoleLabel ?? 'user';
+      final tooltipTextRaw = (msg.isEmpty ? bestTerm : msg).replaceAll('<userRole>', roleLabel);
+      final tooltipText = tooltipTextRaw;
+      final useRich = tooltipText.contains('\n') || tooltipText.startsWith('*');
       spans.add(
         WidgetSpan(
           alignment: PlaceholderAlignment.baseline,
@@ -214,7 +332,14 @@ class MarketingPointRow extends StatelessWidget {
           child: Tooltip(
             triggerMode: TooltipTriggerMode.tap,
             showDuration: const Duration(seconds: 4),
-            message: msg.isEmpty ? bestTerm : msg,
+            message: useRich ? null : tooltipText,
+            richMessage: useRich
+                ? _buildTooltipRichMessage(
+                    tooltipText,
+                    tooltipBaseStyle: tooltipBaseStyle,
+                    tooltipSmallStyle: tooltipSmallStyle,
+                  )
+                : null,
             child: Text(bestTerm, style: linkStyle),
           ),
         ),

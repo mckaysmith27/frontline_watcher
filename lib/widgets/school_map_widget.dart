@@ -29,9 +29,10 @@ class _SchoolMapWidgetState extends State<SchoolMapWidget> {
   Position? _selectedPosition;
   double _radiusMiles = 10.0;
   double _maxRadiusMiles = 50.0; // Will be calculated based on furthest school
-  double? _maxTravelTimeMinutes = 60.0; // Default to 60 minutes when filtering by time
+  double? _maxTravelTimeMinutes = 60.0; // Default to 60 minutes when time limit enabled
   double _maxTravelTimeAvailable = 120.0; // Will be calculated based on furthest school time
-  bool _filterByTime = true; // Default to time-based filtering
+  bool _useTimeLimit = true; // Default: limit by time
+  bool _useDistanceLimit = false; // Optional: also limit by distance
   bool _isLoading = true;
   bool _isGeocoding = false;
   bool _isCalculatingDistances = false;
@@ -69,6 +70,41 @@ class _SchoolMapWidgetState extends State<SchoolMapWidget> {
     final minutes = s.driveTimeMinutes;
     if (minutes == null || minutes <= 0) return null;
     return minutes;
+  }
+
+  bool _isInSelectedArea(School school) {
+    if (school.schoolType == 'other') return false;
+    if (!_selectedSchoolTypes.contains(school.schoolType)) return false;
+
+    // If no limits are enabled, treat everything as "in" (but in practice we keep one enabled by default).
+    if (!_useTimeLimit && !_useDistanceLimit) return true;
+
+    if (_useTimeLimit) {
+      final maxMin = _maxTravelTimeMinutes;
+      if (maxMin == null) return false;
+      final mins = _bestMinutes(school);
+      if (mins == null) return false;
+      if (mins > maxMin) return false;
+    }
+
+    if (_useDistanceLimit) {
+      final miles = _bestMiles(school);
+      if (miles == null) return false;
+      if (miles > _radiusMiles) return false;
+    }
+
+    return true;
+  }
+
+  String _areaLabel() {
+    final parts = <String>[];
+    if (_useTimeLimit) {
+      parts.add('${(_maxTravelTimeMinutes ?? 60).round()} minutes');
+    }
+    if (_useDistanceLimit) {
+      parts.add('${_radiusMiles.toStringAsFixed(1)} miles');
+    }
+    return parts.isEmpty ? 'all schools' : parts.join(' & ');
   }
 
   @override
@@ -515,45 +551,24 @@ class _SchoolMapWidgetState extends State<SchoolMapWidget> {
       if (!_selectedSchoolTypes.contains(school.schoolType)) {
         continue;
       }
-      
-      // Filter by travel time if filtering by time
-      if (_filterByTime && _maxTravelTimeMinutes != null) {
+
+      // Apply enabled limits.
+      if (_useTimeLimit) {
+        final maxMin = _maxTravelTimeMinutes;
         final travelMinutes = _bestMinutes(school);
-        if (travelMinutes != null && travelMinutes > _maxTravelTimeMinutes!) {
+        if (maxMin == null || travelMinutes == null || travelMinutes > maxMin) {
           continue;
         }
       }
-      
-      // Filter by distance if filtering by distance
-      if (!_filterByTime) {
-        final distanceMeters = Geolocator.distanceBetween(
-          _selectedPosition!.latitude,
-          _selectedPosition!.longitude,
-          school.latitude!,
-          school.longitude!,
-        );
-        final distanceMiles = distanceMeters * 0.000621371;
-        if (distanceMiles > _radiusMiles) {
+      if (_useDistanceLimit) {
+        final miles = _bestMiles(school);
+        if (miles == null || miles > _radiusMiles) {
           continue;
         }
       }
       
       if (school.latitude != null && school.longitude != null) {
-        // Determine if school is within selected area
-        bool isInSelectedArea = false;
-        if (_filterByTime && _maxTravelTimeMinutes != null) {
-          final travelMinutes = _bestMinutes(school);
-          isInSelectedArea = travelMinutes != null && travelMinutes <= _maxTravelTimeMinutes!;
-        } else if (!_filterByTime) {
-          final distanceMeters = Geolocator.distanceBetween(
-            _selectedPosition!.latitude,
-            _selectedPosition!.longitude,
-            school.latitude!,
-            school.longitude!,
-          );
-          final distanceMiles = distanceMeters * 0.000621371;
-          isInSelectedArea = distanceMiles <= _radiusMiles;
-        }
+        final isInSelectedArea = _isInSelectedArea(school);
         
         // Get user's manual override state, or use area-based default
         final manualState = filtersProvider.tagStates[school.name];
@@ -599,46 +614,38 @@ class _SchoolMapWidgetState extends State<SchoolMapWidget> {
     }
 
     // Update radius circle (only show if filtering by distance)
-    if (!_filterByTime) {
-      _radiusCircle = Circle(
-        circleId: const CircleId('radius'),
-        center: LatLng(_selectedPosition!.latitude, _selectedPosition!.longitude),
-        radius: _radiusMiles * 1609.34, // Convert miles to meters
-        fillColor: Colors.green.withValues(alpha: 0.4), // Increased opacity for visibility
-        strokeColor: Colors.green,
-        strokeWidth: 3, // Thicker border for visibility
-      );
-    } else {
-      // For time-based filtering, create a polygon/circle based on schools within time limit
-      // We'll use a circle that encompasses all schools within the time limit
-      // Calculate the max distance for schools within time limit
+    double? radiusMilesForCircle;
+    if (_useTimeLimit && _maxTravelTimeMinutes != null) {
+      // For time-based limiting, approximate a radius based on the furthest school within the time limit.
       double maxDistanceInTime = 0.0;
-      if (_maxTravelTimeMinutes != null) {
-        for (var school in _allSchools) {
-          if (school.schoolType != 'other' && 
-              _selectedSchoolTypes.contains(school.schoolType) &&
-              _bestMiles(school) != null &&
-              _bestMinutes(school) != null) {
-            final travelMinutes = _bestMinutes(school)!;
-            final miles = _bestMiles(school)!;
-            if (travelMinutes <= _maxTravelTimeMinutes! && miles > maxDistanceInTime) {
-              maxDistanceInTime = miles;
-            }
-          }
+      for (var school in _allSchools) {
+        if (school.schoolType == 'other') continue;
+        if (!_selectedSchoolTypes.contains(school.schoolType)) continue;
+        final miles = _bestMiles(school);
+        final mins = _bestMinutes(school);
+        if (miles == null || mins == null) continue;
+        if (mins <= _maxTravelTimeMinutes! && miles > maxDistanceInTime) {
+          maxDistanceInTime = miles;
         }
       }
-      // Add a buffer for smooth edges
-      maxDistanceInTime = (maxDistanceInTime * 1.1).ceilToDouble();
-      // Create a smooth circle for time-based filtering
-      // The circle radius is based on the furthest school within the time limit
+      radiusMilesForCircle = (maxDistanceInTime * 1.1).ceilToDouble(); // buffer for smooth edges
+    }
+    if (_useDistanceLimit) {
+      radiusMilesForCircle =
+          (radiusMilesForCircle == null) ? _radiusMiles : (radiusMilesForCircle < _radiusMiles ? radiusMilesForCircle : _radiusMiles);
+    }
+
+    if (radiusMilesForCircle != null && radiusMilesForCircle > 0) {
       _radiusCircle = Circle(
         circleId: const CircleId('radius'),
         center: LatLng(_selectedPosition!.latitude, _selectedPosition!.longitude),
-        radius: maxDistanceInTime * 1609.34, // Convert miles to meters
-        fillColor: Colors.green.withValues(alpha: 0.4), // Increased opacity for visibility
+        radius: radiusMilesForCircle * 1609.34, // miles -> meters
+        fillColor: Colors.green.withValues(alpha: 0.4),
         strokeColor: Colors.green,
-        strokeWidth: 3, // Thicker border for visibility
+        strokeWidth: 3,
       );
+    } else {
+      _radiusCircle = null;
     }
 
     setState(() {});
@@ -650,40 +657,7 @@ class _SchoolMapWidgetState extends State<SchoolMapWidget> {
     List<School> filteredSchools;
     final filtersProvider = Provider.of<FiltersProvider>(context, listen: false);
     
-    if (_filterByTime) {
-      // Filter by time - get all schools and filter by travel time
-      filteredSchools = _allSchools
-          .where((school) => 
-              school.schoolType != 'other' && 
-              _selectedSchoolTypes.contains(school.schoolType))
-          .where((school) {
-            // Filter by travel time
-            if (_maxTravelTimeMinutes != null) {
-              final travelMinutes = _bestMinutes(school);
-              // If we don't have a valid travel time for this school yet, treat it as out-of-range
-              // (otherwise time-based filtering becomes inaccurate).
-              if (travelMinutes == null) return false;
-              if (travelMinutes > _maxTravelTimeMinutes!) {
-                return false;
-              }
-            }
-            return true;
-          })
-          .toList();
-    } else {
-      // Filter by distance
-      final allSchoolsInRadius = _schoolService.getSchoolsWithinRadius(
-        _selectedPosition!.latitude,
-        _selectedPosition!.longitude,
-        _radiusMiles,
-      );
-      
-      filteredSchools = allSchoolsInRadius
-          .where((school) => 
-              school.schoolType != 'other' && 
-              _selectedSchoolTypes.contains(school.schoolType))
-          .toList();
-    }
+    filteredSchools = _allSchools.where(_isInSelectedArea).toList();
     
     // Update filter states based on area selection
     // Only update schools that haven't been manually overridden
@@ -1039,7 +1013,7 @@ class _SchoolMapWidgetState extends State<SchoolMapWidget> {
             _selectedSchoolTypes.contains(school.schoolType))
         .toList();
     schools.sort((a, b) {
-      if (_filterByTime) {
+      if (_useTimeLimit) {
         final am = _bestMinutes(a);
         final bm = _bestMinutes(b);
         if (am != null && bm != null && am != bm) return am.compareTo(bm);
@@ -1065,7 +1039,7 @@ class _SchoolMapWidgetState extends State<SchoolMapWidget> {
             !schoolsWithinNames.contains(school.name))
         .toList();
     schoolsNotWithin.sort((a, b) {
-      if (_filterByTime) {
+      if (_useTimeLimit) {
         final am = _bestMinutes(a);
         final bm = _bestMinutes(b);
         if (am != null && bm != null && am != bm) return am.compareTo(bm);
@@ -1119,9 +1093,7 @@ class _SchoolMapWidgetState extends State<SchoolMapWidget> {
 
   Widget _buildSchoolsWithinDrawer(BuildContext context, FiltersProvider filtersProvider) {
     final schoolsWithin = _getSchoolsWithinArea();
-    final title = _filterByTime
-        ? 'Schools within ${_maxTravelTimeMinutes?.round() ?? 60} minutes (included)'
-        : 'Schools within ${_radiusMiles.toStringAsFixed(1)} miles (included)';
+    final title = 'Schools within ${_areaLabel()} (included)';
 
     return ExpansionTile(
       initiallyExpanded: true, // Expanded by default
@@ -1203,9 +1175,7 @@ class _SchoolMapWidgetState extends State<SchoolMapWidget> {
               style: const TextStyle(fontStyle: FontStyle.italic),
             ),
             TextSpan(
-              text: _filterByTime
-                  ? ' within ${_maxTravelTimeMinutes?.round() ?? 60} minutes (excluded)'
-                  : ' within ${_radiusMiles.toStringAsFixed(1)} miles (excluded)',
+              text: ' within ${_areaLabel()} (excluded)',
             ),
           ],
         ),
@@ -1505,55 +1475,97 @@ class _SchoolMapWidgetState extends State<SchoolMapWidget> {
           // Filter by distance or time (toggle)
           Row(
             children: [
-              const Text('Filter by: '),
-              Expanded(
-                child: SegmentedButton<bool>(
-                  segments: const [
-                    ButtonSegment<bool>(
-                      value: false,
-                      label: Text('Distance'),
-                      icon: Icon(Icons.straighten),
-                    ),
-                    ButtonSegment<bool>(
-                      value: true,
-                      label: Text('Time'),
-                      icon: Icon(Icons.access_time),
-                    ),
-                  ],
-                  selected: {_filterByTime},
-                  onSelectionChanged: (Set<bool> newSelection) {
-                    setState(() {
-                      _filterByTime = newSelection.first;
-                      if (!_filterByTime) {
-                        _maxTravelTimeMinutes = null;
-                      } else {
-                        // Ensure value is within bounds - clamp to available range
-                        final defaultTime = 60.0;
-                        _maxTravelTimeMinutes = defaultTime.clamp(5.0, _maxTravelTimeAvailable);
-                      }
-                    });
-                    _updateMap();
-                    _updateSchoolsInRadius();
-                  },
+              const Text('Limit schools by: '),
+              const SizedBox(width: 8),
+              Tooltip(
+                message:
+                    'Use one or both limits. When both are enabled, schools must satisfy BOTH. This avoids “minutes ↔ miles” binding errors.',
+                child: Icon(
+                  Icons.help_outline,
+                  size: 18,
+                  color: Theme.of(context).colorScheme.primary,
                 ),
               ),
-              if (_filterByTime)
+            ],
+          ),
+          const SizedBox(height: 12),
+          // Separate time + distance controls (no shared slider).
+          SwitchListTile(
+            contentPadding: EdgeInsets.zero,
+            title: const Text('Travel time'),
+            subtitle: Text(
+              _useTimeLimit
+                  ? 'Max: ${(_maxTravelTimeMinutes ?? 60).round()} min'
+                  : 'Off',
+            ),
+            value: _useTimeLimit,
+            onChanged: (v) {
+              setState(() {
+                _useTimeLimit = v;
+                if (_useTimeLimit) {
+                  final defaultTime = (_maxTravelTimeMinutes ?? 60.0);
+                  _maxTravelTimeMinutes = defaultTime.clamp(5.0, _maxTravelTimeAvailable);
+                }
+              });
+              _updateMap();
+              _updateSchoolsInRadius();
+            },
+            secondary: const Icon(Icons.access_time),
+          ),
+          if (_useTimeLimit)
+            Row(
+              children: [
+                const Text('Max: '),
+                Expanded(
+                  child: Slider(
+                    value: (_maxTravelTimeMinutes ?? 60.0).clamp(5.0, _maxTravelTimeAvailable),
+                    min: 5.0,
+                    max: _maxTravelTimeAvailable,
+                    divisions: ((_maxTravelTimeAvailable - 5.0) / 5).round(),
+                    label: '${(_maxTravelTimeMinutes ?? 60).round()} min',
+                    onChanged: (value) {
+                      setState(() {
+                        _maxTravelTimeMinutes = value.clamp(5.0, _maxTravelTimeAvailable);
+                      });
+                      _updateMap();
+                      _updateSchoolsInRadius();
+                    },
+                  ),
+                ),
+                Text('${(_maxTravelTimeMinutes ?? 60).round()} min'),
+                const SizedBox(width: 8),
                 Tooltip(
-                  message: 'Time estimates are based on current calculations from the user\'s current location if the current location icon was reselected or the user\'s last used location.',
+                  message:
+                      'Time estimates are calculated from your selected location. These are approximations and can vary with traffic/lights.',
                   child: Icon(
                     Icons.help_outline,
                     size: 18,
                     color: Theme.of(context).colorScheme.primary,
                   ),
                 ),
-            ],
+              ],
+            ),
+          const SizedBox(height: 8),
+          SwitchListTile(
+            contentPadding: EdgeInsets.zero,
+            title: const Text('Distance'),
+            subtitle: Text(
+              _useDistanceLimit ? 'Max: ${_radiusMiles.toStringAsFixed(1)} mi' : 'Off',
+            ),
+            value: _useDistanceLimit,
+            onChanged: (v) {
+              setState(() {
+                _useDistanceLimit = v;
+              });
+              _updateMap();
+              _updateSchoolsInRadius();
+            },
+            secondary: const Icon(Icons.straighten),
           ),
-          const SizedBox(height: 12),
-          // Distance or Time slider (depending on selection)
-          if (!_filterByTime)
+          if (_useDistanceLimit)
             Row(
               children: [
-                const Text('Max Distance: '),
+                const Text('Max: '),
                 Expanded(
                   child: Slider(
                     value: _radiusMiles,
@@ -1565,33 +1577,6 @@ class _SchoolMapWidgetState extends State<SchoolMapWidget> {
                   ),
                 ),
                 Text('${_radiusMiles.toStringAsFixed(1)} mi'),
-              ],
-            )
-          else
-            Row(
-              children: [
-                const Text('Max Travel Time: '),
-                Expanded(
-                  child: Slider(
-                    value: (_maxTravelTimeMinutes ?? 60.0).clamp(5.0, _maxTravelTimeAvailable),
-                    min: 5.0,
-                    max: _maxTravelTimeAvailable,
-                    divisions: ((_maxTravelTimeAvailable - 5.0) / 5).round(),
-                    label: _maxTravelTimeMinutes != null 
-                        ? '${_maxTravelTimeMinutes!.round()} min'
-                        : 'No limit',
-                    onChanged: (value) {
-                      setState(() {
-                        _maxTravelTimeMinutes = value.clamp(5.0, _maxTravelTimeAvailable);
-                      });
-                      _updateMap();
-                      _updateSchoolsInRadius();
-                    },
-                  ),
-                ),
-                Text(_maxTravelTimeMinutes != null 
-                    ? '${_maxTravelTimeMinutes!.round()} min'
-                    : 'No limit'),
               ],
             ),
           const SizedBox(height: 12),
