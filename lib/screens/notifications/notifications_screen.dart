@@ -9,6 +9,7 @@ import '../../widgets/marketing_points.dart';
 import '../../widgets/premium_unlock_bottom_sheet.dart';
 import '../../widgets/vip_powerup_bottom_sheet.dart';
 import '../../widgets/crowned_lock_icon.dart';
+import '../../widgets/app_tooltip.dart';
 import 'time_window_widget.dart';
 
 class NotificationsScreen extends StatefulWidget {
@@ -74,7 +75,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
                   runSpacing: 4,
                   children: [
                     const Text('Enable Job Alerts'),
-                    Tooltip(
+                    AppTooltip(
                       message:
                           'Turns on job alerts. When enabled, Sub67 will notify you when a new matching job is posted.',
                       child: Icon(
@@ -167,7 +168,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
                   runSpacing: 4,
                   children: [
                     const Text('Enable Keyword Filter'),
-                    Tooltip(
+                    AppTooltip(
                       message:
                           "This activates the keywords specified on the 'filters' feature so that you are only notified of jobs that meet your keyword specifications.",
                       child: Icon(
@@ -216,7 +217,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
                   runSpacing: 4,
                   children: [
                     const Text('Calendar Sync'),
-                    Tooltip(
+                    AppTooltip(
                       message: "Sync up the jobs you have booked to your mobile's  calendar.",
                       child: Icon(
                         Icons.help_outline,
@@ -259,7 +260,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
                   runSpacing: 4,
                   children: [
                     const Text('VIP Perks Power-up'),
-                    Tooltip(
+                    AppTooltip(
                       message: 'One-time purchase feature with VIP perks.',
                       child: Icon(
                         Icons.help_outline,

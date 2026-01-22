@@ -8,6 +8,7 @@ import '../../widgets/nested_filter_column.dart';
 import '../../widgets/school_map_widget.dart';
 import '../../widgets/profile_app_bar.dart';
 import '../../widgets/app_bar_quick_toggles.dart';
+import '../../widgets/app_tooltip.dart';
 import '../profile/profile_screen.dart';
 
 class FiltersScreen extends StatefulWidget {
@@ -207,53 +208,40 @@ class _FiltersScreenState extends State<FiltersScreen> {
     String tooltipText,
     IconData icon,
   ) {
-    return Tooltip(
+    return AppTooltip(
       message: tooltipText,
-      preferBelow: false,
-      waitDuration: const Duration(milliseconds: 300),
-      child: InkWell(
-        onTap: () {
-          // Show tooltip on tap as well
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text(tooltipText),
-              duration: const Duration(seconds: 3),
-              behavior: SnackBarBehavior.floating,
+      useInkWell: true,
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Container(
+            width: 24,
+            height: 24,
+            decoration: BoxDecoration(
+              color: color.withOpacity(0.3),
+              shape: BoxShape.circle,
+              border: Border.all(color: color, width: 2),
             ),
-          );
-        },
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Container(
-              width: 24,
-              height: 24,
-              decoration: BoxDecoration(
-                color: color.withOpacity(0.3),
-                shape: BoxShape.circle,
-                border: Border.all(color: color, width: 2),
-              ),
-              child: Icon(
-                icon,
-                size: 14,
-                color: color,
-              ),
-            ),
-            const SizedBox(width: 6),
-            Text(
-              label,
-              style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                    fontWeight: FontWeight.w500,
-                  ),
-            ),
-            const SizedBox(width: 4),
-            Icon(
-              Icons.help_outline,
+            child: Icon(
+              icon,
               size: 14,
-              color: Theme.of(context).colorScheme.primary,
+              color: color,
             ),
-          ],
-        ),
+          ),
+          const SizedBox(width: 6),
+          Text(
+            label,
+            style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                  fontWeight: FontWeight.w500,
+                ),
+          ),
+          const SizedBox(width: 4),
+          Icon(
+            Icons.help_outline,
+            size: 14,
+            color: Theme.of(context).colorScheme.primary,
+          ),
+        ],
       ),
     );
   }

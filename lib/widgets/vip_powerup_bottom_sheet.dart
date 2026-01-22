@@ -1,7 +1,11 @@
 import 'package:flutter/material.dart';
+import 'package:cloud_functions/cloud_functions.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:flutter_stripe/flutter_stripe.dart' as stripe;
 
 import 'marketing_points.dart';
 import 'business_card_info_module.dart';
+import '../config/app_config.dart';
 
 class VipPowerupBottomSheet extends StatefulWidget {
   const VipPowerupBottomSheet({super.key});
@@ -42,6 +46,7 @@ class _VipPowerupBottomSheetState extends State<VipPowerupBottomSheet> {
   static const String _packagePrice = '\$7.99';
 
   BusinessCardInfo? _bizInfo;
+  bool _isProcessing = false;
 
   @override
   Widget build(BuildContext context) {
@@ -167,9 +172,9 @@ class _VipPowerupBottomSheetState extends State<VipPowerupBottomSheet> {
 
                     const SizedBox(height: 18),
                     ElevatedButton.icon(
-                      onPressed: canCheckout ? _checkout : null,
+                      onPressed: (canCheckout && !_isProcessing) ? _checkout : null,
                       icon: const Icon(Icons.shopping_cart_checkout),
-                      label: const Text('Checkout'),
+                      label: Text(_isProcessing ? 'Processing…' : 'Checkout'),
                       style: ElevatedButton.styleFrom(
                         padding: const EdgeInsets.symmetric(vertical: 16),
                       ),
@@ -185,12 +190,75 @@ class _VipPowerupBottomSheetState extends State<VipPowerupBottomSheet> {
   }
 
   void _checkout() {
-    Navigator.pop(context);
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text('VIP Power-up checkout coming soon.'),
-      ),
-    );
+    _processVipCheckout();
+  }
+
+  Future<void> _processVipCheckout() async {
+    if (_isProcessing) return;
+    setState(() => _isProcessing = true);
+
+    try {
+      final user = FirebaseAuth.instance.currentUser;
+      if (user == null) throw Exception('Not authenticated');
+
+      if (stripe.Stripe.publishableKey.trim().isEmpty) {
+        throw Exception(
+          'Stripe is not configured yet (missing publishable key). '
+          'Set functions config stripe.publishable_key and redeploy functions.',
+        );
+      }
+
+      final functions = FirebaseFunctions.instance;
+      final createCallable = functions.httpsCallable('createVipPowerupPaymentSession');
+      final sessionRes = await createCallable.call();
+      final session = Map<String, dynamic>.from(sessionRes.data as Map);
+
+      final customerId = session['customerId'] as String?;
+      final ephemeralKeySecret = session['ephemeralKeySecret'] as String?;
+      final paymentIntentClientSecret = session['paymentIntentClientSecret'] as String?;
+      final intentId = session['intentId'] as String?;
+
+      if (customerId == null ||
+          ephemeralKeySecret == null ||
+          paymentIntentClientSecret == null ||
+          intentId == null) {
+        throw Exception('Invalid payment session');
+      }
+
+      await stripe.Stripe.instance.initPaymentSheet(
+        paymentSheetParameters: stripe.SetupPaymentSheetParameters(
+          merchantDisplayName: AppConfig.stripeMerchantDisplayName,
+          customerId: customerId,
+          customerEphemeralKeySecret: ephemeralKeySecret,
+          paymentIntentClientSecret: paymentIntentClientSecret,
+          style: ThemeMode.system,
+        ),
+      );
+      await stripe.Stripe.instance.presentPaymentSheet();
+
+      final confirmCallable = functions.httpsCallable('confirmVipPowerupPurchase');
+      await confirmCallable.call({'intentId': intentId});
+
+      if (!mounted) return;
+      Navigator.pop(context);
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('VIP Power-up purchased!'),
+          backgroundColor: Colors.green,
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('VIP checkout failed: ${e.toString()}'),
+          backgroundColor: Colors.red,
+          duration: const Duration(seconds: 5),
+        ),
+      );
+    } finally {
+      if (mounted) setState(() => _isProcessing = false);
+    }
   }
 }
 

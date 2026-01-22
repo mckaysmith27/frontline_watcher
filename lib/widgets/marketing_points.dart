@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'dart:async';
 import '../services/user_role_service.dart';
+import 'app_tooltip.dart';
 
 enum MarketingPointKey {
   fastAlerts,
@@ -115,10 +116,10 @@ class MarketingPoints {
       case MarketingPointKey.vipEarlyOutHours:
         return const MarketingPointData(
           icon: Icons.speed,
-          text: 'Get paid for a full days time with EARLY OUT hours, available weekly.*',
+          text: 'Get paid for a full days time with EARLY OUT* hours.',
           termTooltips: {
-            'EARLY OUT':
-                'Some districts have early-out days at select schools and/or at select grade levels. Some jobs listed also offer a time durations (anything over four hours) that end up being rounded up to have the same payout of a full workday while there may not as many hours as a full workday being required in the duration specified. This perk seeks to guarantee a selection for at least one job a week where-in the users other settings and availability would allow for it. If a users settings explicitly may interfere with this perk being applied, the user will be notified and be asked if they system can adjust their settings in the following ways in order to successfully apply this perk for the week—or before seven to eight days time from the time in which the original purchase was made.',
+            'EARLY OUT*':
+                '\u200B*Some districts have early-out days at select schools and/or at select grade levels. Some jobs listed also offer a time durations (anything over four hours) that end up being rounded up to have the same payout of a full workday while there may not as many hours as a full workday being required in the duration specified. This perk seeks to guarantee a selection for at least one job a week where-in the users other settings and availability would allow for it. If a users settings explicitly may interfere with this perk being applied, the user will be notified and be asked if they system can adjust their settings in the following ways in order to successfully apply this perk for the week—or before seven to eight days time from the time in which the original purchase was made.',
           },
         );
       case MarketingPointKey.vipPreferredSubShortcut:
@@ -325,21 +326,20 @@ class _MarketingPointRowState extends State<MarketingPointRow> {
       final tooltipTextRaw = (msg.isEmpty ? bestTerm : msg).replaceAll('<userRole>', roleLabel);
       final tooltipText = tooltipTextRaw;
       final useRich = tooltipText.contains('\n') || tooltipText.startsWith('*');
+      final rich = useRich
+          ? _buildTooltipRichMessage(
+              tooltipText,
+              tooltipBaseStyle: tooltipBaseStyle,
+              tooltipSmallStyle: tooltipSmallStyle,
+            )
+          : null;
       spans.add(
         WidgetSpan(
           alignment: PlaceholderAlignment.baseline,
           baseline: TextBaseline.alphabetic,
-          child: Tooltip(
-            triggerMode: TooltipTriggerMode.tap,
-            showDuration: const Duration(seconds: 4),
+          child: AppTooltip(
             message: useRich ? null : tooltipText,
-            richMessage: useRich
-                ? _buildTooltipRichMessage(
-                    tooltipText,
-                    tooltipBaseStyle: tooltipBaseStyle,
-                    tooltipSmallStyle: tooltipSmallStyle,
-                  )
-                : null,
+            richMessage: rich,
             child: Text(bestTerm, style: linkStyle),
           ),
         ),

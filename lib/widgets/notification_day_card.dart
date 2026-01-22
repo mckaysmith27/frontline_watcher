@@ -4,6 +4,7 @@ import '../providers/filters_provider.dart';
 import '../providers/availability_provider.dart';
 import '../screens/filters/date_filter_editor.dart';
 import '../models/job.dart';
+import 'app_tooltip.dart';
 
 class NotificationDayCard extends StatelessWidget {
   final String dateStr; // Format: "YYYY-MM-DD"
@@ -223,7 +224,7 @@ class NotificationDayCard extends StatelessWidget {
                           ),
                     ),
                     const SizedBox(width: 4),
-                    Tooltip(
+                    AppTooltip(
                       message: 'These are keywords that are applied to just this specific day but which are different from the filter of keywords which was applied to all days',
                       child: Icon(
                         Icons.help_outline,

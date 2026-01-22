@@ -889,6 +889,76 @@ exports.createStripePaymentSession = functions.https.onCall(async (data, context
   };
 });
 
+// -------------------------
+// Stripe checkout for VIP Power-up (one-time purchase)
+// -------------------------
+exports.createVipPowerupPaymentSession = functions.https.onCall(async (data, context) => {
+  if (!context.auth) throw new functions.https.HttpsError('unauthenticated', 'Login required');
+  const uid = context.auth.uid;
+
+  const stripe = getStripe();
+  const { customerId } = await getOrCreateStripeCustomerForUser(uid);
+
+  const ephemeralKey = await stripe.ephemeralKeys.create(
+    { customer: customerId },
+    { apiVersion: '2024-06-20' }
+  );
+
+  // Fixed price: $7.99
+  const pi = await stripe.paymentIntents.create({
+    amount: 799,
+    currency: 'usd',
+    customer: customerId,
+    automatic_payment_methods: { enabled: true },
+    metadata: { uid, product: 'vip_powerup' },
+  });
+
+  return {
+    mode: 'payment',
+    customerId,
+    ephemeralKeySecret: ephemeralKey.secret,
+    paymentIntentClientSecret: pi.client_secret,
+    intentId: pi.id,
+  };
+});
+
+exports.confirmVipPowerupPurchase = functions.https.onCall(async (data, context) => {
+  if (!context.auth) throw new functions.https.HttpsError('unauthenticated', 'Login required');
+  const uid = context.auth.uid;
+  const intentId = typeof data?.intentId === 'string' ? data.intentId : null;
+  if (!intentId) throw new functions.https.HttpsError('invalid-argument', 'intentId is required');
+
+  const stripe = getStripe();
+  const pi = await stripe.paymentIntents.retrieve(intentId);
+  if (pi.status !== 'succeeded' && pi.status !== 'processing') {
+    throw new functions.https.HttpsError('failed-precondition', `PaymentIntent not successful (${pi.status})`);
+  }
+
+  const db = admin.firestore();
+  const userRef = db.collection('users').doc(uid);
+
+  const purchaseAction = {
+    timestamp: admin.firestore.FieldValue.serverTimestamp(),
+    product: 'vip_powerup',
+    amountUsd: 7.99,
+    stripeCustomerId: pi.customer || null,
+    stripePaymentIntentId: pi.id,
+    mode: 'vip_powerup',
+  };
+
+  await userRef.set(
+    {
+      vipPerksPurchased: true,
+      vipPerksEnabled: true,
+      vipPowerups: admin.firestore.FieldValue.increment(1),
+      purchaseActions: admin.firestore.FieldValue.arrayUnion([purchaseAction]),
+    },
+    { merge: true }
+  );
+
+  return { ok: true };
+});
+
 exports.confirmSubscriptionPurchase = functions.https.onCall(async (data, context) => {
   if (!context.auth) throw new functions.https.HttpsError('unauthenticated', 'Login required');
   const uid = context.auth.uid;

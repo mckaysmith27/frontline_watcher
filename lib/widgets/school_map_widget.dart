@@ -13,6 +13,7 @@ import '../providers/filters_provider.dart';
 import '../services/school_service.dart';
 import '../services/user_role_service.dart';
 import 'tag_chip.dart';
+import 'app_tooltip.dart';
 
 class SchoolMapWidget extends StatefulWidget {
   const SchoolMapWidget({super.key});
@@ -1244,7 +1245,7 @@ class _SchoolMapWidgetState extends State<SchoolMapWidget> {
                 ),
           ),
           const SizedBox(width: 8),
-          Tooltip(
+          AppTooltip(
             message: tooltipMessage,
             child: Icon(
               Icons.help_outline,
@@ -1446,7 +1447,7 @@ class _SchoolMapWidgetState extends State<SchoolMapWidget> {
                 style: Theme.of(context).textTheme.titleSmall,
               ),
               const SizedBox(width: 8),
-              Tooltip(
+              AppTooltip(
                 message: 'School-types marked as "other" are unconventional types of programs still listed within the school district—such as summer schools or online schools for example, and so they aren\'t included on the map even if they are selected as included (as their listing a physical address could be misleading or confusing).',
                 child: Icon(
                   Icons.help_outline,
@@ -1477,7 +1478,7 @@ class _SchoolMapWidgetState extends State<SchoolMapWidget> {
             children: [
               const Text('Limit schools by: '),
               const SizedBox(width: 8),
-              Tooltip(
+              AppTooltip(
                 message:
                     'Use one or both limits. When both are enabled, schools must satisfy BOTH. This avoids “minutes ↔ miles” binding errors.',
                 child: Icon(
@@ -1534,7 +1535,7 @@ class _SchoolMapWidgetState extends State<SchoolMapWidget> {
                 ),
                 Text('${(_maxTravelTimeMinutes ?? 60).round()} min'),
                 const SizedBox(width: 8),
-                Tooltip(
+                AppTooltip(
                   message:
                       'Time estimates are calculated from your selected location. These are approximations and can vary with traffic/lights.',
                   child: Icon(
