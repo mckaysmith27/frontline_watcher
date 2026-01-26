@@ -80,6 +80,14 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
     );
   }
 
+  Widget _marketingPointsList(List<MarketingPointKey> keys) {
+    return Column(
+      children: [
+        for (final k in keys) MarketingPointRow(point: k, dense: true),
+      ],
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -225,6 +233,12 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
                         ],
                       ),
                     ),
+                  ] else ...[
+                    const Divider(height: 1),
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
+                      child: _marketingPointsList(jobAlertsHints),
+                    ),
                   ],
                 ],
               ),
@@ -276,9 +290,12 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
                           },
                     secondary: CrownedLockIcon(unlocked: hasActiveSubscription),
                   ),
-                  if (notificationsProvider.applyFilterEnabled) ...[
+                  if (!notificationsProvider.applyFilterEnabled) ...[
                     const Divider(height: 1),
-                    const SizedBox(height: 8),
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
+                      child: _marketingPointsList(keywordHints),
+                    ),
                   ],
                 ],
               ),
@@ -324,9 +341,12 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
                         : (_) => PremiumUnlockBottomSheet.show(context),
                     secondary: CrownedLockIcon(unlocked: hasActiveSubscription),
                   ),
-                  if (notificationsProvider.calendarSyncEnabled) ...[
+                  if (!notificationsProvider.calendarSyncEnabled) ...[
                     const Divider(height: 1),
-                    const SizedBox(height: 8),
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
+                      child: _marketingPointsList(calendarHints),
+                    ),
                   ],
                 ],
               ),
@@ -381,9 +401,12 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
                       cometColor: const Color(0xFF7C4DFF),
                     ),
                   ),
-                  if (hasVipPerks) ...[
+                  if (!hasVipPerks) ...[
                     const Divider(height: 1),
-                    const SizedBox(height: 8),
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
+                      child: _marketingPointsList(vipHints),
+                    ),
                   ],
                 ],
               ),
