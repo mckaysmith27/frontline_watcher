@@ -938,7 +938,7 @@ exports.confirmVipPowerupPurchase = functions.https.onCall(async (data, context)
   const userRef = db.collection('users').doc(uid);
 
   const purchaseAction = {
-    timestamp: admin.firestore.FieldValue.serverTimestamp(),
+    timestamp: admin.firestore.Timestamp.now(),
     product: 'vip_powerup',
     amountUsd: 7.99,
     stripeCustomerId: pi.customer || null,
@@ -1041,7 +1041,7 @@ exports.confirmSubscriptionPurchase = functions.https.onCall(async (data, contex
   const endsAtUtc = new Date(baseUtc.getTime() + days * 24 * 60 * 60 * 1000);
 
   const purchaseAction = {
-    timestamp: admin.firestore.FieldValue.serverTimestamp(),
+    timestamp: admin.firestore.Timestamp.now(),
     promotion: appliedPromoUpper,
     subscriptionDays: days,
     tier,
@@ -1151,7 +1151,7 @@ async function _renewExpiredSubscriptions({ limit }) {
       const endsAtUtc = new Date(baseUtc.getTime() + days * 24 * 60 * 60 * 1000);
 
       const purchaseAction = {
-        timestamp: admin.firestore.FieldValue.serverTimestamp(),
+        timestamp: admin.firestore.Timestamp.now(),
         promotion: null,
         subscriptionDays: days,
         tier,
