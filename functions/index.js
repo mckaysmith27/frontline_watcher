@@ -951,7 +951,7 @@ exports.confirmVipPowerupPurchase = functions.https.onCall(async (data, context)
       vipPerksPurchased: true,
       vipPerksEnabled: true,
       vipPowerups: admin.firestore.FieldValue.increment(1),
-      purchaseActions: admin.firestore.FieldValue.arrayUnion([purchaseAction]),
+      purchaseActions: admin.firestore.FieldValue.arrayUnion(purchaseAction),
     },
     { merge: true }
   );
@@ -1061,7 +1061,7 @@ exports.confirmSubscriptionPurchase = functions.https.onCall(async (data, contex
       subscriptionDays: days,
       stripeCustomerId: customerId,
       ...(paymentMethodId ? { stripeDefaultPaymentMethodId: paymentMethodId } : {}),
-      purchaseActions: admin.firestore.FieldValue.arrayUnion([purchaseAction]),
+      purchaseActions: admin.firestore.FieldValue.arrayUnion(purchaseAction),
     },
     { merge: true }
   );
@@ -1167,7 +1167,7 @@ async function _renewExpiredSubscriptions({ limit }) {
           subscriptionActive: true,
           renewalError: admin.firestore.FieldValue.delete(),
           renewalFailedAt: admin.firestore.FieldValue.delete(),
-          purchaseActions: admin.firestore.FieldValue.arrayUnion([purchaseAction]),
+          purchaseActions: admin.firestore.FieldValue.arrayUnion(purchaseAction),
         },
         { merge: true }
       );
