@@ -30,10 +30,6 @@ class _SchoolMapWidgetState extends State<SchoolMapWidget> {
   Position? _selectedPosition;
   double _radiusMiles = 10.0;
   double _maxRadiusMiles = 50.0; // Will be calculated based on furthest school
-  double? _maxTravelTimeMinutes = 60.0; // Default to 60 minutes when time limit enabled
-  double _maxTravelTimeAvailable = 120.0; // Will be calculated based on furthest school time
-  bool _useTimeLimit = true; // Default: limit by time
-  bool _useDistanceLimit = false; // Optional: also limit by distance
   bool _isLoading = true;
   bool _isGeocoding = false;
   bool _isCalculatingDistances = false;
@@ -54,6 +50,11 @@ class _SchoolMapWidgetState extends State<SchoolMapWidget> {
   String? _savedLocation;
   bool _useCurrentLocation = true;
   bool _currentLocationButtonVisible = true; // Show button until location is successfully loaded
+
+  // Manual overrides: when user explicitly taps a school chip, we stop auto-updating
+  // that school's state from the distance slider.
+  static const String _manualOverridesPrefsKey = 'school_map_manual_overrides';
+  final Set<String> _manualOverrideSchools = <String>{};
 
   // Drawer/expansion states (for custom chevrons)
   bool _seeSpecificSchoolsExpanded = false;
@@ -77,41 +78,22 @@ class _SchoolMapWidgetState extends State<SchoolMapWidget> {
     if (school.schoolType == 'other') return false;
     if (!_selectedSchoolTypes.contains(school.schoolType)) return false;
 
-    // If no limits are enabled, treat everything as "in" (but in practice we keep one enabled by default).
-    if (!_useTimeLimit && !_useDistanceLimit) return true;
-
-    if (_useTimeLimit) {
-      final maxMin = _maxTravelTimeMinutes;
-      if (maxMin == null) return false;
-      final mins = _bestMinutes(school);
-      if (mins == null) return false;
-      if (mins > maxMin) return false;
-    }
-
-    if (_useDistanceLimit) {
-      final miles = _bestMiles(school);
-      if (miles == null) return false;
-      if (miles > _radiusMiles) return false;
-    }
+    final miles = _bestMiles(school);
+    if (miles == null) return false;
+    if (miles > _radiusMiles) return false;
 
     return true;
   }
 
   String _areaLabel() {
-    final parts = <String>[];
-    if (_useTimeLimit) {
-      parts.add('${(_maxTravelTimeMinutes ?? 60).round()} minutes');
-    }
-    if (_useDistanceLimit) {
-      parts.add('${_radiusMiles.toStringAsFixed(1)} miles');
-    }
-    return parts.isEmpty ? 'all schools' : parts.join(' & ');
+    return '${_radiusMiles.toStringAsFixed(1)} miles';
   }
 
   @override
   void initState() {
     super.initState();
     _loadSavedLocation();
+    _loadManualOverrides();
     _createGrayMarker().then((icon) {
       if (mounted) {
         setState(() {
@@ -183,6 +165,29 @@ class _SchoolMapWidgetState extends State<SchoolMapWidget> {
       if (kDebugMode) {
         debugPrint('Error saving location: $e');
       }
+    }
+  }
+
+  Future<void> _loadManualOverrides() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final items = prefs.getStringList(_manualOverridesPrefsKey) ?? const <String>[];
+      setState(() {
+        _manualOverrideSchools
+          ..clear()
+          ..addAll(items);
+      });
+    } catch (_) {
+      // ignore
+    }
+  }
+
+  Future<void> _saveManualOverrides() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setStringList(_manualOverridesPrefsKey, _manualOverrideSchools.toList()..sort());
+    } catch (_) {
+      // ignore
     }
   }
 
@@ -413,9 +418,8 @@ class _SchoolMapWidgetState extends State<SchoolMapWidget> {
         );
         _allSchools = _schoolService.schools;
         
-        // Calculate max radius and max time based on actual school distances
+        // Calculate max radius based on actual school distances
         double maxDistance = 0.0;
-        double maxTime = 0.0;
         for (var school in _allSchools) {
           if (school.schoolType != 'other' && 
               _selectedSchoolTypes.contains(school.schoolType)) {
@@ -423,22 +427,14 @@ class _SchoolMapWidgetState extends State<SchoolMapWidget> {
             if (miles != null && miles > maxDistance) {
               maxDistance = miles;
             }
-            final travelMinutes = _bestMinutes(school);
-            if (travelMinutes != null && travelMinutes > maxTime) {
-              maxTime = travelMinutes.toDouble();
-            }
           }
         }
-        // Set max values: furthest school + 1 mile, furthest time + 1 minute (rounded up)
+        // Set max value: furthest school + 1 mile (rounded up)
         _maxRadiusMiles = (maxDistance + 1.0).ceilToDouble();
-        _maxTravelTimeAvailable = (maxTime + 1.0).ceilToDouble();
         
-        // Ensure current radius/time don't exceed max
+        // Ensure current radius doesn't exceed max
         if (_radiusMiles > _maxRadiusMiles) {
           _radiusMiles = _maxRadiusMiles;
-        }
-        if (_maxTravelTimeMinutes != null && _maxTravelTimeMinutes! > _maxTravelTimeAvailable) {
-          _maxTravelTimeMinutes = _maxTravelTimeAvailable;
         }
       }
 
@@ -552,50 +548,48 @@ class _SchoolMapWidgetState extends State<SchoolMapWidget> {
       if (!_selectedSchoolTypes.contains(school.schoolType)) {
         continue;
       }
-
-      // Apply enabled limits.
-      if (_useTimeLimit) {
-        final maxMin = _maxTravelTimeMinutes;
-        final travelMinutes = _bestMinutes(school);
-        if (maxMin == null || travelMinutes == null || travelMinutes > maxMin) {
-          continue;
-        }
-      }
-      if (_useDistanceLimit) {
-        final miles = _bestMiles(school);
-        if (miles == null || miles > _radiusMiles) {
-          continue;
-        }
-      }
       
       if (school.latitude != null && school.longitude != null) {
         final isInSelectedArea = _isInSelectedArea(school);
-        
-        // Get user's manual override state, or use area-based default
-        final manualState = filtersProvider.tagStates[school.name];
-        TagState schoolState;
-        
-        if (manualState != null && manualState != TagState.gray) {
-          // User has manually set this school's state (green or red)
-          schoolState = manualState;
-        } else {
-          // Use area-based default: green if in area, red if outside
-          schoolState = isInSelectedArea ? TagState.green : TagState.red;
-          
-          // Update the provider state if not manually set
-          if (manualState == null || manualState == TagState.gray) {
-            filtersProvider.tagStates[school.name] = schoolState;
-            if (schoolState == TagState.green) {
-              if (!filtersProvider.includedLs.contains(school.name)) {
-                filtersProvider.includedLs.add(school.name);
-              }
-              filtersProvider.excludeLs.remove(school.name);
-            } else {
-              if (!filtersProvider.excludeLs.contains(school.name)) {
-                filtersProvider.excludeLs.add(school.name);
-              }
-              filtersProvider.includedLs.remove(school.name);
+
+        final isManualOverride = _manualOverrideSchools.contains(school.name);
+        final currentState = filtersProvider.tagStates[school.name] ?? TagState.gray;
+
+        // Auto selection from distance slider:
+        // - inside radius => green + included
+        // - outside radius => gray + neither included nor excluded
+        final autoState = isInSelectedArea ? TagState.green : TagState.gray;
+
+        final schoolState = isManualOverride ? currentState : autoState;
+
+        // Keep provider lists/states consistent. For non-manual schools, we overwrite based on slider.
+        if (!isManualOverride) {
+          filtersProvider.tagStates[school.name] = schoolState;
+          if (schoolState == TagState.green) {
+            if (!filtersProvider.includedLs.contains(school.name)) {
+              filtersProvider.includedLs.add(school.name);
             }
+            filtersProvider.excludeLs.remove(school.name);
+          } else {
+            // gray (or other) => remove from both lists
+            filtersProvider.includedLs.remove(school.name);
+            filtersProvider.excludeLs.remove(school.name);
+          }
+        } else {
+          // Manual schools: ensure lists reflect manual state (safety).
+          if (schoolState == TagState.green) {
+            if (!filtersProvider.includedLs.contains(school.name)) {
+              filtersProvider.includedLs.add(school.name);
+            }
+            filtersProvider.excludeLs.remove(school.name);
+          } else if (schoolState == TagState.red) {
+            if (!filtersProvider.excludeLs.contains(school.name)) {
+              filtersProvider.excludeLs.add(school.name);
+            }
+            filtersProvider.includedLs.remove(school.name);
+          } else {
+            filtersProvider.includedLs.remove(school.name);
+            filtersProvider.excludeLs.remove(school.name);
           }
         }
 
@@ -614,33 +608,12 @@ class _SchoolMapWidgetState extends State<SchoolMapWidget> {
       }
     }
 
-    // Update radius circle (only show if filtering by distance)
-    double? radiusMilesForCircle;
-    if (_useTimeLimit && _maxTravelTimeMinutes != null) {
-      // For time-based limiting, approximate a radius based on the furthest school within the time limit.
-      double maxDistanceInTime = 0.0;
-      for (var school in _allSchools) {
-        if (school.schoolType == 'other') continue;
-        if (!_selectedSchoolTypes.contains(school.schoolType)) continue;
-        final miles = _bestMiles(school);
-        final mins = _bestMinutes(school);
-        if (miles == null || mins == null) continue;
-        if (mins <= _maxTravelTimeMinutes! && miles > maxDistanceInTime) {
-          maxDistanceInTime = miles;
-        }
-      }
-      radiusMilesForCircle = (maxDistanceInTime * 1.1).ceilToDouble(); // buffer for smooth edges
-    }
-    if (_useDistanceLimit) {
-      radiusMilesForCircle =
-          (radiusMilesForCircle == null) ? _radiusMiles : (radiusMilesForCircle < _radiusMiles ? radiusMilesForCircle : _radiusMiles);
-    }
-
-    if (radiusMilesForCircle != null && radiusMilesForCircle > 0) {
+    // Update radius circle (distance-only).
+    if (_radiusMiles > 0) {
       _radiusCircle = Circle(
         circleId: const CircleId('radius'),
         center: LatLng(_selectedPosition!.latitude, _selectedPosition!.longitude),
-        radius: radiusMilesForCircle * 1609.34, // miles -> meters
+        radius: _radiusMiles * 1609.34, // miles -> meters
         fillColor: Colors.green.withValues(alpha: 0.4),
         strokeColor: Colors.green,
         strokeWidth: 3,
@@ -661,32 +634,30 @@ class _SchoolMapWidgetState extends State<SchoolMapWidget> {
     filteredSchools = _allSchools.where(_isInSelectedArea).toList();
     
     // Update filter states based on area selection
-    // Only update schools that haven't been manually overridden
+    // Only auto-update schools that haven't been manually overridden
     for (var school in _allSchools) {
       if (school.schoolType == 'other') continue;
       
       bool isInSelectedArea = filteredSchools.contains(school);
-      final currentState = filtersProvider.tagStates[school.name];
-      
-      // Only auto-update if user hasn't manually set the state (or it's gray/unset)
-      if (currentState == null || currentState == TagState.gray) {
-        if (isInSelectedArea) {
-          // School is in selected area - set to green
-          filtersProvider.tagStates[school.name] = TagState.green;
-          if (!filtersProvider.includedLs.contains(school.name)) {
-            filtersProvider.includedLs.add(school.name);
-          }
-          filtersProvider.excludeLs.remove(school.name);
-        } else {
-          // School is outside selected area - set to red
-          filtersProvider.tagStates[school.name] = TagState.red;
-          if (!filtersProvider.excludeLs.contains(school.name)) {
-            filtersProvider.excludeLs.add(school.name);
-          }
-          filtersProvider.includedLs.remove(school.name);
-        }
+
+      final isManualOverride = _manualOverrideSchools.contains(school.name);
+      if (isManualOverride) {
+        continue;
       }
-      // If user has manually set green or red, keep that state
+
+      // Auto selection from slider: green inside, gray outside.
+      final nextState = isInSelectedArea ? TagState.green : TagState.gray;
+      filtersProvider.tagStates[school.name] = nextState;
+
+      if (nextState == TagState.green) {
+        if (!filtersProvider.includedLs.contains(school.name)) {
+          filtersProvider.includedLs.add(school.name);
+        }
+        filtersProvider.excludeLs.remove(school.name);
+      } else {
+        filtersProvider.includedLs.remove(school.name);
+        filtersProvider.excludeLs.remove(school.name);
+      }
     }
     
     // Debounced: this can be a large update and gets called frequently (sliders).
@@ -997,6 +968,8 @@ class _SchoolMapWidgetState extends State<SchoolMapWidget> {
 
   Future<void> _toggleSchoolState(String schoolName) async {
     final filtersProvider = Provider.of<FiltersProvider>(context, listen: false);
+    _manualOverrideSchools.add(schoolName);
+    await _saveManualOverrides();
     // Toggle the school tag state - this will work with the existing filter system
     // This allows manual override of area-based selection
     await filtersProvider.toggleTag('schools-by-city', schoolName);
@@ -1014,15 +987,9 @@ class _SchoolMapWidgetState extends State<SchoolMapWidget> {
             _selectedSchoolTypes.contains(school.schoolType))
         .toList();
     schools.sort((a, b) {
-      if (_useTimeLimit) {
-        final am = _bestMinutes(a);
-        final bm = _bestMinutes(b);
-        if (am != null && bm != null && am != bm) return am.compareTo(bm);
-      } else {
-        final ad = _bestMiles(a);
-        final bd = _bestMiles(b);
-        if (ad != null && bd != null && ad != bd) return ad.compareTo(bd);
-      }
+      final ad = _bestMiles(a);
+      final bd = _bestMiles(b);
+      if (ad != null && bd != null && ad != bd) return ad.compareTo(bd);
       return a.name.compareTo(b.name);
     });
     return schools;
@@ -1040,15 +1007,9 @@ class _SchoolMapWidgetState extends State<SchoolMapWidget> {
             !schoolsWithinNames.contains(school.name))
         .toList();
     schoolsNotWithin.sort((a, b) {
-      if (_useTimeLimit) {
-        final am = _bestMinutes(a);
-        final bm = _bestMinutes(b);
-        if (am != null && bm != null && am != bm) return am.compareTo(bm);
-      } else {
-        final ad = _bestMiles(a);
-        final bd = _bestMiles(b);
-        if (ad != null && bd != null && ad != bd) return ad.compareTo(bd);
-      }
+      final ad = _bestMiles(a);
+      final bd = _bestMiles(b);
+      if (ad != null && bd != null && ad != bd) return ad.compareTo(bd);
       return a.name.compareTo(b.name);
     });
     return schoolsNotWithin;
@@ -1064,6 +1025,9 @@ class _SchoolMapWidgetState extends State<SchoolMapWidget> {
   }
 
   Widget _buildSeeSpecificSchoolsDrawer(BuildContext context, FiltersProvider filtersProvider) {
+    const tooltipMessage =
+        'You can further select which specific schools to include and which to exclude more AFTER having made adjustments through the maps radio selection slider. Changes made here changes will supercede that of the schools selected in the map earlier. Further adjustment to the map radio selection slider AFTER having made changes to specific schools here though may then risk reseting the schools included or excluded based solely on the map again until the specific changes in schools sleected are again made afterwards.';
+
     return ExpansionTile(
       initiallyExpanded: false,
       onExpansionChanged: (expanded) {
@@ -1072,11 +1036,24 @@ class _SchoolMapWidgetState extends State<SchoolMapWidget> {
       trailing: Icon(
         _seeSpecificSchoolsExpanded ? Icons.keyboard_arrow_down : Icons.keyboard_arrow_left,
       ),
-      title: Text(
-        'See Specific Schools',
-        style: Theme.of(context).textTheme.titleSmall?.copyWith(
-              fontWeight: FontWeight.bold,
+      title: Row(
+        children: [
+          Text(
+            'Custom School Selection',
+            style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                  fontWeight: FontWeight.bold,
+                ),
+          ),
+          const SizedBox(width: 8),
+          AppTooltip(
+            message: tooltipMessage,
+            child: Icon(
+              Icons.help_outline,
+              size: 18,
+              color: Theme.of(context).colorScheme.primary,
             ),
+          ),
+        ],
       ),
       children: [
         Padding(
@@ -1176,7 +1153,7 @@ class _SchoolMapWidgetState extends State<SchoolMapWidget> {
               style: const TextStyle(fontStyle: FontStyle.italic),
             ),
             TextSpan(
-              text: ' within ${_areaLabel()} (excluded)',
+              text: ' within ${_areaLabel()} (not selected)',
             ),
           ],
         ),
@@ -1373,7 +1350,7 @@ class _SchoolMapWidgetState extends State<SchoolMapWidget> {
                       controller: _locationController,
                       textInputAction: TextInputAction.search,
                       decoration: InputDecoration(
-                        hintText: 'Search location or type "Current Location"',
+                        hintText: 'Type in your address (or hit the icon)',
                         border: const OutlineInputBorder(),
                         prefixIcon: const Icon(Icons.search),
                         suffixIcon: _locationController.text.isNotEmpty
@@ -1400,26 +1377,15 @@ class _SchoolMapWidgetState extends State<SchoolMapWidget> {
                   ),
                   // Current location button (only show if not yet loaded)
                   if (_currentLocationButtonVisible)
-                    Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        IconButton(
-                          icon: Icon(
-                            Icons.my_location,
-                            color: Colors.blue,
-                          ),
-                          tooltip: 'Use current location',
-                          onPressed: _returnToCurrentLocation,
-                        ),
-                        Text(
-                          'Current\nLocation',
-                          style: TextStyle(
-                            fontSize: 10,
-                            color: Colors.blue,
-                          ),
-                          textAlign: TextAlign.center,
-                        ),
-                      ],
+                    IconButton(
+                      iconSize: 34,
+                      padding: const EdgeInsets.symmetric(horizontal: 6),
+                      icon: const Icon(
+                        Icons.my_location,
+                        color: Colors.blue,
+                      ),
+                      tooltip: 'Use current location',
+                      onPressed: _returnToCurrentLocation,
                     ),
                 ],
               ),
@@ -1429,7 +1395,7 @@ class _SchoolMapWidgetState extends State<SchoolMapWidget> {
                 Padding(
                   padding: const EdgeInsets.only(top: 4, left: 12),
                   child: Text(
-                    'Put in your address.',
+                    'Type in your address (or hit the icon).',
                     style: Theme.of(context).textTheme.bodySmall?.copyWith(
                           fontStyle: FontStyle.italic,
                           color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.6),
@@ -1473,113 +1439,23 @@ class _SchoolMapWidgetState extends State<SchoolMapWidget> {
             }).toList(),
           ),
           const SizedBox(height: 12),
-          // Filter by distance or time (toggle)
+          // Distance-only controls (no time filter, no switches).
           Row(
             children: [
-              const Text('Limit schools by: '),
-              const SizedBox(width: 8),
-              AppTooltip(
-                message:
-                    'Use one or both limits. When both are enabled, schools must satisfy BOTH. This avoids “minutes ↔ miles” binding errors.',
-                child: Icon(
-                  Icons.help_outline,
-                  size: 18,
-                  color: Theme.of(context).colorScheme.primary,
+              const Text('Max distance: '),
+              Expanded(
+                child: Slider(
+                  value: _radiusMiles,
+                  min: 1.0,
+                  max: _maxRadiusMiles,
+                  divisions: ((_maxRadiusMiles - 1.0) * 10).round(),
+                  label: '${_radiusMiles.toStringAsFixed(1)} miles',
+                  onChanged: _onRadiusChanged,
                 ),
               ),
+              Text('${_radiusMiles.toStringAsFixed(1)} mi'),
             ],
           ),
-          const SizedBox(height: 12),
-          // Separate time + distance controls (no shared slider).
-          SwitchListTile(
-            contentPadding: EdgeInsets.zero,
-            title: const Text('Travel time'),
-            subtitle: Text(
-              _useTimeLimit
-                  ? 'Max: ${(_maxTravelTimeMinutes ?? 60).round()} min'
-                  : 'Off',
-            ),
-            value: _useTimeLimit,
-            onChanged: (v) {
-              setState(() {
-                _useTimeLimit = v;
-                if (_useTimeLimit) {
-                  final defaultTime = (_maxTravelTimeMinutes ?? 60.0);
-                  _maxTravelTimeMinutes = defaultTime.clamp(5.0, _maxTravelTimeAvailable);
-                }
-              });
-              _updateMap();
-              _updateSchoolsInRadius();
-            },
-            secondary: const Icon(Icons.access_time),
-          ),
-          if (_useTimeLimit)
-            Row(
-              children: [
-                const Text('Max: '),
-                Expanded(
-                  child: Slider(
-                    value: (_maxTravelTimeMinutes ?? 60.0).clamp(5.0, _maxTravelTimeAvailable),
-                    min: 5.0,
-                    max: _maxTravelTimeAvailable,
-                    divisions: ((_maxTravelTimeAvailable - 5.0) / 5).round(),
-                    label: '${(_maxTravelTimeMinutes ?? 60).round()} min',
-                    onChanged: (value) {
-                      setState(() {
-                        _maxTravelTimeMinutes = value.clamp(5.0, _maxTravelTimeAvailable);
-                      });
-                      _updateMap();
-                      _updateSchoolsInRadius();
-                    },
-                  ),
-                ),
-                Text('${(_maxTravelTimeMinutes ?? 60).round()} min'),
-                const SizedBox(width: 8),
-                AppTooltip(
-                  message:
-                      'Time estimates are calculated from your selected location. These are approximations and can vary with traffic/lights.',
-                  child: Icon(
-                    Icons.help_outline,
-                    size: 18,
-                    color: Theme.of(context).colorScheme.primary,
-                  ),
-                ),
-              ],
-            ),
-          const SizedBox(height: 8),
-          SwitchListTile(
-            contentPadding: EdgeInsets.zero,
-            title: const Text('Distance'),
-            subtitle: Text(
-              _useDistanceLimit ? 'Max: ${_radiusMiles.toStringAsFixed(1)} mi' : 'Off',
-            ),
-            value: _useDistanceLimit,
-            onChanged: (v) {
-              setState(() {
-                _useDistanceLimit = v;
-              });
-              _updateMap();
-              _updateSchoolsInRadius();
-            },
-            secondary: const Icon(Icons.straighten),
-          ),
-          if (_useDistanceLimit)
-            Row(
-              children: [
-                const Text('Max: '),
-                Expanded(
-                  child: Slider(
-                    value: _radiusMiles,
-                    min: 1.0,
-                    max: _maxRadiusMiles,
-                    divisions: ((_maxRadiusMiles - 1.0) * 10).round(),
-                    label: '${_radiusMiles.toStringAsFixed(1)} miles',
-                    onChanged: _onRadiusChanged,
-                  ),
-                ),
-                Text('${_radiusMiles.toStringAsFixed(1)} mi'),
-              ],
-            ),
           const SizedBox(height: 12),
           // Loading indicator
           if (_isLoading || _isGeocoding || _isCalculatingDistances)

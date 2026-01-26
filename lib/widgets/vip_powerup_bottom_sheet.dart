@@ -47,6 +47,44 @@ class _VipPowerupBottomSheetState extends State<VipPowerupBottomSheet> {
 
   BusinessCardInfo? _bizInfo;
   bool _isProcessing = false;
+  String? _inlineStatusMessage;
+  bool _inlineStatusIsError = false;
+
+  String _formatStripeError(Object e) {
+    // flutter_stripe exceptions sometimes stringify as "Instance of ...".
+    // Prefer human-readable messages when available.
+    if (e is stripe.StripeException) {
+      final msg = e.error.localizedMessage ?? e.error.message;
+      if (msg != null && msg.trim().isNotEmpty) return msg.trim();
+      return e.toString();
+    }
+    if (e is stripe.StripeConfigException) {
+      final msg = e.message;
+      if (msg.trim().isNotEmpty) return msg.trim();
+      return e.toString();
+    }
+    final s = e.toString();
+    return s.startsWith('Exception: ') ? s.substring('Exception: '.length) : s;
+  }
+
+  Future<void> _showCheckoutErrorDialog(String message) async {
+    if (!mounted) return;
+    await showDialog<void>(
+      context: context,
+      builder: (ctx) {
+        return AlertDialog(
+          title: const Text('Checkout failed'),
+          content: Text(message),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(ctx).pop(),
+              child: const Text('OK'),
+            ),
+          ],
+        );
+      },
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -171,6 +209,26 @@ class _VipPowerupBottomSheetState extends State<VipPowerupBottomSheet> {
                     ),
 
                     const SizedBox(height: 18),
+                    if ((_inlineStatusMessage ?? '').trim().isNotEmpty) ...[
+                      Container(
+                        width: double.infinity,
+                        padding: const EdgeInsets.all(12),
+                        decoration: BoxDecoration(
+                          color: (_inlineStatusIsError ? Colors.red : Colors.green).withValues(alpha: 0.12),
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(
+                            color: (_inlineStatusIsError ? Colors.red : Colors.green).withValues(alpha: 0.35),
+                          ),
+                        ),
+                        child: Text(
+                          _inlineStatusMessage!,
+                          style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                                color: _inlineStatusIsError ? Colors.red[800] : Colors.green[800],
+                              ),
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                    ],
                     ElevatedButton.icon(
                       onPressed: (canCheckout && !_isProcessing) ? _checkout : null,
                       icon: const Icon(Icons.shopping_cart_checkout),
@@ -195,7 +253,11 @@ class _VipPowerupBottomSheetState extends State<VipPowerupBottomSheet> {
 
   Future<void> _processVipCheckout() async {
     if (_isProcessing) return;
-    setState(() => _isProcessing = true);
+    setState(() {
+      _isProcessing = true;
+      _inlineStatusMessage = null;
+      _inlineStatusIsError = false;
+    });
 
     try {
       final user = FirebaseAuth.instance.currentUser;
@@ -241,21 +303,14 @@ class _VipPowerupBottomSheetState extends State<VipPowerupBottomSheet> {
 
       if (!mounted) return;
       Navigator.pop(context);
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('VIP Power-up purchased!'),
-          backgroundColor: Colors.green,
-        ),
-      );
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('VIP checkout failed: ${e.toString()}'),
-          backgroundColor: Colors.red,
-          duration: const Duration(seconds: 5),
-        ),
-      );
+      final msg = 'VIP checkout failed: ${_formatStripeError(e)}';
+      setState(() {
+        _inlineStatusMessage = msg;
+        _inlineStatusIsError = true;
+      });
+      await _showCheckoutErrorDialog(msg);
     } finally {
       if (mounted) setState(() => _isProcessing = false);
     }

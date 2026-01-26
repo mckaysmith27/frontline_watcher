@@ -61,7 +61,6 @@ class _PremiumUnlockBottomSheetState extends State<PremiumUnlockBottomSheet>
   Timer? _coachAutoHideTimer;
   late final AnimationController _coachController;
   late final Animation<double> _coachDy;
-  late final Animation<double> _coachFade;
 
   @override
   void initState() {
@@ -99,11 +98,8 @@ class _PremiumUnlockBottomSheetState extends State<PremiumUnlockBottomSheet>
       duration: const Duration(milliseconds: 1400),
     )..repeat();
     _coachDy = Tween<double>(begin: 0, end: -48).animate(CurvedAnimation(parent: _coachController, curve: Curves.easeInOut));
-    _coachFade = TweenSequence<double>([
-      TweenSequenceItem(tween: Tween(begin: 0.0, end: 1.0), weight: 15),
-      TweenSequenceItem(tween: ConstantTween<double>(1.0), weight: 55),
-      TweenSequenceItem(tween: Tween(begin: 1.0, end: 0.0), weight: 30),
-    ]).animate(CurvedAnimation(parent: _coachController, curve: Curves.easeInOut));
+    // Keep the coach overlay fully visible (no blinking/fading). We only hide it
+    // when the user scrolls/drags, or after the timeout.
 
     _startHeadlineLoop();
     // Trigger the crown "ring" after the sheet is visible (post-frame),
@@ -435,63 +431,60 @@ class _PremiumUnlockBottomSheetState extends State<PremiumUnlockBottomSheet>
                           child: AnimatedBuilder(
                             animation: _coachController,
                             builder: (context, _) {
-                              return Opacity(
-                                opacity: _coachFade.value,
-                                child: Container(
-                                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-                                  decoration: BoxDecoration(
-                                    color: Colors.black.withOpacity(0.72),
-                                    borderRadius: BorderRadius.circular(14),
-                                  ),
-                                  child: Row(
-                                    mainAxisSize: MainAxisSize.min,
-                                    children: [
-                                      Transform.translate(
-                                        offset: Offset(0, _coachDy.value),
-                                        child: Transform.rotate(
-                                          // Make it feel like a right-thumb swipe up.
-                                          angle: -0.35,
-                                          child: const Icon(
-                                            Icons.thumb_up,
-                                            color: Colors.white,
-                                            size: 22,
-                                          ),
-                                        ),
-                                      ),
-                                      const SizedBox(width: 10),
-                                      Column(
-                                        crossAxisAlignment: CrossAxisAlignment.start,
-                                        mainAxisSize: MainAxisSize.min,
-                                        children: const [
-                                          Text(
-                                            'Swipe up',
-                                            style: TextStyle(
-                                              color: Colors.white,
-                                              fontWeight: FontWeight.w700,
-                                              fontSize: 13,
-                                            ),
-                                          ),
-                                          SizedBox(height: 2),
-                                          Text(
-                                            'to see more durations',
-                                            style: TextStyle(
-                                              color: Colors.white70,
-                                              fontSize: 12,
-                                            ),
-                                          ),
-                                        ],
-                                      ),
-                                      const SizedBox(width: 10),
-                                      Transform.translate(
-                                        offset: Offset(0, _coachDy.value),
+                              return Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                                decoration: BoxDecoration(
+                                  color: Colors.black.withOpacity(0.72),
+                                  borderRadius: BorderRadius.circular(14),
+                                ),
+                                child: Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    Transform.translate(
+                                      offset: Offset(0, _coachDy.value),
+                                      child: Transform.rotate(
+                                        // Make it feel like a finger swipe up.
+                                        angle: -0.22,
                                         child: const Icon(
-                                          Icons.keyboard_arrow_up,
+                                          Icons.touch_app,
                                           color: Colors.white,
                                           size: 22,
                                         ),
                                       ),
-                                    ],
-                                  ),
+                                    ),
+                                    const SizedBox(width: 10),
+                                    Column(
+                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: const [
+                                        Text(
+                                          'Swipe up',
+                                          style: TextStyle(
+                                            color: Colors.white,
+                                            fontWeight: FontWeight.w700,
+                                            fontSize: 13,
+                                          ),
+                                        ),
+                                        SizedBox(height: 2),
+                                        Text(
+                                          'to select subscription',
+                                          style: TextStyle(
+                                            color: Colors.white70,
+                                            fontSize: 12,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                    const SizedBox(width: 10),
+                                    Transform.translate(
+                                      offset: Offset(0, _coachDy.value),
+                                      child: const Icon(
+                                        Icons.keyboard_arrow_up,
+                                        color: Colors.white,
+                                        size: 22,
+                                      ),
+                                    ),
+                                  ],
                                 ),
                               );
                             },

@@ -217,7 +217,7 @@ class _TimeWindowPickerState extends State<TimeWindowPicker> {
                       _emit();
                     },
                     icon: const Icon(Icons.access_time),
-                    label: Text('Start: ${_formatMinutes(context, _start)}'),
+                    label: Text(_formatMinutes(context, _start)),
                   ),
                 ),
                 const SizedBox(width: 12),
