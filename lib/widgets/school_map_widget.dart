@@ -62,6 +62,10 @@ class _SchoolMapWidgetState extends State<SchoolMapWidget> {
   bool _schoolsNotWithinExpanded = false;
   bool _nonAddressedExpanded = false;
 
+  // Search across school tags (custom selection drawers)
+  final TextEditingController _schoolSearchController = TextEditingController();
+  String _schoolSearchQuery = '';
+
   double? _bestMiles(School s) {
     final miles = s.driveDistanceMiles ?? s.distanceMiles;
     if (miles == null || miles <= 0) return null;
@@ -92,6 +96,11 @@ class _SchoolMapWidgetState extends State<SchoolMapWidget> {
   @override
   void initState() {
     super.initState();
+    _schoolSearchController.addListener(() {
+      setState(() {
+        _schoolSearchQuery = _schoolSearchController.text.trim().toLowerCase();
+      });
+    });
     _loadSavedLocation();
     _loadManualOverrides();
     _createGrayMarker().then((icon) {
@@ -511,7 +520,8 @@ class _SchoolMapWidgetState extends State<SchoolMapWidget> {
   BitmapDescriptor _getMarkerIcon(TagState state) {
     switch (state) {
       case TagState.green:
-        return BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueGreen);
+        // Legacy: treat "green" as included, but display as gray.
+        return _grayMarkerIcon ?? BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueOrange);
       case TagState.red:
         return BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueRed);
       case TagState.gray:
@@ -556,16 +566,16 @@ class _SchoolMapWidgetState extends State<SchoolMapWidget> {
         final currentState = filtersProvider.tagStates[school.name] ?? TagState.gray;
 
         // Auto selection from distance slider:
-        // - inside radius => green + included
+        // - inside radius => included (display gray)
         // - outside radius => gray + neither included nor excluded
-        final autoState = isInSelectedArea ? TagState.green : TagState.gray;
+        final autoState = isInSelectedArea ? TagState.gray : TagState.gray;
 
         final schoolState = isManualOverride ? currentState : autoState;
 
         // Keep provider lists/states consistent. For non-manual schools, we overwrite based on slider.
         if (!isManualOverride) {
           filtersProvider.tagStates[school.name] = schoolState;
-          if (schoolState == TagState.green) {
+          if (isInSelectedArea) {
             if (!filtersProvider.includedLs.contains(school.name)) {
               filtersProvider.includedLs.add(school.name);
             }
@@ -577,7 +587,7 @@ class _SchoolMapWidgetState extends State<SchoolMapWidget> {
           }
         } else {
           // Manual schools: ensure lists reflect manual state (safety).
-          if (schoolState == TagState.green) {
+          if (schoolState != TagState.red) {
             if (!filtersProvider.includedLs.contains(school.name)) {
               filtersProvider.includedLs.add(school.name);
             }
@@ -587,9 +597,6 @@ class _SchoolMapWidgetState extends State<SchoolMapWidget> {
               filtersProvider.excludeLs.add(school.name);
             }
             filtersProvider.includedLs.remove(school.name);
-          } else {
-            filtersProvider.includedLs.remove(school.name);
-            filtersProvider.excludeLs.remove(school.name);
           }
         }
 
@@ -645,11 +652,11 @@ class _SchoolMapWidgetState extends State<SchoolMapWidget> {
         continue;
       }
 
-      // Auto selection from slider: green inside, gray outside.
-      final nextState = isInSelectedArea ? TagState.green : TagState.gray;
+      // Auto selection from slider: included (display gray) inside, gray outside.
+      final nextState = TagState.gray;
       filtersProvider.tagStates[school.name] = nextState;
 
-      if (nextState == TagState.green) {
+      if (isInSelectedArea) {
         if (!filtersProvider.includedLs.contains(school.name)) {
           filtersProvider.includedLs.add(school.name);
         }
@@ -970,13 +977,36 @@ class _SchoolMapWidgetState extends State<SchoolMapWidget> {
     final filtersProvider = Provider.of<FiltersProvider>(context, listen: false);
     _manualOverrideSchools.add(schoolName);
     await _saveManualOverrides();
-    // Toggle the school tag state - this will work with the existing filter system
-    // This allows manual override of area-based selection
-    await filtersProvider.toggleTag('schools-by-city', schoolName);
+
+    // Excluded-only toggle for schools:
+    // - red = excluded
+    // - gray = included (or not-selected in "not within" section, but still shown as gray)
+    final current = filtersProvider.tagStates[schoolName] ?? TagState.gray;
+    if (current == TagState.red) {
+      filtersProvider.tagStates[schoolName] = TagState.gray;
+      filtersProvider.excludeLs.remove(schoolName);
+      // Treat gray as included when manually toggled back.
+      if (!filtersProvider.includedLs.contains(schoolName)) {
+        filtersProvider.includedLs.add(schoolName);
+      }
+    } else {
+      filtersProvider.tagStates[schoolName] = TagState.red;
+      filtersProvider.includedLs.remove(schoolName);
+      if (!filtersProvider.excludeLs.contains(schoolName)) {
+        filtersProvider.excludeLs.add(schoolName);
+      }
+    }
+    filtersProvider.saveToFirebase();
     setState(() {
       _updateMap();
       _updateSchoolsInRadius(); // Update to reflect manual changes
     });
+  }
+
+  bool _schoolMatchesSearch(String name) {
+    final q = _schoolSearchQuery;
+    if (q.isEmpty) return true;
+    return name.toLowerCase().contains(q);
   }
 
   // Get schools within the selected area, filtered by school type and sorted alphabetically
@@ -1057,6 +1087,54 @@ class _SchoolMapWidgetState extends State<SchoolMapWidget> {
       ),
       children: [
         Padding(
+          padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              TextField(
+                controller: _schoolSearchController,
+                decoration: InputDecoration(
+                  hintText: 'Search schools…',
+                  border: const OutlineInputBorder(),
+                  prefixIcon: const Icon(Icons.search),
+                  suffixIcon: _schoolSearchQuery.isNotEmpty
+                      ? IconButton(
+                          icon: const Icon(Icons.clear),
+                          onPressed: () => _schoolSearchController.clear(),
+                        )
+                      : null,
+                ),
+              ),
+              const SizedBox(height: 10),
+              // Show excluded schools as quick toggles below search (like Keywords drawer).
+              Builder(
+                builder: (context) {
+                  final excluded = filtersProvider.excludeLs
+                      .where((s) => _schoolMatchesSearch(s))
+                      .toList()
+                    ..sort((a, b) => a.toLowerCase().compareTo(b.toLowerCase()));
+                  if (excluded.isEmpty) return const SizedBox.shrink();
+                  return Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
+                    children: excluded.map((name) {
+                      return TagChip(
+                        tag: name,
+                        state: TagState.red,
+                        isPremium: false,
+                        isUnlocked: true,
+                        isCustom: false,
+                        onTap: () => _toggleSchoolState(name),
+                        onDelete: null,
+                      );
+                    }).toList(),
+                  );
+                },
+              ),
+            ],
+          ),
+        ),
+        Padding(
           padding: const EdgeInsets.only(bottom: 8),
           child: _buildSchoolsWithinDrawer(context, filtersProvider),
         ),
@@ -1070,7 +1148,7 @@ class _SchoolMapWidgetState extends State<SchoolMapWidget> {
   }
 
   Widget _buildSchoolsWithinDrawer(BuildContext context, FiltersProvider filtersProvider) {
-    final schoolsWithin = _getSchoolsWithinArea();
+    final schoolsWithin = _getSchoolsWithinArea().where((s) => _schoolMatchesSearch(s.name)).toList();
     final title = 'Schools within ${_areaLabel()} (included)';
 
     return ExpansionTile(
@@ -1105,7 +1183,8 @@ class _SchoolMapWidgetState extends State<SchoolMapWidget> {
               spacing: 8,
               runSpacing: 8,
               children: schoolsWithin.map((school) {
-                final state = filtersProvider.tagStates[school.name] ?? TagState.gray;
+                final raw = filtersProvider.tagStates[school.name] ?? TagState.gray;
+                final state = (raw == TagState.red) ? TagState.red : TagState.gray; // gray = included
                 return MouseRegion(
                   onHover: (_) {
                     // Show tooltip on hover for web
@@ -1131,7 +1210,7 @@ class _SchoolMapWidgetState extends State<SchoolMapWidget> {
   }
 
   Widget _buildSchoolsNotWithinDrawer(BuildContext context, FiltersProvider filtersProvider) {
-    final schoolsNotWithin = _getSchoolsNotWithinArea();
+    final schoolsNotWithin = _getSchoolsNotWithinArea().where((s) => _schoolMatchesSearch(s.name)).toList();
 
     return ExpansionTile(
       initiallyExpanded: false, // Collapsed by default
@@ -1176,7 +1255,8 @@ class _SchoolMapWidgetState extends State<SchoolMapWidget> {
               spacing: 8,
               runSpacing: 8,
               children: schoolsNotWithin.map((school) {
-                final state = filtersProvider.tagStates[school.name] ?? TagState.gray;
+                final raw = filtersProvider.tagStates[school.name] ?? TagState.gray;
+                final state = (raw == TagState.red) ? TagState.red : TagState.gray;
                 return MouseRegion(
                   onHover: (_) {
                     // Show tooltip on hover for web
@@ -1202,7 +1282,7 @@ class _SchoolMapWidgetState extends State<SchoolMapWidget> {
   }
 
   Widget _buildNonAddressedSchoolsDrawer(BuildContext context, FiltersProvider filtersProvider) {
-    final nonAddressedSchools = _getNonAddressedSchools();
+    final nonAddressedSchools = _getNonAddressedSchools().where((s) => _schoolMatchesSearch(s.name)).toList();
     const tooltipMessage = 'School-types marked as "other" are unconventional types of programs still listed within the school district—such as summer schools or online schools for example, and so they aren\'t included on the map even if they are selected as included (as their listing a physical address could be misleading or confusing).';
 
     return ExpansionTile(
@@ -1284,7 +1364,8 @@ class _SchoolMapWidgetState extends State<SchoolMapWidget> {
                   runSpacing: 8,
                   children: nonAddressedSchools.map((school) {
                     // Non-addressed schools are always gray by default
-                    final state = filtersProvider.tagStates[school.name] ?? TagState.gray;
+                    final raw = filtersProvider.tagStates[school.name] ?? TagState.gray;
+                    final state = (raw == TagState.red) ? TagState.red : TagState.gray;
                     return MouseRegion(
                       onHover: (_) {
                         // Show tooltip on hover for web
@@ -1315,6 +1396,7 @@ class _SchoolMapWidgetState extends State<SchoolMapWidget> {
   void dispose() {
     _filtersSaveDebounce?.cancel();
     _locationController.dispose();
+    _schoolSearchController.dispose();
     _mapController?.dispose();
     super.dispose();
   }

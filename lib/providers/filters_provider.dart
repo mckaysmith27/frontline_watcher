@@ -177,6 +177,15 @@ class FiltersProvider extends ChangeNotifier {
   Map<String, List<String>> _customTags = {};
   // Per-date filters: dateStr -> {includedWords: [], excludedWords: []}
   Map<String, Map<String, List<String>>> _dateFilters = {};
+
+  static const Set<String> _excludedOnlyCategories = {
+    'subjects',
+    'specialties',
+    'Duration',
+  };
+
+  // Cached set of keywords that should never be "included" (green) — only ignored (gray) or excluded (red).
+  Set<String> _excludedOnlyKeywords = {};
   
   // Keyword mapping for alternative terms
   static const Map<String, List<String>> keywordMappings = {
@@ -203,6 +212,7 @@ class FiltersProvider extends ChangeNotifier {
 
   FiltersProvider() {
     _initializeDefaults();
+    _rebuildExcludedOnlyKeywords();
     _loadFromFirebase();
   }
 
@@ -230,6 +240,42 @@ class FiltersProvider extends ChangeNotifier {
         }
       }
     }
+  }
+
+  void _rebuildExcludedOnlyKeywords() {
+    final s = <String>{};
+    for (final cat in _excludedOnlyCategories) {
+      final v = _filtersDict[cat];
+      if (v is List) {
+        for (final t in v) {
+          if (t is String) s.add(t);
+        }
+      }
+      final custom = _customTags[cat];
+      if (custom != null) {
+        for (final t in custom) {
+          s.add(t);
+        }
+      }
+    }
+    _excludedOnlyKeywords = s;
+  }
+
+  bool _isExcludedOnlyKeyword(String tag) => _excludedOnlyKeywords.contains(tag);
+
+  void _sanitizeExcludedOnlyKeywords() {
+    // Ensure excluded-only keywords are never "included".
+    for (final tag in _excludedOnlyKeywords) {
+      if (_tagStates[tag] == TagState.green) {
+        _tagStates[tag] = TagState.gray;
+        _includedLs.remove(tag);
+      }
+    }
+
+    // Also sanitize date-specific filters: remove excluded-only keywords from includedWords.
+    _dateFilters.forEach((dateStr, filters) {
+      filters['includedWords']?.removeWhere((w) => _excludedOnlyKeywords.contains(w));
+    });
   }
 
   Future<void> _loadFromFirebase() async {
@@ -267,6 +313,27 @@ class FiltersProvider extends ChangeNotifier {
               };
             }
           });
+        }
+
+        // Rebuild keyword caches now that custom tags have loaded.
+        _rebuildExcludedOnlyKeywords();
+        _sanitizeExcludedOnlyKeywords();
+
+        // Default behavior for new users: exclude "half" (half-days) by default.
+        // Only apply if this user has never initialized filters (and has no prior selections).
+        final alreadyInitialized = data['filtersInitialized'] == true;
+        final hasAnySelections = _includedLs.isNotEmpty || _excludeLs.isNotEmpty || savedStates != null;
+        if (!alreadyInitialized && !hasAnySelections) {
+          final halfTag = 'half';
+          if (_excludedOnlyKeywords.contains(halfTag)) {
+            _tagStates[halfTag] = TagState.red;
+            if (!_excludeLs.contains(halfTag)) _excludeLs.add(halfTag);
+          }
+          await _firestore.collection('users').doc(user.uid).set(
+            {'filtersInitialized': true},
+            SetOptions(merge: true),
+          );
+          await _saveToFirebase();
         }
         
         notifyListeners();
@@ -465,7 +532,8 @@ class FiltersProvider extends ChangeNotifier {
   TagState getTagStateForDate(String tag, String? dateStr) {
     if (dateStr != null && _dateFilters.containsKey(dateStr)) {
       final dateFilters = _dateFilters[dateStr]!;
-      if (dateFilters['includedWords']?.contains(tag) ?? false) {
+      // Excluded-only keywords can never be "included" (green).
+      if (!_isExcludedOnlyKeyword(tag) && (dateFilters['includedWords']?.contains(tag) ?? false)) {
         return TagState.green;
       }
       if (dateFilters['excludedWords']?.contains(tag) ?? false) {
@@ -492,23 +560,37 @@ class FiltersProvider extends ChangeNotifier {
     TagState newState;
     
     // Update date-specific filters
-    switch (currentState) {
-      case TagState.green:
+    if (_excludedOnlyCategories.contains(category) || _isExcludedOnlyKeyword(tag)) {
+      // Excluded-only: gray <-> red
+      if (currentState == TagState.red) {
         newState = TagState.gray;
-        dateFilters['includedWords']!.remove(tag);
-        break;
-      case TagState.gray:
-        newState = TagState.red;
-        dateFilters['excludedWords']!.add(tag);
-        break;
-      case TagState.red:
-        newState = TagState.green;
         dateFilters['excludedWords']!.remove(tag);
-        dateFilters['includedWords']!.add(tag);
-        break;
-      default:
-        newState = TagState.green;
-        dateFilters['includedWords']!.add(tag);
+      } else {
+        newState = TagState.red;
+        if (!dateFilters['excludedWords']!.contains(tag)) dateFilters['excludedWords']!.add(tag);
+      }
+      // Never allow include for excluded-only keywords.
+      dateFilters['includedWords']!.remove(tag);
+    } else {
+      // Regular tags: green -> gray -> red -> green
+      switch (currentState) {
+        case TagState.green:
+          newState = TagState.gray;
+          dateFilters['includedWords']!.remove(tag);
+          break;
+        case TagState.gray:
+          newState = TagState.red;
+          dateFilters['excludedWords']!.add(tag);
+          break;
+        case TagState.red:
+          newState = TagState.green;
+          dateFilters['excludedWords']!.remove(tag);
+          dateFilters['includedWords']!.add(tag);
+          break;
+        default:
+          newState = TagState.green;
+          dateFilters['includedWords']!.add(tag);
+      }
     }
 
     // If this is a nested category and the tag is a city name, update all schools under it
@@ -558,24 +640,37 @@ class FiltersProvider extends ChangeNotifier {
     final currentState = _tagStates[tag] ?? TagState.gray;
     TagState newState;
     
-    // Regular tags: green -> gray -> red -> green
-    switch (currentState) {
-      case TagState.green:
+    if (_excludedOnlyCategories.contains(category) || _isExcludedOnlyKeyword(tag)) {
+      // Excluded-only categories: gray <-> red
+      if (currentState == TagState.red) {
         newState = TagState.gray;
-        _includedLs.remove(tag);
-        break;
-      case TagState.gray:
-        newState = TagState.red;
-        _excludeLs.add(tag);
-        break;
-      case TagState.red:
-        newState = TagState.green;
         _excludeLs.remove(tag);
-        _includedLs.add(tag);
-        break;
-      default:
-        newState = TagState.green;
-        _includedLs.add(tag);
+      } else {
+        // If legacy data had green, treat it as gray.
+        newState = TagState.red;
+        _includedLs.remove(tag);
+        if (!_excludeLs.contains(tag)) _excludeLs.add(tag);
+      }
+    } else {
+      // Regular tags: green -> gray -> red -> green
+      switch (currentState) {
+        case TagState.green:
+          newState = TagState.gray;
+          _includedLs.remove(tag);
+          break;
+        case TagState.gray:
+          newState = TagState.red;
+          _excludeLs.add(tag);
+          break;
+        case TagState.red:
+          newState = TagState.green;
+          _excludeLs.remove(tag);
+          _includedLs.add(tag);
+          break;
+        default:
+          newState = TagState.green;
+          _includedLs.add(tag);
+      }
     }
 
     _tagStates[tag] = newState;
@@ -648,6 +743,7 @@ class FiltersProvider extends ChangeNotifier {
     if (!exists && !(_customTags[category]?.contains(tag) ?? false)) {
       _customTags[category]!.add(tag);
       _tagStates[tag] = TagState.gray;
+      _rebuildExcludedOnlyKeywords();
       await _saveToFirebase();
       notifyListeners();
     }
@@ -658,6 +754,7 @@ class FiltersProvider extends ChangeNotifier {
     _tagStates.remove(tag);
     _includedLs.remove(tag);
     _excludeLs.remove(tag);
+    _rebuildExcludedOnlyKeywords();
     await _saveToFirebase();
     notifyListeners();
   }
@@ -686,13 +783,15 @@ class FiltersProvider extends ChangeNotifier {
       };
     });
 
-    await _firestore.collection('users').doc(user.uid).update({
+    await _firestore.collection('users').doc(user.uid).set({
       'tagStates': statesMap,
       'includedLs': _includedLs,
       'excludeLs': _excludeLs,
       'customTags': _customTags,
       'dateFilters': dateFiltersMap,
-    });
+      // Marker to support "new user" defaults without impacting existing users
+      'filtersInitialized': true,
+    }, SetOptions(merge: true));
   }
 }
 

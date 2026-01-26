@@ -8,7 +8,7 @@ import '../../widgets/nested_filter_column.dart';
 import '../../widgets/school_map_widget.dart';
 import '../../widgets/profile_app_bar.dart';
 import '../../widgets/app_bar_quick_toggles.dart';
-import '../../widgets/app_tooltip.dart';
+import '../../widgets/tag_chip.dart';
 import '../profile/profile_screen.dart';
 
 class FiltersScreen extends StatefulWidget {
@@ -22,11 +22,25 @@ class _FiltersScreenState extends State<FiltersScreen> {
   Timer? _propagationTimer;
   List<String> _lastIncluded = [];
   List<String> _lastExcluded = [];
+
+  final TextEditingController _keywordSearchController = TextEditingController();
+  String _keywordQuery = '';
   
   @override
   void dispose() {
     _propagationTimer?.cancel();
+    _keywordSearchController.dispose();
     super.dispose();
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    _keywordSearchController.addListener(() {
+      setState(() {
+        _keywordQuery = _keywordSearchController.text.trim().toLowerCase();
+      });
+    });
   }
   
   @override
@@ -88,13 +102,16 @@ class _FiltersScreenState extends State<FiltersScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // Filter Legend with Tooltips
-            _buildFilterLegend(context),
+            // Keywords drawer (Subjects + Specialties + Duration)
+            _buildKeywordsDrawer(context, filtersProvider),
             const SizedBox(height: 24),
-            // Other filter categories first (subjects, specialties, duration)
+            // Other filter categories (excluding keyword categories and map-handled schools)
             ...filtersProvider.filtersDict.entries.map((entry) {
               // Skip schools-by-city as it's now handled by the map widget
-              if (entry.key == 'schools-by-city') {
+              if (entry.key == 'schools-by-city' ||
+                  entry.key == 'subjects' ||
+                  entry.key == 'specialties' ||
+                  entry.key == 'Duration') {
                 return const SizedBox.shrink();
               }
               // Handle nested dictionaries
@@ -134,112 +151,151 @@ class _FiltersScreenState extends State<FiltersScreen> {
     );
   }
 
-  Widget _buildFilterLegend(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: Theme.of(context).colorScheme.surfaceContainerHighest,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(
-          color: Theme.of(context).colorScheme.outline.withOpacity(0.2),
-        ),
-      ),
-      child: Column(
+
+  Widget _buildKeywordsDrawer(BuildContext context, FiltersProvider filtersProvider) {
+    final subjects = List<String>.from(filtersProvider.filtersDict['subjects'] as List? ?? const <String>[]);
+    final specialtiesBase = List<String>.from(filtersProvider.filtersDict['specialties'] as List? ?? const <String>[]);
+    final duration = List<String>.from(filtersProvider.filtersDict['Duration'] as List? ?? const <String>[]);
+    final specialtiesCustom = List<String>.from(filtersProvider.customTags['specialties'] ?? const <String>[]);
+
+    final allKeywords = <String>{
+      ...subjects,
+      ...specialtiesBase,
+      ...specialtiesCustom,
+      ...duration,
+    }.toList()
+      ..sort((a, b) => a.toLowerCase().compareTo(b.toLowerCase()));
+
+    final query = _keywordQuery;
+    final matches = query.isEmpty
+        ? allKeywords
+        : allKeywords.where((t) => t.toLowerCase().contains(query)).toList();
+
+    final isExisting = query.isNotEmpty && allKeywords.any((t) => t.toLowerCase() == query);
+    final canAdd = query.isNotEmpty && !isExisting;
+
+    bool isKeywordTag(String t) => allKeywords.contains(t);
+    final excludedKeywords = filtersProvider.excludeLs.where((t) => isKeywordTag(t)).toList()
+      ..sort((a, b) => a.toLowerCase().compareTo(b.toLowerCase()));
+
+    String categoryFor(String t) {
+      final tl = t.toLowerCase();
+      if (subjects.any((x) => x.toLowerCase() == tl)) return 'subjects';
+      if (duration.any((x) => x.toLowerCase() == tl)) return 'Duration';
+      // default: specialties (base or custom)
+      return 'specialties';
+    }
+
+    Widget section(String title, List<String> tags) {
+      final visible = query.isEmpty
+          ? tags
+          : tags.where((t) => t.toLowerCase().contains(query)).toList();
+      if (visible.isEmpty) return const SizedBox.shrink();
+
+      return Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
-            children: [
-              Icon(
-                Icons.info_outline,
-                size: 18,
-                color: Theme.of(context).colorScheme.primary,
-              ),
-              const SizedBox(width: 8),
-              Text(
-                'How Filters Work',
-                style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                      fontWeight: FontWeight.bold,
-                    ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 12),
           Text(
-            'Tap tags to cycle: Green (include) → Gray (ignore) → Red (exclude)',
-            style: Theme.of(context).textTheme.bodySmall,
+            title,
+            style: Theme.of(context).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.bold),
           ),
-          const SizedBox(height: 12),
+          const SizedBox(height: 10),
           Wrap(
-            spacing: 16,
-            runSpacing: 12,
-            children: [
-              _buildLegendItemWithTooltip(
-                context,
-                'Green',
-                Colors.green,
-                'Include: Show jobs with ANY of these tags\nExample: "elementary" + "middle school" = jobs with either one',
-                Icons.check_circle_outline,
-              ),
-              _buildLegendItemWithTooltip(
-                context,
-                'Red',
-                Colors.red,
-                'Exclude: Hide jobs with ANY of these tags\nExample: "kindergarten" = blocks all kindergarten jobs',
-                Icons.cancel_outlined,
-              ),
-              _buildLegendItemWithTooltip(
-                context,
-                'Gray',
-                Colors.grey,
-                'Ignore: These tags don\'t affect filtering\nExample: Unselected tags are ignored',
-                Icons.radio_button_unchecked,
-              ),
-            ],
+            spacing: 8,
+            runSpacing: 8,
+            children: visible.map((tag) {
+              final state = filtersProvider.tagStates[tag] ?? TagState.gray;
+              final isCustom = (filtersProvider.customTags['specialties']?.contains(tag) ?? false) && title == 'Specialties';
+              return TagChip(
+                tag: tag,
+                state: state == TagState.green ? TagState.gray : state, // safety for legacy data
+                isPremium: false,
+                isUnlocked: true,
+                isCustom: isCustom,
+                onTap: () => filtersProvider.toggleTag(categoryFor(tag), tag),
+                onDelete: isCustom ? () => filtersProvider.removeCustomTag('specialties', tag) : null,
+              );
+            }).toList(),
           ),
         ],
-      ),
-    );
-  }
+      );
+    }
 
-  Widget _buildLegendItemWithTooltip(
-    BuildContext context,
-    String label,
-    Color color,
-    String tooltipText,
-    IconData icon,
-  ) {
-    return AppTooltip(
-      message: tooltipText,
-      useInkWell: true,
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
+    return Card(
+      child: ExpansionTile(
+        title: Text(
+          'Keywords',
+          style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold),
+        ),
         children: [
-          Container(
-            width: 24,
-            height: 24,
-            decoration: BoxDecoration(
-              color: color.withOpacity(0.3),
-              shape: BoxShape.circle,
-              border: Border.all(color: color, width: 2),
-            ),
-            child: Icon(
-              icon,
-              size: 14,
-              color: color,
-            ),
-          ),
-          const SizedBox(width: 6),
-          Text(
-            label,
-            style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                  fontWeight: FontWeight.w500,
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                TextField(
+                  controller: _keywordSearchController,
+                  decoration: InputDecoration(
+                    hintText: 'Search or add keyword...',
+                    border: const OutlineInputBorder(),
+                    prefixIcon: const Icon(Icons.search),
+                    suffixIcon: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        if (_keywordQuery.isNotEmpty)
+                          IconButton(
+                            icon: const Icon(Icons.clear),
+                            onPressed: () => _keywordSearchController.clear(),
+                          ),
+                        if (canAdd)
+                          IconButton(
+                            icon: const Icon(Icons.add),
+                            tooltip: 'Add as a specialty keyword',
+                            onPressed: () async {
+                              final raw = _keywordQuery.trim();
+                              if (raw.isEmpty) return;
+                              await filtersProvider.addCustomTag('specialties', raw);
+                              if (!mounted) return;
+                              _keywordSearchController.clear();
+                            },
+                          ),
+                      ],
+                    ),
+                  ),
                 ),
-          ),
-          const SizedBox(width: 4),
-          Icon(
-            Icons.help_outline,
-            size: 14,
-            color: Theme.of(context).colorScheme.primary,
+                if (excludedKeywords.isNotEmpty) ...[
+                  const SizedBox(height: 12),
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
+                    children: excludedKeywords.map((tag) {
+                      return TagChip(
+                        tag: tag,
+                        state: TagState.red,
+                        isPremium: false,
+                        isUnlocked: true,
+                        isCustom: false,
+                        onTap: () => filtersProvider.toggleTag(categoryFor(tag), tag),
+                        onDelete: null,
+                      );
+                    }).toList(),
+                  ),
+                ],
+                const SizedBox(height: 18),
+                section('Subjects', subjects),
+                const SizedBox(height: 18),
+                section('Specialties', [...specialtiesBase, ...specialtiesCustom]),
+                const SizedBox(height: 18),
+                section('Duration', duration),
+                if (matches.isEmpty && query.isNotEmpty) ...[
+                  const SizedBox(height: 12),
+                  Text(
+                    'No matching keywords.',
+                    style: Theme.of(context).textTheme.bodySmall,
+                  ),
+                ],
+              ],
+            ),
           ),
         ],
       ),
