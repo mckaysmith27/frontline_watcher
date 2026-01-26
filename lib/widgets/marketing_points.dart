@@ -6,6 +6,8 @@ import 'app_tooltip.dart';
 enum MarketingPointKey {
   fastAlerts,
   priorityBooking,
+  jobAlertsCustomTimeWindows,
+  jobAlertsHistogramGuide,
   keywordFiltering,
   schoolSelectionMap,
   calendarSync,
@@ -51,6 +53,18 @@ class MarketingPoints {
             'PRIORITY BOOKING':
                 'Priority Booking: features designed to reduce the time between seeing a job and successfully accepting it.',
           },
+        );
+      case MarketingPointKey.jobAlertsCustomTimeWindows:
+        return const MarketingPointData(
+          icon: Icons.access_time,
+          text: 'Set custom time windows for when to recieve alerts for new jobs posted.',
+          termTooltips: {},
+        );
+      case MarketingPointKey.jobAlertsHistogramGuide:
+        return const MarketingPointData(
+          icon: Icons.bar_chart,
+          text: 'Base your notification time windows (above) on high or low posting data.',
+          termTooltips: {},
         );
       case MarketingPointKey.keywordFiltering:
         return const MarketingPointData(

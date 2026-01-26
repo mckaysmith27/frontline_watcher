@@ -236,7 +236,7 @@ class _TimeWindowPickerState extends State<TimeWindowPicker> {
                       _emit();
                     },
                     icon: const Icon(Icons.access_time_filled),
-                    label: Text('End: ${_formatMinutes(context, _end)}'),
+                    label: Text(_formatMinutes(context, _end)),
                   ),
                 ),
               ],

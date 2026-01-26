@@ -6,6 +6,7 @@ import 'package:flutter_svg/flutter_svg.dart';
 import 'package:flutter_stripe/flutter_stripe.dart' as stripe;
 import '../config/app_config.dart';
 import 'marketing_points.dart';
+import '../utils/stripe_checkout_helpers.dart';
 
 class PremiumUnlockBottomSheet extends StatefulWidget {
   const PremiumUnlockBottomSheet({super.key});
@@ -688,12 +689,19 @@ class _PremiumUnlockBottomSheetState extends State<PremiumUnlockBottomSheet>
     final tierData = _tiers[tier];
     if (tierData == null) return;
 
+    final days = (tierData['days'] as num).toInt();
+    final basePriceUsd = (tierData['price'] as num).toDouble();
+    final promoCode = _promoAppliesToTier(tier) ? _promo?.code : null;
+
     if (_isProcessing) return;
     setState(() {
       _isProcessing = true;
       _inlineStatusMessage = null;
       _inlineStatusIsError = false;
     });
+
+    String? intentId;
+    String mode = 'none'; // none|setup|payment
 
     try {
       final user = _auth.currentUser;
@@ -706,9 +714,6 @@ class _PremiumUnlockBottomSheetState extends State<PremiumUnlockBottomSheet>
         );
       }
 
-      final basePriceUsd = (tierData['price'] as num).toDouble();
-      final promoCode = _promoAppliesToTier(tier) ? _promo?.code : null;
-
       final createCallable = _functions.httpsCallable('createStripePaymentSession');
       final sessionRes = await createCallable.call({
         'tier': tier,
@@ -717,8 +722,8 @@ class _PremiumUnlockBottomSheetState extends State<PremiumUnlockBottomSheet>
       });
       final session = Map<String, dynamic>.from(sessionRes.data as Map);
 
-      final mode = (session['mode'] as String?) ?? 'none'; // none|setup|payment
-      final intentId = session['intentId'] as String?;
+      mode = (session['mode'] as String?) ?? 'none'; // none|setup|payment
+      intentId = session['intentId'] as String?;
       final customerId = session['customerId'] as String?;
       final ephemeralKeySecret = session['ephemeralKeySecret'] as String?;
       final paymentIntentClientSecret = session['paymentIntentClientSecret'] as String?;
@@ -751,7 +756,7 @@ class _PremiumUnlockBottomSheetState extends State<PremiumUnlockBottomSheet>
       final confirmCallable = _functions.httpsCallable('confirmSubscriptionPurchase');
       await confirmCallable.call({
         'tier': tier,
-        'days': (tierData['days'] as num).toInt(),
+        'days': days,
         'mode': mode,
         if (intentId != null) 'intentId': intentId,
         if (promoCode != null) 'promoCode': promoCode,
@@ -761,18 +766,49 @@ class _PremiumUnlockBottomSheetState extends State<PremiumUnlockBottomSheet>
       Navigator.pop(context);
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('Subscription active for ${(tierData['days'] as num).toInt()} days.'),
+          content: Text('Subscription active for $days days.'),
           backgroundColor: Colors.green,
         ),
       );
     } catch (e) {
       if (!mounted) return;
-      final msg = 'Checkout failed: $e';
+      final isCanceled = StripeCheckoutHelpers.isUserCanceled(e);
+
+      // Best-effort: if the PaymentSheet was dismissed/canceled, attempt to confirm anyway.
+      // Some external flows (e.g., Link) may succeed but return a cancellation signal.
+      if (isCanceled && mode != 'none' && intentId != null) {
+        try {
+          final confirmCallable = _functions.httpsCallable('confirmSubscriptionPurchase');
+          await confirmCallable.call({
+            'tier': tier,
+            'days': days,
+            'mode': mode,
+            'intentId': intentId,
+            if (promoCode != null) 'promoCode': promoCode,
+          });
+
+          if (!mounted) return;
+          Navigator.pop(context);
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Subscription active for $days days.'),
+              backgroundColor: Colors.green,
+            ),
+          );
+          return;
+        } catch (_) {
+          // fall through to canceled message
+        }
+      }
+
+      final msg = isCanceled ? 'Payment canceled.' : 'Checkout failed: ${StripeCheckoutHelpers.format(e)}';
       setState(() {
         _inlineStatusMessage = msg;
-        _inlineStatusIsError = true;
+        _inlineStatusIsError = !isCanceled;
       });
-      await _showCheckoutErrorDialog(msg);
+      if (!isCanceled) {
+        await _showCheckoutErrorDialog(msg);
+      }
     } finally {
       if (mounted) setState(() => _isProcessing = false);
     }

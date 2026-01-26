@@ -2,10 +2,12 @@ import 'package:flutter/material.dart';
 import 'package:cloud_functions/cloud_functions.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter_stripe/flutter_stripe.dart' as stripe;
+import 'package:flutter_svg/flutter_svg.dart';
 
 import 'marketing_points.dart';
 import 'business_card_info_module.dart';
 import '../config/app_config.dart';
+import '../utils/stripe_checkout_helpers.dart';
 
 class VipPowerupBottomSheet extends StatefulWidget {
   const VipPowerupBottomSheet({super.key});
@@ -54,20 +56,7 @@ class _VipPowerupBottomSheetState extends State<VipPowerupBottomSheet> {
   _PromoInfo? _promo;
 
   String _formatStripeError(Object e) {
-    // flutter_stripe exceptions sometimes stringify as "Instance of ...".
-    // Prefer human-readable messages when available.
-    if (e is stripe.StripeException) {
-      final msg = e.error.localizedMessage ?? e.error.message;
-      if (msg != null && msg.trim().isNotEmpty) return msg.trim();
-      return e.toString();
-    }
-    if (e is stripe.StripeConfigException) {
-      final msg = e.message;
-      if (msg.trim().isNotEmpty) return msg.trim();
-      return e.toString();
-    }
-    final s = e.toString();
-    return s.startsWith('Exception: ') ? s.substring('Exception: '.length) : s;
+    return StripeCheckoutHelpers.format(e);
   }
 
   Future<void> _showCheckoutErrorDialog(String message) async {
@@ -166,13 +155,7 @@ class _VipPowerupBottomSheetState extends State<VipPowerupBottomSheet> {
                   controller: scrollController,
                   padding: const EdgeInsets.all(24),
                   children: [
-                    Text(
-                      'VIP Power-up!',
-                      style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                            fontWeight: FontWeight.w800,
-                          ),
-                      textAlign: TextAlign.center,
-                    ),
+                    _vipTitleWithComet(context),
                     const SizedBox(height: 12),
                     Text(
                       'One-time purchase',
@@ -383,6 +366,9 @@ class _VipPowerupBottomSheetState extends State<VipPowerupBottomSheet> {
       _inlineStatusIsError = false;
     });
 
+    String? intentId;
+    String mode = 'payment'; // none|payment
+
     try {
       final user = FirebaseAuth.instance.currentUser;
       if (user == null) throw Exception('Not authenticated');
@@ -401,11 +387,11 @@ class _VipPowerupBottomSheetState extends State<VipPowerupBottomSheet> {
       });
       final session = Map<String, dynamic>.from(sessionRes.data as Map);
 
-      final mode = (session['mode'] as String?) ?? 'payment'; // none|payment
+      mode = (session['mode'] as String?) ?? 'payment'; // none|payment
       final customerId = session['customerId'] as String?;
       final ephemeralKeySecret = session['ephemeralKeySecret'] as String?;
       final paymentIntentClientSecret = session['paymentIntentClientSecret'] as String?;
-      final intentId = session['intentId'] as String?;
+      intentId = session['intentId'] as String?;
 
       if (mode == 'payment') {
         if (customerId == null ||
@@ -438,15 +424,80 @@ class _VipPowerupBottomSheetState extends State<VipPowerupBottomSheet> {
       Navigator.pop(context);
     } catch (e) {
       if (!mounted) return;
-      final msg = 'VIP checkout failed: ${_formatStripeError(e)}';
+      // If the PaymentSheet was dismissed/canceled (common with Link/testing),
+      // attempt a best-effort confirm anyway—sometimes the payment succeeded
+      // but the UI returns "canceled" due to an external flow.
+      final isCanceled = StripeCheckoutHelpers.isUserCanceled(e);
+
+      if (isCanceled && mode == 'payment' && intentId != null) {
+        try {
+          final confirmCallable = FirebaseFunctions.instance.httpsCallable('confirmVipPowerupPurchase');
+          await confirmCallable.call({
+            'mode': mode,
+            'intentId': intentId,
+            if (_promo?.code.isNotEmpty == true) 'promoCode': _promo!.code,
+          });
+          if (!mounted) return;
+          Navigator.pop(context);
+          return;
+        } catch (_) {
+          // fall through to "canceled" message
+        }
+      }
+
+      final msg = isCanceled
+          ? 'Payment canceled.'
+          : 'VIP checkout failed: ${_formatStripeError(e)}';
       setState(() {
         _inlineStatusMessage = msg;
-        _inlineStatusIsError = true;
+        _inlineStatusIsError = !isCanceled;
       });
-      await _showCheckoutErrorDialog(msg);
+      if (!isCanceled) {
+        await _showCheckoutErrorDialog(msg);
+      }
     } finally {
       if (mounted) setState(() => _isProcessing = false);
     }
+  }
+
+  Widget _vipTitleWithComet(BuildContext context) {
+    final style = Theme.of(context).textTheme.headlineSmall?.copyWith(
+          fontWeight: FontWeight.w800,
+        );
+    final base = style ?? const TextStyle(fontSize: 24, fontWeight: FontWeight.w800);
+    final accent = base.copyWith(fontWeight: FontWeight.w900);
+
+    return Text.rich(
+      TextSpan(
+        style: base,
+        children: [
+          const TextSpan(text: 'VIP '),
+          TextSpan(text: 'Power-up', style: accent),
+          // No space: comet floats above the "!".
+          WidgetSpan(
+            alignment: PlaceholderAlignment.baseline,
+            baseline: TextBaseline.alphabetic,
+            child: Transform.translate(
+              offset: const Offset(-2, -16),
+              child: Transform.rotate(
+                angle: 0.18,
+                child: SvgPicture.asset(
+                  'assets/icons/comet.svg',
+                  width: 22,
+                  height: 22,
+                  colorFilter: const ColorFilter.mode(
+                    Color(0xFF7C4DFF),
+                    BlendMode.srcIn,
+                  ),
+                ),
+              ),
+            ),
+          ),
+          const TextSpan(text: '!'),
+        ],
+      ),
+      textAlign: TextAlign.center,
+    );
   }
 }
 

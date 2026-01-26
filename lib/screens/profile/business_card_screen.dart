@@ -521,7 +521,7 @@ class _BusinessCardScreenState extends State<BusinessCardScreen>
             Align(
               alignment: Alignment.centerLeft,
               child: Text(
-                'What teacher will see after scanning your QR code:',
+                'What teacher sees after scanning your QR code:',
                 style: Theme.of(context).textTheme.titleMedium?.copyWith(
                       fontWeight: FontWeight.bold,
                     ),
@@ -883,283 +883,357 @@ class _BusinessCardScreenState extends State<BusinessCardScreen>
     final url = _getBusinessCardUrl().replaceFirst('https://', '');
     final fullName = '${_firstNameController.text} ${_lastNameController.text}'.trim();
 
-    return Container(
-      width: double.infinity,
-      constraints: const BoxConstraints(maxWidth: 420),
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: Theme.of(context).colorScheme.surface,
-        borderRadius: BorderRadius.circular(28),
-        border: Border.all(color: Theme.of(context).colorScheme.outline.withOpacity(0.2)),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.06),
-            blurRadius: 12,
-            offset: const Offset(0, 6),
-          ),
-        ],
-      ),
-      child: Column(
-        children: [
-          Align(
-            alignment: Alignment.centerLeft,
-            child: Padding(
-              // Extra inset to avoid clipping against rounded edges.
-              padding: const EdgeInsets.only(left: 4, right: 4),
-              child: Text(
-                'Powered by Sub67…',
-                softWrap: true,
-                style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                      fontStyle: FontStyle.italic,
-                      color: Theme.of(context).colorScheme.onSurface.withOpacity(0.55),
-                    ),
-              ),
-            ),
-          ),
-          const SizedBox(height: 10),
-          GestureDetector(
-            onTap: _pickProfilePhoto,
-            child: Stack(
-              alignment: Alignment.center,
-              children: [
-                CircleAvatar(
-                  radius: 56,
-                  backgroundImage: _profilePhotoUrl != null ? NetworkImage(_profilePhotoUrl!) : null,
-                  child: _profilePhotoUrl == null
-                      ? Text(
-                          _auth.currentUser?.email?[0].toUpperCase() ?? 'U',
-                          style: const TextStyle(fontSize: 28),
-                        )
-                      : null,
-                ),
-                Positioned(
-                  bottom: 0,
-                  right: 0,
-                  child: CircleAvatar(
-                    radius: 14,
-                    backgroundColor: Theme.of(context).colorScheme.primary,
-                    child: const Icon(Icons.camera_alt, size: 16, color: Colors.white),
+    final content = Column(
+      children: [
+        Align(
+          alignment: Alignment.centerLeft,
+          child: Padding(
+            // Extra inset to avoid clipping against rounded edges.
+            padding: const EdgeInsets.only(left: 4, right: 4),
+            child: Text(
+              'Powered by Sub67…',
+              softWrap: true,
+              style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                    fontStyle: FontStyle.italic,
+                    color: Theme.of(context).colorScheme.onSurface.withOpacity(0.55),
                   ),
-                ),
-              ],
             ),
           ),
-          const SizedBox(height: 12),
-          _copyRow(
-            label: fullName.isEmpty ? 'Name' : fullName,
-            valueToCopy: fullName,
-          ),
-          const SizedBox(height: 8),
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
+        ),
+        const SizedBox(height: 10),
+        GestureDetector(
+          onTap: _pickProfilePhoto,
+          child: Stack(
+            alignment: Alignment.center,
             children: [
-              Expanded(
-                child: TextField(
-                  controller: _bioController,
-                  maxLength: 500,
-                  maxLines: null,
-                  decoration: const InputDecoration(
-                    counterText: '',
-                    hintText: 'Quick bio (max 500 chars)',
-                    border: OutlineInputBorder(),
-                    isDense: true,
-                    contentPadding: EdgeInsets.all(12),
-                  ),
-                  style: const TextStyle(fontStyle: FontStyle.italic),
-                  onChanged: (value) => _saveField('bio', value),
-                ),
+              CircleAvatar(
+                radius: 56,
+                backgroundImage: _profilePhotoUrl != null ? NetworkImage(_profilePhotoUrl!) : null,
+                child: _profilePhotoUrl == null
+                    ? Text(
+                        _auth.currentUser?.email?[0].toUpperCase() ?? 'U',
+                        style: const TextStyle(fontSize: 28),
+                      )
+                    : null,
               ),
-              const SizedBox(width: 8),
-              IconButton(
-                tooltip: 'Reset bio',
-                icon: const Icon(Icons.refresh),
-                onPressed: () async {
-                  final confirmed = await showDialog<bool>(
-                    context: context,
-                    builder: (context) => AlertDialog(
-                      title: const Text('Reset Bio?'),
-                      content: const Text('Are you sure you want to reset bio to its default?'),
-                      actions: [
-                        TextButton(
-                          onPressed: () => Navigator.pop(context, false),
-                          child: const Text('Cancel'),
-                        ),
-                        ElevatedButton(
-                          onPressed: () => Navigator.pop(context, true),
-                          child: const Text('Reset'),
-                        ),
-                      ],
-                    ),
-                  );
-                  if (confirmed == true) {
-                    setState(() {
-                      _bioController.text = _defaultBio;
-                    });
-                    await _saveField('bio', _defaultBio);
-                  }
-                },
+              Positioned(
+                bottom: 0,
+                right: 0,
+                child: CircleAvatar(
+                  radius: 14,
+                  backgroundColor: Theme.of(context).colorScheme.primary,
+                  child: const Icon(Icons.camera_alt, size: 16, color: Colors.white),
+                ),
               ),
             ],
           ),
-          const SizedBox(height: 8),
-          _copyRow(label: _phoneController.text.isEmpty ? 'Phone' : _phoneController.text, valueToCopy: _phoneController.text),
-          _copyRow(label: _emailController.text.isEmpty ? 'Email' : _emailController.text, valueToCopy: _emailController.text),
-          _copyRow(label: url.isEmpty ? 'sub67.com/<shortname>' : url, valueToCopy: url),
-
-          const SizedBox(height: 12),
-          Divider(color: Theme.of(context).colorScheme.outline.withOpacity(0.2)),
-          const SizedBox(height: 10),
-          Align(
-            alignment: Alignment.centerLeft,
-            child: Text(
-              'Choose what you’d like to do:',
-              style: Theme.of(context).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.bold),
-            ),
-          ),
-          const SizedBox(height: 8),
-          Card(
-            child: RadioListTile<TeacherPreviewAction>(
-              value: TeacherPreviewAction.preferred,
-              groupValue: _teacherPreviewAction,
-              onChanged: (v) => setState(() => _teacherPreviewAction = v!),
-              title: Text(
-                'Add $fullName (${_phoneController.text.isEmpty ? 'no phone' : _phoneController.text}) to preferred teaching list?*',
-                softWrap: true,
-              ),
-            ),
-          ),
-          Card(
-            child: RadioListTile<TeacherPreviewAction>(
-              value: TeacherPreviewAction.specificDay,
-              groupValue: _teacherPreviewAction,
-              onChanged: (v) => setState(() => _teacherPreviewAction = v!),
-              title: Text(
-                'Request $fullName (${_phoneController.text.isEmpty ? 'no phone' : _phoneController.text}) for a specific day?',
-                softWrap: true,
-              ),
-            ),
-          ),
-          if (_teacherPreviewAction == TeacherPreviewAction.specificDay) ...[
-            const SizedBox(height: 8),
-            Card(
-              child: Padding(
-                padding: const EdgeInsets.all(12),
-                child: TableCalendar(
-                  firstDay: DateTime.now().subtract(const Duration(days: 1)),
-                  lastDay: DateTime.now().add(const Duration(days: 365)),
-                  focusedDay: _teacherPreviewFocusedDay,
-                  selectedDayPredicate: (day) => _teacherPreviewSelectedDay != null && isSameDay(_teacherPreviewSelectedDay, day),
-                  onDaySelected: (selected, focused) {
-                    setState(() {
-                      _teacherPreviewSelectedDay = selected;
-                      _teacherPreviewFocusedDay = focused;
-                    });
-                  },
-                  onPageChanged: (focused) => _teacherPreviewFocusedDay = focused,
-                  calendarStyle: const CalendarStyle(isTodayHighlighted: true),
+        ),
+        const SizedBox(height: 12),
+        _copyRow(
+          label: fullName.isEmpty ? 'Name' : fullName,
+          valueToCopy: fullName,
+        ),
+        const SizedBox(height: 8),
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Expanded(
+              child: TextField(
+                controller: _bioController,
+                maxLength: 500,
+                maxLines: null,
+                decoration: const InputDecoration(
+                  counterText: '',
+                  hintText: 'Quick bio (max 500 chars)',
+                  border: OutlineInputBorder(),
+                  isDense: true,
+                  contentPadding: EdgeInsets.all(12),
                 ),
+                style: const TextStyle(fontStyle: FontStyle.italic),
+                onChanged: (value) => _saveField('bio', value),
               ),
+            ),
+            const SizedBox(width: 8),
+            IconButton(
+              tooltip: 'Reset bio',
+              icon: const Icon(Icons.refresh),
+              onPressed: () async {
+                final confirmed = await showDialog<bool>(
+                  context: context,
+                  builder: (context) => AlertDialog(
+                    title: const Text('Reset Bio?'),
+                    content: const Text('Are you sure you want to reset bio to its default?'),
+                    actions: [
+                      TextButton(
+                        onPressed: () => Navigator.pop(context, false),
+                        child: const Text('Cancel'),
+                      ),
+                      ElevatedButton(
+                        onPressed: () => Navigator.pop(context, true),
+                        child: const Text('Reset'),
+                      ),
+                    ],
+                  ),
+                );
+                if (confirmed == true) {
+                  setState(() {
+                    _bioController.text = _defaultBio;
+                  });
+                  await _saveField('bio', _defaultBio);
+                }
+              },
             ),
           ],
-          const SizedBox(height: 10),
+        ),
+        const SizedBox(height: 8),
+        _copyRow(label: _phoneController.text.isEmpty ? 'Phone' : _phoneController.text, valueToCopy: _phoneController.text),
+        _copyRow(label: _emailController.text.isEmpty ? 'Email' : _emailController.text, valueToCopy: _emailController.text),
+        _copyRow(label: url.isEmpty ? 'sub67.com/<shortname>' : url, valueToCopy: url),
+        const SizedBox(height: 12),
+        Divider(color: Theme.of(context).colorScheme.outline.withOpacity(0.2)),
+        const SizedBox(height: 10),
+        Align(
+          alignment: Alignment.centerLeft,
+          child: Text(
+            'Choose what you’d like to do:',
+            style: Theme.of(context).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.bold),
+          ),
+        ),
+        const SizedBox(height: 8),
+        Card(
+          child: RadioListTile<TeacherPreviewAction>(
+            value: TeacherPreviewAction.preferred,
+            groupValue: _teacherPreviewAction,
+            onChanged: (v) => setState(() => _teacherPreviewAction = v!),
+            title: Text(
+              'Add $fullName (${_phoneController.text.isEmpty ? 'no phone' : _phoneController.text}) to preferred teaching list?*',
+              softWrap: true,
+            ),
+          ),
+        ),
+        Card(
+          child: RadioListTile<TeacherPreviewAction>(
+            value: TeacherPreviewAction.specificDay,
+            groupValue: _teacherPreviewAction,
+            onChanged: (v) => setState(() => _teacherPreviewAction = v!),
+            title: Text(
+              'Request $fullName (${_phoneController.text.isEmpty ? 'no phone' : _phoneController.text}) for a specific day?',
+              softWrap: true,
+            ),
+          ),
+        ),
+        if (_teacherPreviewAction == TeacherPreviewAction.specificDay) ...[
+          const SizedBox(height: 8),
           Card(
             child: Padding(
               padding: const EdgeInsets.all(12),
-              child: Column(
-                children: [
-                  AnimatedBuilder(
-                    animation: _teacherTermsNudgeController,
-                    builder: (context, child) {
-                      return Transform.translate(
-                        offset: Offset(_teacherTermsShakeX.value, 0),
-                        child: child,
-                      );
-                    },
-                    child: Row(
-                      children: [
-                        AnimatedBuilder(
-                          animation: _teacherTermsNudgeController,
-                          builder: (context, child) {
-                            return Transform.scale(
-                              scale: _teacherTermsCheckboxScale.value,
-                              child: child,
-                            );
-                          },
-                          child: Checkbox(
-                            value: _teacherPreviewTermsAccepted,
-                            onChanged: (v) => setState(() => _teacherPreviewTermsAccepted = v ?? false),
-                          ),
-                        ),
-                        Expanded(
-                          child: Wrap(
-                            children: [
-                              Text(
-                                'I Agree to the ',
-                                style: Theme.of(context).textTheme.bodyMedium,
-                              ),
-                              InkWell(
-                                onTap: _showTeacherTermsPreview,
-                                child: Text(
-                                  'Terms & Conditions',
-                                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                                        decoration: TextDecoration.underline,
-                                      ),
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  Row(
+              child: TableCalendar(
+                firstDay: DateTime.now().subtract(const Duration(days: 1)),
+                lastDay: DateTime.now().add(const Duration(days: 365)),
+                focusedDay: _teacherPreviewFocusedDay,
+                selectedDayPredicate: (day) => _teacherPreviewSelectedDay != null && isSameDay(_teacherPreviewSelectedDay, day),
+                onDaySelected: (selected, focused) {
+                  setState(() {
+                    _teacherPreviewSelectedDay = selected;
+                    _teacherPreviewFocusedDay = focused;
+                  });
+                },
+                onPageChanged: (focused) => _teacherPreviewFocusedDay = focused,
+                calendarStyle: const CalendarStyle(isTodayHighlighted: true),
+              ),
+            ),
+          ),
+        ],
+        const SizedBox(height: 10),
+        Card(
+          child: Padding(
+            padding: const EdgeInsets.all(12),
+            child: Column(
+              children: [
+                AnimatedBuilder(
+                  animation: _teacherTermsNudgeController,
+                  builder: (context, child) {
+                    return Transform.translate(
+                      offset: Offset(_teacherTermsShakeX.value, 0),
+                      child: child,
+                    );
+                  },
+                  child: Row(
                     children: [
-                      Checkbox(
-                        value: _teacherPreviewDownloadAppChecked,
-                        onChanged: (v) => setState(() => _teacherPreviewDownloadAppChecked = v ?? false),
+                      AnimatedBuilder(
+                        animation: _teacherTermsNudgeController,
+                        builder: (context, child) {
+                          return Transform.scale(
+                            scale: _teacherTermsCheckboxScale.value,
+                            child: child,
+                          );
+                        },
+                        child: Checkbox(
+                          value: _teacherPreviewTermsAccepted,
+                          onChanged: (v) => setState(() => _teacherPreviewTermsAccepted = v ?? false),
+                        ),
                       ),
                       Expanded(
-                        child: Text.rich(
-                          TextSpan(
-                            style: Theme.of(context).textTheme.bodyMedium,
-                            children: const [
-                              TextSpan(
-                                text: 'Download the app!',
-                                style: TextStyle(fontWeight: FontWeight.bold),
+                        child: Wrap(
+                          children: [
+                            Text(
+                              'I Agree to the ',
+                              style: Theme.of(context).textTheme.bodyMedium,
+                            ),
+                            InkWell(
+                              onTap: _showTeacherTermsPreview,
+                              child: Text(
+                                'Terms & Conditions',
+                                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                                      decoration: TextDecoration.underline,
+                                    ),
                               ),
-                              TextSpan(
-                                text: '—For a faster, smoother experience and to unlock other useful features.',
-                              ),
-                            ],
-                          ),
+                            ),
+                          ],
                         ),
                       ),
                     ],
                   ),
-                ],
-              ),
+                ),
+                Row(
+                  children: [
+                    Checkbox(
+                      value: _teacherPreviewDownloadAppChecked,
+                      onChanged: (v) => setState(() => _teacherPreviewDownloadAppChecked = v ?? false),
+                    ),
+                    Expanded(
+                      child: Text.rich(
+                        TextSpan(
+                          style: Theme.of(context).textTheme.bodyMedium,
+                          children: const [
+                            TextSpan(
+                              text: 'Download the app!',
+                              style: TextStyle(fontWeight: FontWeight.bold),
+                            ),
+                            TextSpan(
+                              text: '—For a faster, smoother experience and to unlock other useful features.',
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ],
             ),
           ),
-          const SizedBox(height: 10),
-          SizedBox(
-            width: double.infinity,
-            child: ElevatedButton(
-              onPressed: () async {
-                if (!_teacherPreviewCanContinue) {
-                  await _nudgeTeacherTerms();
-                  return;
-                }
-                if (!context.mounted) return;
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(
-                    content: Text('Preview: Teachers will tap Next, enter Frontline/ESS credentials, then continue.'),
-                  ),
-                );
-              },
-              child: const Text('Next'),
-            ),
+        ),
+        const SizedBox(height: 10),
+        SizedBox(
+          width: double.infinity,
+          child: ElevatedButton(
+            onPressed: () async {
+              if (!_teacherPreviewCanContinue) {
+                await _nudgeTeacherTerms();
+                return;
+              }
+              if (!context.mounted) return;
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(
+                  content: Text('Preview: Teachers will tap Next, enter Frontline/ESS credentials, then continue.'),
+                ),
+              );
+            },
+            child: const Text('Next'),
+          ),
+        ),
+      ],
+    );
+
+    return Center(
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 420),
+        child: _buildPhoneFrame(
+          context,
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.fromLTRB(16, 20, 16, 18),
+            child: content,
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildPhoneFrame(BuildContext context, {required Widget child}) {
+    final cs = Theme.of(context).colorScheme;
+    final bezel = cs.onSurface.withValues(alpha: Theme.of(context).brightness == Brightness.dark ? 0.55 : 0.88);
+
+    return Container(
+      height: 680,
+      decoration: BoxDecoration(
+        color: bezel,
+        borderRadius: BorderRadius.circular(46),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.18),
+            blurRadius: 26,
+            offset: const Offset(0, 16),
           ),
         ],
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(10),
+        child: Stack(
+          children: [
+            ClipRRect(
+              borderRadius: BorderRadius.circular(38),
+              child: DecoratedBox(
+                decoration: BoxDecoration(
+                  color: cs.surface,
+                  border: Border.all(color: Colors.white.withValues(alpha: 0.06)),
+                ),
+                child: child,
+              ),
+            ),
+            // Notch / speaker cutout (visual cue that this is a phone).
+            Positioned(
+              top: 3,
+              left: 0,
+              right: 0,
+              child: Center(
+                child: Container(
+                  width: 126,
+                  height: 28,
+                  decoration: BoxDecoration(
+                    color: bezel,
+                    borderRadius: BorderRadius.circular(18),
+                  ),
+                  child: Center(
+                    child: Container(
+                      width: 46,
+                      height: 5,
+                      decoration: BoxDecoration(
+                        color: Colors.white.withValues(alpha: 0.18),
+                        borderRadius: BorderRadius.circular(6),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+            // Home indicator.
+            Positioned(
+              bottom: 8,
+              left: 0,
+              right: 0,
+              child: Center(
+                child: Container(
+                  width: 122,
+                  height: 4,
+                  decoration: BoxDecoration(
+                    color: cs.onSurface.withValues(alpha: 0.16),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }

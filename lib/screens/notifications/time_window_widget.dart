@@ -25,7 +25,7 @@ class _TimeWindowWidgetState extends State<TimeWindowWidget> {
     final endMinutes = widget.timeWindow.endTime.hour * 60 + widget.timeWindow.endTime.minute;
 
     return TimeWindowPicker(
-      title: 'Notification window',
+      title: 'Notification Window',
       value: TimeWindowValue(startMinutes: startMinutes, endMinutes: endMinutes),
       onChanged: (v) {
         final updated = TimeWindow(
