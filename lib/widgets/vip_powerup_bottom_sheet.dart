@@ -43,12 +43,15 @@ class VipPowerupBottomSheet extends StatefulWidget {
 class _VipPowerupBottomSheetState extends State<VipPowerupBottomSheet> {
   static const String _packageName = 'VIP Power-up Package';
   static const String _packageQty = '1 Power-up';
-  static const String _packagePrice = '\$7.99';
+  static const double _basePriceUsd = 7.99;
 
   BusinessCardInfo? _bizInfo;
   bool _isProcessing = false;
   String? _inlineStatusMessage;
   bool _inlineStatusIsError = false;
+
+  final TextEditingController _promoController = TextEditingController();
+  _PromoInfo? _promo;
 
   String _formatStripeError(Object e) {
     // flutter_stripe exceptions sometimes stringify as "Instance of ...".
@@ -86,9 +89,56 @@ class _VipPowerupBottomSheetState extends State<VipPowerupBottomSheet> {
     );
   }
 
+  double _applyPromoToBase(double baseUsd, _PromoInfo promo) {
+    var finalUsd = baseUsd;
+    if (promo.discountType == 'free') {
+      finalUsd = 0.0;
+    } else if (promo.discountType == 'percent' && promo.percentOff != null) {
+      finalUsd = baseUsd * (1 - (promo.percentOff! / 100));
+    } else if (promo.discountType == 'amount' && promo.amountOffUsd != null) {
+      finalUsd = baseUsd - promo.amountOffUsd!;
+    }
+    if (finalUsd < 0) finalUsd = 0;
+    return finalUsd;
+  }
+
+  String _formatUsd(double v) => v.toStringAsFixed(2);
+
+  Future<void> _applyPromo() async {
+    final promo = _promoController.text.trim();
+    if (promo.isEmpty) return;
+    try {
+      final functions = FirebaseFunctions.instance;
+      final callable = functions.httpsCallable('validatePromoCode');
+      // VIP uses its own tier key.
+      final res = await callable.call({'code': promo, 'tier': 'vip_powerup'});
+      final data = Map<String, dynamic>.from(res.data as Map);
+      setState(() {
+        _promo = _PromoInfo.fromMap(data);
+        _inlineStatusMessage = 'Promo applied.';
+        _inlineStatusIsError = false;
+      });
+    } catch (e) {
+      final msg = 'Invalid promo code: $e';
+      setState(() {
+        _promo = null;
+        _inlineStatusMessage = msg;
+        _inlineStatusIsError = true;
+      });
+      await _showCheckoutErrorDialog(msg);
+    }
+  }
+
+  @override
+  void dispose() {
+    _promoController.dispose();
+    super.dispose();
+  }
+
   @override
   Widget build(BuildContext context) {
     final canCheckout = _bizInfo?.isComplete == true;
+    final displayUsd = _promo == null ? _basePriceUsd : _applyPromoToBase(_basePriceUsd, _promo!);
 
     return DraggableScrollableSheet(
       initialChildSize: 0.72,
@@ -166,6 +216,46 @@ class _VipPowerupBottomSheetState extends State<VipPowerupBottomSheet> {
                     ),
                     const SizedBox(height: 12),
 
+                    // Promo code (inline).
+                    Card(
+                      child: Padding(
+                        padding: const EdgeInsets.all(16),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              'Promo code',
+                              style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                                    fontWeight: FontWeight.w700,
+                                  ),
+                            ),
+                            const SizedBox(height: 10),
+                            Row(
+                              children: [
+                                Expanded(
+                                  child: TextField(
+                                    controller: _promoController,
+                                    textInputAction: TextInputAction.done,
+                                    decoration: const InputDecoration(
+                                      hintText: 'Enter code',
+                                      border: OutlineInputBorder(),
+                                    ),
+                                    onSubmitted: (_) => _applyPromo(),
+                                  ),
+                                ),
+                                const SizedBox(width: 10),
+                                OutlinedButton(
+                                  onPressed: _applyPromo,
+                                  child: const Text('Apply'),
+                                ),
+                              ],
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+
                     // Single selectable option (already selected).
                     Container(
                       padding: const EdgeInsets.all(16),
@@ -193,14 +283,48 @@ class _VipPowerupBottomSheetState extends State<VipPowerupBottomSheet> {
                                       ),
                                 ),
                                 const SizedBox(height: 2),
-                                Text(
-                                  '$_packageQty • $_packagePrice',
-                                  style: TextStyle(
-                                    fontSize: 12,
-                                    color: Colors.grey[600],
-                                    fontStyle: FontStyle.italic,
-                                  ),
-                                ),
+                                            Row(
+                                              children: [
+                                                Text(
+                                                  '$_packageQty • ',
+                                                  style: TextStyle(
+                                                    fontSize: 12,
+                                                    color: Colors.grey[600],
+                                                    fontStyle: FontStyle.italic,
+                                                  ),
+                                                ),
+                                                if (_promo != null && displayUsd != _basePriceUsd) ...[
+                                                  Text(
+                                                    '\$${_formatUsd(_basePriceUsd)}',
+                                                    style: TextStyle(
+                                                      fontSize: 12,
+                                                      color: Colors.grey[600],
+                                                      fontStyle: FontStyle.italic,
+                                                      decoration: TextDecoration.lineThrough,
+                                                    ),
+                                                  ),
+                                                  const SizedBox(width: 6),
+                                                  Text(
+                                                    '\$${_formatUsd(displayUsd)}',
+                                                    style: TextStyle(
+                                                      fontSize: 12,
+                                                      color: Colors.green[700],
+                                                      fontStyle: FontStyle.italic,
+                                                      fontWeight: FontWeight.w700,
+                                                    ),
+                                                  ),
+                                                ] else ...[
+                                                  Text(
+                                                    '\$${_formatUsd(_basePriceUsd)}',
+                                                    style: TextStyle(
+                                                      fontSize: 12,
+                                                      color: Colors.grey[600],
+                                                      fontStyle: FontStyle.italic,
+                                                    ),
+                                                  ),
+                                                ],
+                                              ],
+                                            ),
                               ],
                             ),
                           ),
@@ -272,34 +396,43 @@ class _VipPowerupBottomSheetState extends State<VipPowerupBottomSheet> {
 
       final functions = FirebaseFunctions.instance;
       final createCallable = functions.httpsCallable('createVipPowerupPaymentSession');
-      final sessionRes = await createCallable.call();
+      final sessionRes = await createCallable.call({
+        if (_promo?.code.isNotEmpty == true) 'promoCode': _promo!.code,
+      });
       final session = Map<String, dynamic>.from(sessionRes.data as Map);
 
+      final mode = (session['mode'] as String?) ?? 'payment'; // none|payment
       final customerId = session['customerId'] as String?;
       final ephemeralKeySecret = session['ephemeralKeySecret'] as String?;
       final paymentIntentClientSecret = session['paymentIntentClientSecret'] as String?;
       final intentId = session['intentId'] as String?;
 
-      if (customerId == null ||
-          ephemeralKeySecret == null ||
-          paymentIntentClientSecret == null ||
-          intentId == null) {
-        throw Exception('Invalid payment session');
+      if (mode == 'payment') {
+        if (customerId == null ||
+            ephemeralKeySecret == null ||
+            paymentIntentClientSecret == null ||
+            intentId == null) {
+          throw Exception('Invalid payment session');
+        }
+
+        await stripe.Stripe.instance.initPaymentSheet(
+          paymentSheetParameters: stripe.SetupPaymentSheetParameters(
+            merchantDisplayName: AppConfig.stripeMerchantDisplayName,
+            customerId: customerId,
+            customerEphemeralKeySecret: ephemeralKeySecret,
+            paymentIntentClientSecret: paymentIntentClientSecret,
+            style: ThemeMode.system,
+          ),
+        );
+        await stripe.Stripe.instance.presentPaymentSheet();
       }
 
-      await stripe.Stripe.instance.initPaymentSheet(
-        paymentSheetParameters: stripe.SetupPaymentSheetParameters(
-          merchantDisplayName: AppConfig.stripeMerchantDisplayName,
-          customerId: customerId,
-          customerEphemeralKeySecret: ephemeralKeySecret,
-          paymentIntentClientSecret: paymentIntentClientSecret,
-          style: ThemeMode.system,
-        ),
-      );
-      await stripe.Stripe.instance.presentPaymentSheet();
-
       final confirmCallable = functions.httpsCallable('confirmVipPowerupPurchase');
-      await confirmCallable.call({'intentId': intentId});
+      await confirmCallable.call({
+        'mode': mode,
+        if (intentId != null) 'intentId': intentId,
+        if (_promo?.code.isNotEmpty == true) 'promoCode': _promo!.code,
+      });
 
       if (!mounted) return;
       Navigator.pop(context);
@@ -314,6 +447,32 @@ class _VipPowerupBottomSheetState extends State<VipPowerupBottomSheet> {
     } finally {
       if (mounted) setState(() => _isProcessing = false);
     }
+  }
+}
+
+class _PromoInfo {
+  const _PromoInfo({
+    required this.code,
+    required this.discountType,
+    this.tier,
+    this.percentOff,
+    this.amountOffUsd,
+  });
+
+  final String code;
+  final String? tier;
+  final String discountType; // free|percent|amount
+  final double? percentOff;
+  final double? amountOffUsd;
+
+  factory _PromoInfo.fromMap(Map<String, dynamic> data) {
+    return _PromoInfo(
+      code: (data['code'] as String? ?? '').toUpperCase(),
+      tier: (data['tier'] as String?)?.toLowerCase(),
+      discountType: (data['discountType'] as String? ?? 'free').toLowerCase(),
+      percentOff: (data['percentOff'] is num) ? (data['percentOff'] as num).toDouble() : null,
+      amountOffUsd: (data['amountOffUsd'] is num) ? (data['amountOffUsd'] as num).toDouble() : null,
+    );
   }
 }
 

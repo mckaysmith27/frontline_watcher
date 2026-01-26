@@ -904,45 +904,91 @@ exports.createVipPowerupPaymentSession = functions.https.onCall(async (data, con
     { apiVersion: '2024-06-20' }
   );
 
-  // Fixed price: $7.99
+  const promoCode = typeof data?.promoCode === 'string' ? data.promoCode.trim() : '';
+  const promo = promoCode ? await loadPromoForCheckout(promoCode, 'vip_powerup') : null;
+  const { finalUsd } = applyPromoToPrice(7.99, promo);
+
+  // If free, skip Stripe entirely (one-time VIP purchase; no renewal).
+  if (finalUsd <= 0) {
+    return {
+      mode: 'none',
+      finalPriceUsd: 0,
+      customerId,
+      promo: promo ? { code: promo.codeUpper } : null,
+    };
+  }
+
   const pi = await stripe.paymentIntents.create({
-    amount: 799,
+    amount: cents(finalUsd),
     currency: 'usd',
     customer: customerId,
     automatic_payment_methods: { enabled: true },
-    metadata: { uid, product: 'vip_powerup' },
+    metadata: { uid, product: 'vip_powerup', promoCode: promo ? promo.codeUpper : '' },
   });
 
   return {
     mode: 'payment',
+    finalPriceUsd: finalUsd,
     customerId,
     ephemeralKeySecret: ephemeralKey.secret,
     paymentIntentClientSecret: pi.client_secret,
     intentId: pi.id,
+    promo: promo ? { code: promo.codeUpper } : null,
   };
 });
 
 exports.confirmVipPowerupPurchase = functions.https.onCall(async (data, context) => {
   if (!context.auth) throw new functions.https.HttpsError('unauthenticated', 'Login required');
   const uid = context.auth.uid;
+  const mode = typeof data?.mode === 'string' ? data.mode : 'payment'; // payment|none
   const intentId = typeof data?.intentId === 'string' ? data.intentId : null;
-  if (!intentId) throw new functions.https.HttpsError('invalid-argument', 'intentId is required');
+  const promoCode = typeof data?.promoCode === 'string' ? data.promoCode.trim() : '';
+  if (mode !== 'none' && !intentId) throw new functions.https.HttpsError('invalid-argument', 'intentId is required');
 
   const stripe = getStripe();
-  const pi = await stripe.paymentIntents.retrieve(intentId);
-  if (pi.status !== 'succeeded' && pi.status !== 'processing') {
-    throw new functions.https.HttpsError('failed-precondition', `PaymentIntent not successful (${pi.status})`);
+  let pi = null;
+  if (mode !== 'none') {
+    pi = await stripe.paymentIntents.retrieve(intentId);
+    if (pi.status !== 'succeeded' && pi.status !== 'processing') {
+      throw new functions.https.HttpsError('failed-precondition', `PaymentIntent not successful (${pi.status})`);
+    }
   }
 
   const db = admin.firestore();
   const userRef = db.collection('users').doc(uid);
 
+  // Redeem promo (transactional) for VIP if provided.
+  let appliedPromoUpper = null;
+  if (promoCode) {
+    const codeU = codeUpper(promoCode);
+    const promoRef = db.collection('promo_codes').doc(codeU);
+    await db.runTransaction(async (tx) => {
+      const snap = await tx.get(promoRef);
+      if (!snap.exists) throw new functions.https.HttpsError('not-found', 'Promo code not found');
+      const p = snap.data() || {};
+      if (p.active === false) throw new functions.https.HttpsError('failed-precondition', 'Promo code inactive');
+      if (p.tier && p.tier !== 'vip_powerup') throw new functions.https.HttpsError('failed-precondition', 'Promo code not valid for this package');
+      const expMs = toMillis(p.expiresAt);
+      if (expMs != null && expMs < Date.now()) throw new functions.https.HttpsError('failed-precondition', 'Promo code expired');
+      const max = Number.isFinite(p.maxRedemptions) ? p.maxRedemptions : 1;
+      const redeemed = Number.isFinite(p.redeemedCount) ? p.redeemedCount : 0;
+      if (redeemed >= max) throw new functions.https.HttpsError('failed-precondition', 'Promo code fully redeemed');
+      const redemptionRef = promoRef.collection('redemptions').doc(uid);
+      const redemptionSnap = await tx.get(redemptionRef);
+      if (redemptionSnap.exists) throw new functions.https.HttpsError('failed-precondition', 'Promo already used by this user');
+      tx.set(redemptionRef, { uid, usedAt: admin.firestore.FieldValue.serverTimestamp(), tier: 'vip_powerup' });
+      tx.update(promoRef, { redeemedCount: admin.firestore.FieldValue.increment(1) });
+    });
+    appliedPromoUpper = codeU;
+  }
+
   const purchaseAction = {
     timestamp: admin.firestore.Timestamp.now(),
     product: 'vip_powerup',
-    amountUsd: 7.99,
-    stripeCustomerId: pi.customer || null,
-    stripePaymentIntentId: pi.id,
+    amountUsd: pi ? (Number(pi.amount || 0) / 100) : 0,
+    promotion: appliedPromoUpper,
+    stripeCustomerId: pi ? (pi.customer || null) : null,
+    stripePaymentIntentId: pi ? pi.id : null,
     mode: 'vip_powerup',
   };
 

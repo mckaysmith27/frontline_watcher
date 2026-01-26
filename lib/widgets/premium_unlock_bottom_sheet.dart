@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
 import 'dart:async';
+import 'package:cloud_functions/cloud_functions.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter_svg/flutter_svg.dart';
+import 'package:flutter_stripe/flutter_stripe.dart' as stripe;
 import '../config/app_config.dart';
-import '../screens/filters/payment_screen.dart';
 import 'marketing_points.dart';
 
 class PremiumUnlockBottomSheet extends StatefulWidget {
@@ -47,6 +49,16 @@ class _PremiumUnlockBottomSheetState extends State<PremiumUnlockBottomSheet>
 
   final DraggableScrollableController _sheetController = DraggableScrollableController();
 
+  final FirebaseFunctions _functions = FirebaseFunctions.instance;
+  final FirebaseAuth _auth = FirebaseAuth.instance;
+
+  final TextEditingController _promoController = TextEditingController();
+  _PromoInfo? _promo;
+  bool _promoCardRequired = true;
+  bool _isProcessing = false;
+  String? _inlineStatusMessage;
+  bool _inlineStatusIsError = false;
+
   late final AnimationController _crownController;
   late final Animation<double> _crownWobble;
   Timer? _crownIntroTimer;
@@ -61,6 +73,77 @@ class _PremiumUnlockBottomSheetState extends State<PremiumUnlockBottomSheet>
   Timer? _coachAutoHideTimer;
   late final AnimationController _coachController;
   late final Animation<double> _coachDy;
+
+  double _applyPromoToBase(double baseUsd, _PromoInfo promo) {
+    var finalUsd = baseUsd;
+    if (promo.discountType == 'free') {
+      finalUsd = 0.0;
+    } else if (promo.discountType == 'percent' && promo.percentOff != null) {
+      finalUsd = baseUsd * (1 - (promo.percentOff! / 100));
+    } else if (promo.discountType == 'amount' && promo.amountOffUsd != null) {
+      finalUsd = baseUsd - promo.amountOffUsd!;
+    }
+    if (finalUsd < 0) finalUsd = 0;
+    return finalUsd;
+  }
+
+  bool _promoAppliesToTier(String tier) {
+    final p = _promo;
+    if (p == null) return false;
+    if (p.tier == null) return true;
+    return p.tier == tier.toLowerCase();
+  }
+
+  double _displayPriceForTier(String tier, double baseUsd) {
+    final p = _promo;
+    if (p == null) return baseUsd;
+    if (!_promoAppliesToTier(tier)) return baseUsd;
+    return _applyPromoToBase(baseUsd, p);
+  }
+
+  String _formatUsd(double v) => v.toStringAsFixed(2);
+
+  Future<void> _showCheckoutErrorDialog(String message) async {
+    if (!mounted) return;
+    await showDialog<void>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Checkout failed'),
+        content: Text(message),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(),
+            child: const Text('OK'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _applyPromo() async {
+    final promo = _promoController.text.trim();
+    if (promo.isEmpty) return;
+    try {
+      final callable = _functions.httpsCallable('validatePromoCode');
+      // Validate without forcing a tier; promo may be global or tier-specific.
+      final res = await callable.call({'code': promo});
+      final data = Map<String, dynamic>.from(res.data as Map);
+      final cardReq = data['isCardStillRequired'] == true;
+      setState(() {
+        _promo = _PromoInfo.fromMap(data);
+        _promoCardRequired = cardReq;
+        _inlineStatusMessage = 'Promo applied.';
+        _inlineStatusIsError = false;
+      });
+    } catch (e) {
+      setState(() {
+        _promo = null;
+        _inlineStatusMessage = 'Invalid promo code: $e';
+        _inlineStatusIsError = true;
+      });
+      await _showCheckoutErrorDialog('Invalid promo code: $e');
+    }
+  }
 
   @override
   void initState() {
@@ -149,6 +232,7 @@ class _PremiumUnlockBottomSheetState extends State<PremiumUnlockBottomSheet>
     _crownIntroTimer?.cancel();
     _crownIntroTimer2?.cancel();
     _coachAutoHideTimer?.cancel();
+    _promoController.dispose();
     _coachController.dispose();
     _sheetController.dispose();
     _chooseController.dispose();
@@ -353,6 +437,66 @@ class _PremiumUnlockBottomSheetState extends State<PremiumUnlockBottomSheet>
                             ),
                           ),
                           const SizedBox(height: 12),
+                          // Promo code (inline, no separate checkout page).
+                          Card(
+                            child: Padding(
+                              padding: const EdgeInsets.all(16),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    'Promo code',
+                                    style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                                          fontWeight: FontWeight.w700,
+                                        ),
+                                  ),
+                                  const SizedBox(height: 10),
+                                  Row(
+                                    children: [
+                                      Expanded(
+                                        child: TextField(
+                                          controller: _promoController,
+                                          textInputAction: TextInputAction.done,
+                                          decoration: const InputDecoration(
+                                            hintText: 'Enter code',
+                                            border: OutlineInputBorder(),
+                                          ),
+                                          onSubmitted: (_) => _applyPromo(),
+                                        ),
+                                      ),
+                                      const SizedBox(width: 10),
+                                      OutlinedButton(
+                                        onPressed: _applyPromo,
+                                        child: const Text('Apply'),
+                                      ),
+                                    ],
+                                  ),
+                                  if ((_inlineStatusMessage ?? '').trim().isNotEmpty) ...[
+                                    const SizedBox(height: 10),
+                                    Text(
+                                      _inlineStatusMessage!,
+                                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                                            color: _inlineStatusIsError
+                                                ? Theme.of(context).colorScheme.error
+                                                : Colors.green[700],
+                                          ),
+                                    ),
+                                  ],
+                                  if (_promo != null && _promoCardRequired) ...[
+                                    const SizedBox(height: 6),
+                                    Text(
+                                      'Card still required for renewal.',
+                                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                                            fontStyle: FontStyle.italic,
+                                            color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.65),
+                                          ),
+                                    ),
+                                  ],
+                                ],
+                              ),
+                            ),
+                          ),
+                          const SizedBox(height: 12),
                           ..._tiers.entries.map((entry) {
                       final isSelected = _selectedTier == entry.key;
                       final pretty = entry.key
@@ -360,6 +504,9 @@ class _PremiumUnlockBottomSheetState extends State<PremiumUnlockBottomSheet>
                           .map((w) => w.isEmpty ? w : (w[0].toUpperCase() + w.substring(1)))
                           .join(' ');
                       final title = entry.key == 'monthly' ? '$pretty (recommended)' : pretty;
+                      final baseUsd = (entry.value['price'] as num).toDouble();
+                      final displayUsd = _displayPriceForTier(entry.key, baseUsd);
+                      final promoApplies = _promoAppliesToTier(entry.key);
 
                       return Padding(
                         padding: const EdgeInsets.only(bottom: 12),
@@ -393,13 +540,47 @@ class _PremiumUnlockBottomSheetState extends State<PremiumUnlockBottomSheet>
                                               fontWeight: FontWeight.w400,
                                             ),
                                       ),
-                                      Text(
-                                        '${entry.value['days']} days • \$${entry.value['price']}',
-                                        style: TextStyle(
-                                          fontSize: 12,
-                                          color: Colors.grey[600],
-                                          fontStyle: FontStyle.italic,
-                                        ),
+                                      Row(
+                                        children: [
+                                          Text(
+                                            '${entry.value['days']} days • ',
+                                            style: TextStyle(
+                                              fontSize: 12,
+                                              color: Colors.grey[600],
+                                              fontStyle: FontStyle.italic,
+                                            ),
+                                          ),
+                                          if (promoApplies && displayUsd != baseUsd) ...[
+                                            Text(
+                                              '\$${_formatUsd(baseUsd)}',
+                                              style: TextStyle(
+                                                fontSize: 12,
+                                                color: Colors.grey[600],
+                                                fontStyle: FontStyle.italic,
+                                                decoration: TextDecoration.lineThrough,
+                                              ),
+                                            ),
+                                            const SizedBox(width: 6),
+                                            Text(
+                                              '\$${_formatUsd(displayUsd)}',
+                                              style: TextStyle(
+                                                fontSize: 12,
+                                                color: Colors.green[700],
+                                                fontStyle: FontStyle.italic,
+                                                fontWeight: FontWeight.w700,
+                                              ),
+                                            ),
+                                          ] else ...[
+                                            Text(
+                                              '\$${_formatUsd(baseUsd)}',
+                                              style: TextStyle(
+                                                fontSize: 12,
+                                                color: Colors.grey[600],
+                                                fontStyle: FontStyle.italic,
+                                              ),
+                                            ),
+                                          ],
+                                        ],
                                       ),
                                     ],
                                   ),
@@ -412,9 +593,9 @@ class _PremiumUnlockBottomSheetState extends State<PremiumUnlockBottomSheet>
                     }),
                           const SizedBox(height: 18),
                           ElevatedButton.icon(
-                            onPressed: _selectedTier != null ? _checkout : null,
+                            onPressed: (_selectedTier != null && !_isProcessing) ? _checkout : null,
                             icon: const Icon(Icons.shopping_cart_checkout),
-                            label: const Text('Checkout'),
+                            label: Text(_isProcessing ? 'Processing…' : 'Checkout'),
                             style: ElevatedButton.styleFrom(
                               padding: const EdgeInsets.symmetric(vertical: 16),
                             ),
@@ -507,15 +688,122 @@ class _PremiumUnlockBottomSheetState extends State<PremiumUnlockBottomSheet>
     final tierData = _tiers[tier];
     if (tierData == null) return;
 
-    if (!mounted) return;
-    Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (_) => PaymentScreen(
-          tier: tier,
-          tierData: tierData,
+    if (_isProcessing) return;
+    setState(() {
+      _isProcessing = true;
+      _inlineStatusMessage = null;
+      _inlineStatusIsError = false;
+    });
+
+    try {
+      final user = _auth.currentUser;
+      if (user == null) throw Exception('Not authenticated');
+
+      if (stripe.Stripe.publishableKey.trim().isEmpty) {
+        throw Exception(
+          'Stripe is not configured yet (missing publishable key). '
+          'Set functions config stripe.publishable_key and redeploy functions.',
+        );
+      }
+
+      final basePriceUsd = (tierData['price'] as num).toDouble();
+      final promoCode = _promoAppliesToTier(tier) ? _promo?.code : null;
+
+      final createCallable = _functions.httpsCallable('createStripePaymentSession');
+      final sessionRes = await createCallable.call({
+        'tier': tier,
+        'basePriceUsd': basePriceUsd,
+        if (promoCode != null) 'promoCode': promoCode,
+      });
+      final session = Map<String, dynamic>.from(sessionRes.data as Map);
+
+      final mode = (session['mode'] as String?) ?? 'none'; // none|setup|payment
+      final intentId = session['intentId'] as String?;
+      final customerId = session['customerId'] as String?;
+      final ephemeralKeySecret = session['ephemeralKeySecret'] as String?;
+      final paymentIntentClientSecret = session['paymentIntentClientSecret'] as String?;
+      final setupIntentClientSecret = session['setupIntentClientSecret'] as String?;
+
+      if (mode == 'payment') {
+        await stripe.Stripe.instance.initPaymentSheet(
+          paymentSheetParameters: stripe.SetupPaymentSheetParameters(
+            merchantDisplayName: AppConfig.stripeMerchantDisplayName,
+            customerId: customerId,
+            customerEphemeralKeySecret: ephemeralKeySecret,
+            paymentIntentClientSecret: paymentIntentClientSecret,
+            style: ThemeMode.system,
+          ),
+        );
+        await stripe.Stripe.instance.presentPaymentSheet();
+      } else if (mode == 'setup') {
+        await stripe.Stripe.instance.initPaymentSheet(
+          paymentSheetParameters: stripe.SetupPaymentSheetParameters(
+            merchantDisplayName: AppConfig.stripeMerchantDisplayName,
+            customerId: customerId,
+            customerEphemeralKeySecret: ephemeralKeySecret,
+            setupIntentClientSecret: setupIntentClientSecret,
+            style: ThemeMode.system,
+          ),
+        );
+        await stripe.Stripe.instance.presentPaymentSheet();
+      }
+
+      final confirmCallable = _functions.httpsCallable('confirmSubscriptionPurchase');
+      await confirmCallable.call({
+        'tier': tier,
+        'days': (tierData['days'] as num).toInt(),
+        'mode': mode,
+        if (intentId != null) 'intentId': intentId,
+        if (promoCode != null) 'promoCode': promoCode,
+      });
+
+      if (!mounted) return;
+      Navigator.pop(context);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Subscription active for ${(tierData['days'] as num).toInt()} days.'),
+          backgroundColor: Colors.green,
         ),
-      ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      final msg = 'Checkout failed: $e';
+      setState(() {
+        _inlineStatusMessage = msg;
+        _inlineStatusIsError = true;
+      });
+      await _showCheckoutErrorDialog(msg);
+    } finally {
+      if (mounted) setState(() => _isProcessing = false);
+    }
+  }
+}
+
+class _PromoInfo {
+  const _PromoInfo({
+    required this.code,
+    required this.discountType,
+    required this.isCardStillRequired,
+    this.tier,
+    this.percentOff,
+    this.amountOffUsd,
+  });
+
+  final String code;
+  final String? tier; // null means global
+  final String discountType; // free|percent|amount
+  final double? percentOff;
+  final double? amountOffUsd;
+  final bool isCardStillRequired;
+
+  factory _PromoInfo.fromMap(Map<String, dynamic> data) {
+    return _PromoInfo(
+      code: (data['code'] as String? ?? '').toUpperCase(),
+      tier: (data['tier'] as String?)?.toLowerCase(),
+      discountType: (data['discountType'] as String? ?? 'free').toLowerCase(),
+      percentOff: (data['percentOff'] is num) ? (data['percentOff'] as num).toDouble() : null,
+      amountOffUsd: (data['amountOffUsd'] is num) ? (data['amountOffUsd'] as num).toDouble() : null,
+      isCardStillRequired: data['isCardStillRequired'] == true,
     );
   }
 }
