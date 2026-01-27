@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'notifications/notifications_screen.dart';
 import 'filters/filters_screen.dart';
@@ -14,6 +16,7 @@ import 'admin/promo_codes_screen.dart';
 import 'admin/site_improvements_screen.dart';
 import '../services/admin_service.dart';
 import '../services/user_role_service.dart';
+import '../services/map_warmup_service.dart';
 
 class MainNavigation extends StatefulWidget {
   const MainNavigation({super.key});
@@ -37,6 +40,8 @@ class _MainNavigationState extends State<MainNavigation> {
   final Set<int> _mountedMainTabs = <int>{};
   final Set<int> _mountedAdminTabs = <int>{};
 
+  bool _didKickoffMapWarmup = false;
+
   @override
   void initState() {
     super.initState();
@@ -57,6 +62,17 @@ class _MainNavigationState extends State<MainNavigation> {
         _accessibleFeatures = accessibleFeatures;
         _isLoadingRoles = false;
       });
+
+      // Best-effort: warm map data early so Filters → Map opens fast.
+      // Also optionally prompt for location (with an in-app explanation) once per user/device.
+      if (!_didKickoffMapWarmup && _accessibleFeatures.contains('filters')) {
+        _didKickoffMapWarmup = true;
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (!mounted) return;
+          unawaited(MapWarmupService().prewarmWithoutPrompt());
+          unawaited(MapWarmupService().maybePromptForLocation(context));
+        });
+      }
       
       // Reset indices after state is updated
       WidgetsBinding.instance.addPostFrameCallback((_) {

@@ -8,7 +8,7 @@ import '../models/school.dart';
 
 class SchoolService {
   static const String _jsonPath = 'assets/alpine_school_district_schools_ls_of_dicts.json';
-  List<School>? _schools;
+  static List<School>? _schools;
 
   static const _metersToMiles = 0.000621371;
 
